@@ -1,16 +1,23 @@
 /**
- * Landing FX — the goo actually ARRIVING on a platform.
+ * Landing FX — the attack actually ARRIVING on a platform.
  *
- * The sweep, nova and flood are ported from FIRE FIGHT's latest strike kit
- * (the blade you can WATCH travel, the expanding shock ring, the settling
- * tide) — that readability contract survived a lot of playtesting and we
- * take it as-is. One deliberate departure, kept because ours reads better
- * for this game: the BEAM stays a straight lane wall down the deck, never
- * aimed.
+ * The sweep, nova and flood are ported from FIRE FIGHT's strike kit (the
+ * blade you can WATCH travel, the expanding shock ring, the settling tide)
+ * — that readability contract survived a lot of playtesting and we take it
+ * as-is. One deliberate departure, kept because ours reads better for this
+ * game: the BEAM stays a straight lane wall down the deck, never aimed.
  *
- * Palette discipline (see config.ts): danger speaks hazard amber→red and
- * goo green ONLY — never the disco's magenta/cyan — so a strike can't be
- * mistaken for a laser even mid-lightshow.
+ * THE DANGER KIT (telegraphs.ts): a strike wears the same heat ramp as the
+ * mark that warned of it — it ignites WHITE-HOT and burns out to danger
+ * red — and the floor mark itself flashes underneath it (the telegraph's
+ * afterburn), so warning and hit are one object. What this module adds is
+ * the VOLUME: sheets of light, never solid boxes. Every wall is brightest
+ * at its business edge (the deck for a beam, the lip for the sweep's
+ * curtain) and fades away from it like haze in a laser, with scanlines
+ * racing off the edge and neon tubes up its sides — the lasers' and the
+ * deck rims' own vocabulary, in danger's colours, so a strike can never be
+ * mistaken for the light show and never looks like it came from another
+ * game.
  *
  * Everything is seat-local (spawned under a platform's root group), cheap,
  * and dead within a second — with up to 24 platforms detonating at once,
@@ -26,14 +33,17 @@ import {
   DoubleSide,
   Group,
   Mesh,
-  MeshBasicMaterial,
+  PlaneGeometry,
   Points,
   PointsMaterial,
-  RingGeometry,
+  ShaderMaterial,
   type Object3D,
+  type Sprite,
+  type SpriteMaterial,
 } from 'three';
-import { CHOREO, DECAL_Y, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, PALETTE } from '../config.js';
+import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
 import { glintTexture, glowSprite } from '../materials/glow.js';
+import { HEAT, HEAT_GLSL } from './telegraphs.js';
 
 interface Strike {
   group: Group;
@@ -44,23 +54,105 @@ interface Strike {
   step?: (dt: number) => void;
 }
 
-const GOO = PALETTE.goopGreen;
-const WARN = PALETTE.amber;
-const HOT = PALETTE.whiteHot;
+const EMBER = HEAT.amber;
 
-function basic(color: number, opacity = 0.85): MeshBasicMaterial {
-  return new MeshBasicMaterial({
-    color,
+/**
+ * A sheet of light. `vY` runs 0 at the business edge to 1 at the far edge
+ * (uBase/uH in object space); the caps of a box carry nothing (a wall is
+ * its faces, not a lid). uCore marks a white-hot core sheet, which holds
+ * its heat longer than the halo around it.
+ */
+const WALL_VERT = /* glsl */ `
+  uniform float uBase, uH;
+  varying vec2 vUv;
+  varying float vY;
+  varying float vCap;
+  void main(){
+    vUv = uv;
+    vY = (position.y - uBase) / uH;
+    vCap = abs(normal.y);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const WALL_FRAG = /* glsl */ `
+  ${HEAT_GLSL}
+  uniform float uK, uTime, uGain, uCore, uRise, uEdges;
+  varying vec2 vUv;
+  varying float vY;
+  varying float vCap;
+  void main(){
+    if (vCap > 0.5) discard;
+    // Ignites white-hot, burns out to danger red; a core stays hot longer.
+    vec3 col = mix(HOT, DANGER, smoothstep(0.0, mix(0.5, 1.3, uCore), uK));
+    float fall = exp(-vY * uRise);
+    // Scanlines racing off the business edge — the hit is still moving.
+    float scan = 0.7 + 0.3 * sin(vY * 34.0 - uTime * 22.0);
+    // Neon tubes up the sides; the foot where the wall meets its edge.
+    float edge = min(vUv.x, 1.0 - vUv.x);
+    float tube = (1.0 - smoothstep(0.0, 0.04, edge)) * uEdges;
+    float foot = 1.0 - smoothstep(0.0, 0.05, vY);
+    float a = fall * (0.4 * scan + 0.7 * tube) + foot * 0.9;
+    float env = 1.0 - uK;
+    gl_FragColor = vec4(col * a * env * env * uGain, 1.0);
+  }
+`;
+
+interface WallOpts {
+  /** Object-space y of the business edge, and the height it fades over. */
+  base: number;
+  h: number;
+  core?: boolean;
+  /** How fast it fades away from the edge (bigger = tighter). */
+  rise?: number;
+  gain?: number;
+  /** Neon tubes on the uv sides (off for a closed ring — its seam isn't an edge). */
+  edges?: boolean;
+}
+
+function wallMat(o: WallOpts): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      uBase: { value: o.base },
+      uH: { value: o.h },
+      uK: { value: 0 },
+      uTime: { value: 0 },
+      uGain: { value: o.gain ?? 1 },
+      uCore: { value: o.core ? 1 : 0 },
+      uRise: { value: o.rise ?? 2.2 },
+      uEdges: { value: o.edges === false ? 0 : 1 },
+    },
+    vertexShader: WALL_VERT,
+    fragmentShader: WALL_FRAG,
     transparent: true,
-    opacity,
     blending: AdditiveBlending,
     depthWrite: false,
     side: DoubleSide,
   });
 }
 
+/** A centred box of light, its business edge on its floor. */
+function wall(w: number, h: number, d: number, o: Partial<WallOpts> = {}): Mesh {
+  const m = new Mesh(new BoxGeometry(w, h, d), wallMat({ base: -h / 2, h, ...o }));
+  m.renderOrder = 21;
+  return m;
+}
+
+/** A single core sheet (a plane, so it never double-blends with itself). */
+function sheet(len: number, h: number, o: Partial<WallOpts> = {}): Mesh {
+  const m = new Mesh(new PlaneGeometry(len, h), wallMat({ base: -h / 2, h, core: true, rise: 1.6, ...o }));
+  m.renderOrder = 22;
+  return m;
+}
+
+/** Burn a strike element: k is its own 0..1 clock. */
+function burn(m: Object3D, k: number): void {
+  const mat = (m as Mesh).material as ShaderMaterial;
+  mat.uniforms.uK.value = Math.min(1, k);
+}
+
 /** A tiny per-strike spark pool: N additive points with gravity, emitted in
- *  puffs along the strike (the fire-fight ember trick, in goo colours). */
+ *  puffs along the strike (the fire-fight ember trick). */
 class Sparks {
   readonly points: Points;
   private pos: Float32Array;
@@ -137,24 +229,30 @@ class Sparks {
 }
 
 export class StrikeFx {
-  private live: Strike[] = [];
+  private live: (Strike & { mats: ShaderMaterial[] })[] = [];
 
   private spawn(parent: Object3D, life: number, tick: Strike['tick'], build: (g: Group) => void, step?: Strike['step']): void {
     const group = new Group();
     build(group);
     parent.add(group);
-    this.live.push({ group, age: 0, life, tick, step });
+    const mats: ShaderMaterial[] = [];
+    group.traverse((o) => {
+      const mat = (o as Mesh).material;
+      if (mat instanceof ShaderMaterial) mats.push(mat);
+    });
+    this.live.push({ group, age: 0, life, tick, step, mats });
+    tick(0, group);
   }
 
-  /** The swing — a hanging goo CURTAIN travels the deck: all its mass is
-   *  ABOVE the limbo line, its bottom edge is a white-hot lip, and it never
-   *  touches the floor — so up close it reads "danger overhead, air below",
-   *  not "the deck is about to be cut in half". Sparks shed off the lip.
-   *  `fromSide` = which local-x side the swing enters from. */
+  /** The swing — a hanging CURTAIN of light travels the deck: all its mass
+   *  is ABOVE the limbo line, fading upward off a white-hot lip, and it
+   *  never touches the floor — so up close it reads "danger overhead, air
+   *  below", not "the deck is about to be cut in half". Embers shed off the
+   *  lip. `fromSide` = which local-x side the swing enters from. */
   sweep(parent: Object3D, fromSide: 1 | -1): void {
-    const span = OCTAGON_HALF_WIDTH + 0.7;
-    const curtainH = 0.8;
-    const sparks = new Sparks(26, GOO);
+    const span = OCTAGON_HALF_WIDTH + 0.5;
+    const curtainH = 0.9;
+    const sparks = new Sparks(26, EMBER);
     let emberClock = 0;
     this.spawn(
       parent,
@@ -162,13 +260,12 @@ export class StrikeFx {
       (k, g) => {
         const travel = Math.min(1, k / 0.81); // done travelling at age 0.34
         const bx = fromSide * span * (1 - 2 * travel);
-        const curtain = g.children[0] as Mesh;
+        const [curtain, lip] = g.children;
         curtain.position.x = bx;
-        (curtain.material as MeshBasicMaterial).opacity = 0.75 * (1 - k * k * k);
-        const lip = g.children[1] as Mesh;
+        burn(curtain, k * k);
         lip.position.x = bx;
-        (lip.material as MeshBasicMaterial).opacity = 0.95 * (1 - k * k);
-        // Sparks shed off the lip.
+        burn(lip, k);
+        // Embers shed off the lip.
         const age = k * 0.42;
         if (age > emberClock) {
           emberClock = age + 0.045;
@@ -177,12 +274,13 @@ export class StrikeFx {
         }
       },
       (g) => {
-        const depth = OCTAGON_HALF_DEPTH * 2 + 0.7;
-        const curtain = new Mesh(new BoxGeometry(0.12, curtainH, depth), basic(GOO, 0.75));
+        const depth = OCTAGON_HALF_DEPTH * 2 + 0.2;
+        const curtain = wall(0.14, curtainH, depth, { rise: 3 });
         curtain.position.set(fromSide * span, CHOREO.sweepY + curtainH / 2, 0);
         g.add(curtain);
-        const lip = new Mesh(new BoxGeometry(0.2, 0.045, depth), basic(HOT, 0.95));
-        lip.position.set(fromSide * span, CHOREO.sweepY + 0.02, 0);
+        const lip = sheet(depth, 0.06, { rise: 0.5 });
+        lip.rotation.y = Math.PI / 2;
+        lip.position.set(fromSide * span, CHOREO.sweepY + 0.03, 0);
         g.add(lip);
         g.add(sparks.points);
       },
@@ -191,36 +289,34 @@ export class StrikeFx {
   }
 
   /** OURS, kept: a straight wall of light down the lane — never aimed,
-   *  exactly where the strip said. Recoloured out of the disco's magenta
-   *  into the hazard palette, with a white-hot core so it reads as danger
-   *  and not as one more laser. */
+   *  exactly where the strip said: a heat-haze volume with a white-hot core
+   *  sheet down its middle, the pair collapsing inward as it burns out. */
   beam(parent: Object3D, x: number, yaw = 0, halfW = CHOREO.beamHalfWidth): void {
     // A yawed beam (THE X's arm) runs the deck diagonal; its offset `x` is
     // perpendicular to its own run.
     const len = yaw
-      ? Math.hypot(OCTAGON_HALF_WIDTH * 2, OCTAGON_HALF_DEPTH * 2) + 0.7
-      : OCTAGON_HALF_DEPTH * 2 + 0.9;
+      ? Math.hypot(OCTAGON_HALF_WIDTH * 2, OCTAGON_HALF_DEPTH * 2) - 0.2
+      : OCTAGON_HALF_DEPTH * 2;
     const px = Math.cos(yaw) * x;
     const pz = -Math.sin(yaw) * x;
     this.spawn(
       parent,
       0.45,
       (k, g) => {
-        const wall = g.children[0] as Mesh;
-        (wall.material as MeshBasicMaterial).opacity = 0.7 * (1 - k);
-        wall.scale.x = 1 - k * 0.55;
-        const core = g.children[1] as Mesh;
-        (core.material as MeshBasicMaterial).opacity = 0.95 * (1 - k * k);
-        core.scale.x = 1 - k * 0.4;
+        const [body, core] = g.children;
+        burn(body, k);
+        body.scale.x = 1 - k * 0.55;
+        burn(core, k);
+        core.scale.y = 1 - k * 0.3;
       },
       (g) => {
-        const wall = new Mesh(new BoxGeometry(halfW * 2, 2.4, len), basic(WARN, 0.7));
-        wall.position.set(px, 1.2, pz);
-        wall.rotation.y = yaw;
-        g.add(wall);
-        const core = new Mesh(new BoxGeometry(halfW * 0.7, 2.4, len), basic(HOT, 0.95));
+        const body = wall(halfW * 2, 2.4, len);
+        body.position.set(px, 1.2, pz);
+        body.rotation.y = yaw;
+        g.add(body);
+        const core = sheet(len, 2.4);
         core.position.set(px, 1.2, pz);
-        core.rotation.y = yaw;
+        core.rotation.y = yaw + Math.PI / 2;
         g.add(core);
       },
     );
@@ -230,30 +326,26 @@ export class StrikeFx {
   // blockfall in choreo/blockfall.ts carries the whole descent AND the
   // crush — see ChoreoSystem.resolve.)
 
-  /** THE DONUT closes: the rim goes up as a wall of light and RUSHES IN,
+  /** THE DONUT closes: the rim goes up as a ring of light and RUSHES IN,
    *  stopping dead on the doorpost circle — the opposite motion to the
    *  nova's shock ring, so the two can never be confused at a glance even
    *  though both are round. The middle is left conspicuously untouched:
-   *  that's the ground that lived. */
+   *  that's the ground that lived (the floor's afterburn spares it too). */
   donut(parent: Object3D, innerR: number): void {
     const outer = CHOREO.donutRadius;
-    const sparks = new Sparks(54, WARN);
+    const sparks = new Sparks(54, EMBER);
     let landed = false;
     this.spawn(
       parent,
       0.5,
       (k, g) => {
         const close = Math.min(1, k / 0.7);
-        const wall = g.children[0] as Mesh;
+        const ring = g.children[0];
         // The wall races in from the deck edge and parks on the safe rim.
         const r = outer - close * (outer - innerR);
-        wall.scale.set(r, 1, r);
-        (wall.material as MeshBasicMaterial).opacity = 0.85 * (1 - k * k);
-        const floor = g.children[1] as Mesh;
-        (floor.material as MeshBasicMaterial).opacity = 0.7 * (1 - k);
-        const rim = g.children[2] as Mesh;
-        (rim.material as MeshBasicMaterial).opacity = 0.95 * (1 - k);
-        rim.scale.setScalar(1 + k * 0.06);
+        ring.scale.set(r, 1, r);
+        // The ring holds its heat while it travels — the motion is the read.
+        burn(ring, k * k);
         if (!landed && close >= 1) {
           landed = true;
           // Embers thrown UP off the doorpost circle as the wall piles into
@@ -265,20 +357,14 @@ export class StrikeFx {
         }
       },
       (g) => {
-        const wall = new Mesh(new CylinderGeometry(1, 1, 0.6, 40, 1, true), basic(WARN, 0.85));
-        wall.position.y = 0.3;
-        wall.scale.set(outer, 1, outer);
-        g.add(wall);
-        // The doomed annulus flashing on the deck — a hole where you stood.
-        const floor = new Mesh(new RingGeometry(innerR, outer, 44), basic(WARN, 0.7));
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.y = DECAL_Y + 0.01;
-        g.add(floor);
-        // The doorpost circle, white-hot: exactly where the telegraph drew it.
-        const rim = new Mesh(new RingGeometry(innerR - 0.03, innerR + 0.03, 44), basic(HOT, 0.95));
-        rim.rotation.x = -Math.PI / 2;
-        rim.position.y = DECAL_Y + 0.02;
-        g.add(rim);
+        const h = 0.9;
+        const ring = new Mesh(
+          new CylinderGeometry(1, 1, h, 48, 1, true),
+          wallMat({ base: -h / 2, h, rise: 2.6, gain: 1.6, edges: false }),
+        );
+        ring.renderOrder = 21;
+        ring.position.y = h / 2;
+        g.add(ring);
         g.add(sparks.points);
       },
       (dt) => sparks.step(dt),
@@ -289,22 +375,21 @@ export class StrikeFx {
    *  the strip — with the emitter that fed it flaring on its rail, so the
    *  eye can see where the shot came from even after the beam is gone. */
   rail(parent: Object3D, z: number, halfD: number, from: 1 | -1): void {
-    const span = OCTAGON_HALF_WIDTH * 2 + 0.9;
-    const sparks = new Sparks(24, WARN);
+    const span = OCTAGON_HALF_WIDTH * 2;
+    const sparks = new Sparks(24, EMBER);
     let fired = false;
     this.spawn(
       parent,
       0.45,
       (k, g) => {
-        const wall = g.children[0] as Mesh;
-        (wall.material as MeshBasicMaterial).opacity = 0.7 * (1 - k);
-        wall.scale.z = 1 - k * 0.55;
-        const core = g.children[1] as Mesh;
-        (core.material as MeshBasicMaterial).opacity = 0.95 * (1 - k * k);
-        core.scale.z = 1 - k * 0.4;
+        const [body, core, flare] = g.children;
+        burn(body, k);
+        body.scale.z = 1 - k * 0.55;
+        burn(core, k);
+        core.scale.y = 1 - k * 0.3;
         // The muzzle flare dies faster than the beam it threw.
-        const flare = g.children[2] as Mesh;
-        flare.scale.setScalar(Math.max(0.001, 1.35 - k * 1.6));
+        flare.scale.setScalar(Math.max(0.001, 0.6 * (1.35 - k * 1.6)));
+        ((flare as Sprite).material as SpriteMaterial).color.setHex(k < 0.25 ? HEAT.hot : HEAT.danger);
         if (!fired) {
           fired = true;
           // Embers thrown off the wire where it crosses the deck.
@@ -314,14 +399,14 @@ export class StrikeFx {
         }
       },
       (g) => {
-        const wall = new Mesh(new BoxGeometry(span, 2.4, halfD * 2), basic(WARN, 0.7));
-        wall.position.set(0, 1.2, z);
-        g.add(wall);
-        const core = new Mesh(new BoxGeometry(span, 2.4, halfD * 0.7), basic(HOT, 0.95));
+        const body = wall(span, 2.4, halfD * 2);
+        body.position.set(0, 1.2, z);
+        g.add(body);
+        const core = sheet(span, 2.4);
         core.position.set(0, 1.2, z);
         g.add(core);
-        const flare = glowSprite(HOT, 0.5, 0.9);
-        flare.position.set(from * (OCTAGON_HALF_WIDTH + 0.3), 1.1, z);
+        const flare = glowSprite(HEAT.hot, 0.5, 0.9);
+        flare.position.set(from * (OCTAGON_HALF_WIDTH + 0.1), 0.5, z);
         g.add(flare);
         g.add(sparks.points);
       },
@@ -329,18 +414,18 @@ export class StrikeFx {
     );
   }
 
-    /** The gate slams shut: both danger fields flash as walls of light and
+  /** The gate slams shut: both danger fields go up as walls of light and
    *  the doorposts of the safe column burn white-hot — the gap is exactly
    *  where the telegraph promised. */
   gate(parent: Object3D, at: number, half: number, axis: 0 | 1 = 0): void {
     // axis 0: doorway column at local x. axis 1: the horizontal cousin —
     // the clear band runs across the deck at local z, so the danger walls
     // stand before and behind it instead of either side.
-    const edge = (axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH) + 0.25;
-    const span = axis ? OCTAGON_HALF_WIDTH * 2 + 0.6 : OCTAGON_HALF_DEPTH * 2 + 0.6;
+    const edge = axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH;
+    const span = axis ? OCTAGON_HALF_WIDTH * 2 : OCTAGON_HALF_DEPTH * 2;
     const loW = Math.max(0.05, at - half + edge);
     const hiW = Math.max(0.05, edge - (at + half));
-    const place = (m: Mesh, along: number): void => {
+    const place = (m: Object3D, along: number): void => {
       if (axis) m.position.set(0, m.position.y, along);
       else m.position.set(along, m.position.y, 0);
     };
@@ -348,28 +433,26 @@ export class StrikeFx {
       parent,
       0.45,
       (k, g) => {
-        const fade = 1 - k;
-        (g.children[0] as Mesh & { material: MeshBasicMaterial }).material.opacity = 0.6 * fade;
-        (g.children[1] as Mesh & { material: MeshBasicMaterial }).material.opacity = 0.6 * fade;
-        (g.children[2] as Mesh & { material: MeshBasicMaterial }).material.opacity = 0.95 * (1 - k * k);
-        (g.children[3] as Mesh & { material: MeshBasicMaterial }).material.opacity = 0.95 * (1 - k * k);
+        const [lo, hi, postA, postB] = g.children;
+        burn(lo, k);
+        burn(hi, k);
+        burn(postA, k);
+        burn(postB, k);
       },
       (g) => {
-        const box = (w: number): BoxGeometry =>
-          axis ? new BoxGeometry(span, 2.2, w) : new BoxGeometry(w, 2.2, span);
-        const wallLo = new Mesh(box(loW), basic(WARN, 0.6));
-        wallLo.position.y = 1.1;
-        place(wallLo, at - half - loW / 2);
-        g.add(wallLo);
-        const wallHi = new Mesh(box(hiW), basic(WARN, 0.6));
-        wallHi.position.y = 1.1;
-        place(wallHi, at + half + hiW / 2);
-        g.add(wallHi);
+        const field = (w: number): Mesh =>
+          axis ? wall(span, 2.2, w, { gain: 0.8 }) : wall(w, 2.2, span, { gain: 0.8 });
+        const lo = field(loW);
+        lo.position.y = 1.1;
+        place(lo, at - half - loW / 2);
+        g.add(lo);
+        const hi = field(hiW);
+        hi.position.y = 1.1;
+        place(hi, at + half + hiW / 2);
+        g.add(hi);
         for (const side of [-1, 1] as const) {
-          const post = new Mesh(
-            axis ? new BoxGeometry(span, 2.3, 0.045) : new BoxGeometry(0.045, 2.3, span),
-            basic(HOT, 0.95),
-          );
+          const post = sheet(span, 2.3, { gain: 1.2 });
+          if (!axis) post.rotation.y = Math.PI / 2;
           post.position.y = 1.15;
           place(post, at + side * half);
           g.add(post);
@@ -378,12 +461,12 @@ export class StrikeFx {
     );
   }
 
-  /** PORTED: the nova lands as an expanding SHOCK RING — an open tube wall
-   *  racing out from the centre — over the floor flash that spares the
-   *  wedge, with sparks erupting along the front everywhere but the safe
-   *  ground. */
+  /** PORTED: the nova lands as an expanding SHOCK RING — an open ring of
+   *  light racing out from the centre over the floor's afterburn (which
+   *  spares the wedge), with sparks erupting along the front everywhere
+   *  but the safe ground. */
   nova(parent: Object3D, bearing: number, halfAngle: number): void {
-    const sparks = new Sparks(90, WARN);
+    const sparks = new Sparks(90, EMBER);
     let burstClock = 0;
     let crowned = false;
     this.spawn(
@@ -391,16 +474,11 @@ export class StrikeFx {
       0.5,
       (k, g) => {
         const grow = Math.min(1, k / 0.84);
-        const tube = g.children[0] as Mesh;
+        const ring = g.children[0];
         const r = 0.15 + grow * CHOREO.novaRadius;
-        tube.scale.set(r, 1, r);
-        (tube.material as MeshBasicMaterial).opacity = 0.9 * (1 - k * k);
-        const wave = g.children[1] as Mesh;
-        wave.scale.setScalar(0.3 + grow * 1.5);
-        (wave.material as MeshBasicMaterial).opacity = 0.7 * (1 - k);
-        // Fire along the expanding front — everywhere but the wedge. Each
-        // pie in the chain is singular, so it gets to be the whole show:
-        // twice the emitters of the old gauntlet discs, on a faster clock.
+        ring.scale.set(r, 1, r);
+        burn(ring, k * k);
+        // Fire along the expanding front — everywhere but the wedge.
         const age = k * 0.5;
         if (age > burstClock) {
           burstClock = age + 0.04;
@@ -420,61 +498,60 @@ export class StrikeFx {
             const a = (i / 14) * Math.PI * 2 - Math.PI;
             const d = Math.abs(((a - bearing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
             if (d <= halfAngle) continue;
-            sparks.emit(Math.sin(a) * CHOREO.novaRadius, 0.12, Math.cos(a) * CHOREO.novaRadius, 2, 1.6);
+            sparks.emit(Math.sin(a) * CHOREO.novaRadius * 0.8, 0.12, Math.cos(a) * CHOREO.novaRadius * 0.8, 2, 1.6);
           }
         }
       },
       (g) => {
-        const tube = new Mesh(new CylinderGeometry(1, 1, 0.5, 32, 1, true), basic(WARN, 0.9));
-        tube.position.y = 0.25;
-        tube.scale.set(0.15, 1, 0.15);
-        g.add(tube);
-        // The floor flash that SPARES the wedge (ring arc, gap on the bearing).
+        // The ring is open across the safe wedge: the shock never sweeps
+        // the ground the telegraph promised.
+        const h = 0.6;
         const arc = Math.PI * 2 - halfAngle * 2;
-        const wave = new Mesh(new RingGeometry(0.5, CHOREO.novaRadius, 40, 1, 0, arc), basic(WARN, 0.7));
-        wave.rotation.x = -Math.PI / 2;
-        wave.rotation.z = bearing - Math.PI / 2 + halfAngle;
-        wave.position.y = DECAL_Y + 0.01;
-        g.add(wave);
-        // (No centre burst — the danger is the RING racing outward; a blob
-        // of light in the middle read as an explosion where nobody was.)
+        const ring = new Mesh(
+          new CylinderGeometry(1, 1, h, 40, 1, true, bearing + halfAngle, arc),
+          wallMat({ base: -h / 2, h, rise: 2.8, gain: 1.6 }),
+        );
+        ring.renderOrder = 21;
+        ring.position.y = h / 2;
+        g.add(ring);
         g.add(sparks.points);
       },
       (dt) => sparks.step(dt),
     );
   }
 
-  /** PORTED: the tide lands and SETTLES — a slab of goo light floods the
-   *  doomed half and sinks into the deck, shedding sparks as it drains. */
+  /** PORTED: the tide lands and SETTLES — a slab of light floods the doomed
+   *  half and sinks into the deck, shedding sparks as it drains. */
   halfFlood(parent: Object3D, side: 1 | -1, axis: 0 | 1): void {
-    const halfW = (axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH) + 0.35;
+    const halfW = axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH;
     const other = axis ? OCTAGON_HALF_WIDTH : OCTAGON_HALF_DEPTH;
-    const depth = other * 2 + 0.3;
-    const sparks = new Sparks(22, GOO);
+    const depth = other * 2;
+    const sparks = new Sparks(22, EMBER);
     let burstClock = 0;
     this.spawn(
       parent,
       0.5,
       (k, g) => {
-        const slab = g.children[0] as Mesh;
+        const slab = g.children[0];
         slab.scale.y = 1 - 0.7 * Math.min(1, k / 0.84); // the wave settles in
-        (slab.material as MeshBasicMaterial).opacity = 0.55 * (1 - k * k);
+        slab.position.y = 0.35 * slab.scale.y;
+        burn(slab, k);
         const age = k * 0.5;
         if (age > burstClock) {
           burstClock = age + 0.09;
-          const sx = side * (0.1 + Math.random() * (halfW - 0.3));
-          const sz = (Math.random() * 2 - 1) * other;
+          const sx = side * (0.1 + Math.random() * (halfW - 0.2));
+          const sz = (Math.random() * 2 - 1) * other * 0.8;
           if (axis) sparks.emit(sz, 0.12, sx, 4, 1.0);
           else sparks.emit(sx, 0.12, sz, 4, 1.0);
         }
       },
       (g) => {
-        const slab = new Mesh(new BoxGeometry(halfW, 0.5, depth), basic(GOO, 0.55));
+        const slab = wall(halfW, 0.7, depth, { rise: 2.6, gain: 0.9 });
         if (axis) {
           slab.rotation.y = Math.PI / 2;
-          slab.position.set(0, 0.25, (side * halfW) / 2);
+          slab.position.set(0, 0.35, (side * halfW) / 2);
         } else {
-          slab.position.set((side * halfW) / 2, 0.25, 0);
+          slab.position.set((side * halfW) / 2, 0.35, 0);
         }
         g.add(slab);
         g.add(sparks.points);
@@ -487,6 +564,7 @@ export class StrikeFx {
     for (let i = this.live.length - 1; i >= 0; i--) {
       const s = this.live[i];
       s.age += dt;
+      for (const mat of s.mats) mat.uniforms.uTime.value = s.age;
       const k = Math.min(1, s.age / s.life);
       s.tick(k, s.group);
       s.step?.(dt);
@@ -495,7 +573,7 @@ export class StrikeFx {
         s.group.traverse((o) => {
           const m = o as Mesh;
           m.geometry?.dispose?.();
-          (m.material as MeshBasicMaterial)?.dispose?.();
+          (m.material as ShaderMaterial)?.dispose?.();
         });
         this.live.splice(i, 1);
       }

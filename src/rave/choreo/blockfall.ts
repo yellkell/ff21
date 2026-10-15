@@ -11,6 +11,11 @@
  * flashes its quarter, throws sparks, and sinks away. The quarter you
  * learned stays bare.
  *
+ * THE DANGER KIT (telegraphs.ts): the blocks wear the attack set's one
+ * heat ramp, and the fall IS the fill — every block and its ring start
+ * hazard amber and heat to danger red as they close, exactly like a floor
+ * mark charging, then ignite WHITE-HOT on the crush and burn back out.
+ *
  * The judge is untouched (stand committed in the taught corner at the
  * tick); this module is the danger made VISIBLE — you can watch your death
  * coming the whole way down, which is exactly what the old goo slabs
@@ -24,6 +29,7 @@
 import {
   AdditiveBlending,
   BufferGeometry,
+  Color,
   DodecahedronGeometry,
   EdgesGeometry,
   Group,
@@ -36,10 +42,21 @@ import {
   RingGeometry,
   TetrahedronGeometry,
   type Object3D,
+  type Sprite,
+  type SpriteMaterial,
 } from 'three';
-import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, PALETTE } from '../config.js';
+import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
 import { glowSprite } from '../materials/glow.js';
 import { mix, mulberry32 } from '../game/rng.js';
+import { HEAT } from './telegraphs.js';
+
+const AMBER = new Color(HEAT.amber);
+const DANGER = new Color(HEAT.danger);
+const HOT = new Color(HEAT.hot);
+const smooth = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 /** Where a block spawns above the deck, and where its centre crushes to. */
 const SPAWN_Y = 7.5;
@@ -70,6 +87,7 @@ interface FallingBlock {
   ringMat: MeshBasicMaterial;
   shellMat: MeshBasicMaterial;
   wireMat: LineBasicMaterial;
+  glowMat: SpriteMaterial;
   x: number;
   z: number;
   spinX: number;
@@ -83,6 +101,7 @@ export class RoutineBlockfall {
   private due: number;
   private landed = false;
   private landAge = 0;
+  private heat = new Color();
 
   /**
    * `safeCorner` is the quarter that lives; the other three get blocks.
@@ -105,16 +124,13 @@ export class RoutineBlockfall {
 
     const rng = mulberry32(mix(mix(seed, 0xb10c), moveIdx * 31 + step));
     const kit = shapeSet();
-    // The danger speaks hazard amber→red, like every other telegraph — the
-    // disco's magenta/cyan never marks a landing.
-    const colors = [PALETTE.amber, 0xff7a2a, PALETTE.danger];
+    // Every block starts hazard amber; update() heats them as they fall.
+    const color = HEAT.amber;
 
-    let n = 0;
     for (let corner = 0; corner < 4; corner++) {
       if (corner === safeCorner) continue;
       const x = ((corner & 1 ? 1 : -1) * OCTAGON_HALF_WIDTH) / 2;
       const z = ((corner & 2 ? 1 : -1) * OCTAGON_HALF_DEPTH) / 2;
-      const color = colors[n % colors.length];
       const shape = kit[Math.floor(rng() * kit.length)];
       const radius = 0.3 + rng() * 0.1;
 
@@ -147,7 +163,8 @@ export class RoutineBlockfall {
       const wire = new LineSegments(shape.edges, wireMat);
       wire.scale.setScalar(radius * 1.04);
       group.add(wire);
-      group.add(glowSprite(color, radius * 3.6, 0.7));
+      const glow: Sprite = glowSprite(color, radius * 3.6, 0.7);
+      group.add(glow);
       this.root.add(group);
 
       // The deck ring under it — brightens and tightens as the block closes.
@@ -169,21 +186,33 @@ export class RoutineBlockfall {
         ringMat,
         shellMat,
         wireMat,
+        glowMat: glow.material,
         x,
         z,
         spinX: (0.8 + rng() * 1.4) * (rng() > 0.5 ? 1 : -1),
         spinZ: 0.6 + rng() * 1.2,
       });
-      n++;
+    }
+  }
+
+  /** Dress every block and ring in one colour off the heat ramp. */
+  private paint(c: Color): void {
+    for (const b of this.blocks) {
+      b.shellMat.color.copy(c);
+      b.wireMat.color.copy(c);
+      b.ringMat.color.copy(c);
+      b.glowMat.color.copy(c);
     }
   }
 
   /** Fly everything off the shared song clock. Call every frame. */
   update(beat: number, delta: number): void {
     if (this.landed) {
-      // The crush: squash flat, flare the ring wide, fade everything out.
+      // The crush: ignite white-hot, squash flat, flare the ring wide, and
+      // burn out to danger red as everything fades.
       this.landAge += delta;
       const k = Math.min(1, this.landAge / 0.45);
+      this.paint(this.heat.copy(HOT).lerp(DANGER, smooth(0, 0.6, k)));
       for (const b of this.blocks) {
         b.group.scale.y = Math.max(0.12, 1 - k * 1.1);
         b.group.scale.x = b.group.scale.z = 1 + k * 0.35;
@@ -204,6 +233,8 @@ export class RoutineBlockfall {
     // Slightly eased-in so the last half-beat reads fastest — a drop, not
     // an elevator.
     const y = SPAWN_Y - (SPAWN_Y - CRUSH_Y) * fall * fall;
+    // The fall IS the fill: amber at the top, danger red on arrival.
+    this.paint(this.heat.copy(AMBER).lerp(DANGER, smooth(0.55, 0.95, fall)));
     for (const b of this.blocks) {
       b.group.position.y = y;
       b.group.rotation.x += b.spinX * delta;
@@ -233,6 +264,7 @@ export class RoutineBlockfall {
       b.shellMat.dispose();
       b.wireMat.dispose();
       b.ringMat.dispose();
+      b.glowMat.dispose();
     }
     this.blocks = [];
   }

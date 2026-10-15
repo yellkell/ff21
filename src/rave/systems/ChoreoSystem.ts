@@ -34,6 +34,7 @@ import {
   railTelegraph,
   routineMarksTelegraph,
   sweepTelegraph,
+  AFTERBURN_SEC,
   type Telegraph,
 } from '../choreo/telegraphs.js';
 import { chartChargeBeats, generateSetlist, type SetMove, type Zone } from '../choreo/setlist.js';
@@ -158,6 +159,9 @@ export class ChoreoSystem extends createSystem({}) {
   private zones: LiveZone[] = [];
   /** Blockfalls playing out their landing crush after their zone resolved. */
   private crushing: RoutineBlockfall[] = [];
+  /** Landed telegraphs burning out (the danger kit's afterburn): the mark
+   *  ignites white-hot on its landing and fades, instead of vanishing. */
+  private burning: { tg: Telegraph; age: number }[] = [];
   private strikes = new StrikeFx();
   private lastBar = -1;
   private landedSfx = new Set<string>();
@@ -339,6 +343,7 @@ export class ChoreoSystem extends createSystem({}) {
     }
     for (const b of this.crushing) b.dispose();
     this.crushing = [];
+    this.endBurns();
     this.zones = [];
     this.nextMove = 0;
     this.lastBar = -1;
@@ -358,8 +363,27 @@ export class ChoreoSystem extends createSystem({}) {
     this.setlist = generateSetlist(match.seed, match.phrases, banned, match.difficulty, this.doubleTime, breaks);
   }
 
+  private endBurns(): void {
+    for (const b of this.burning) b.tg.dispose();
+    this.burning = [];
+  }
+
   update(delta: number): void {
     this.strikes.update(delta);
+
+    // The afterburn runs on real time, like the strikes it sits under.
+    if (this.burning.length) {
+      const now = performance.now() / 1000;
+      this.burning = this.burning.filter((b) => {
+        b.age += delta;
+        if (b.age >= AFTERBURN_SEC) {
+          b.tg.dispose();
+          return false;
+        }
+        b.tg.update(1 + b.age / AFTERBURN_SEC, now);
+        return true;
+      });
+    }
 
     const inSet = match.screen === 'countdown' || match.screen === 'raid';
     if (!inSet) {
@@ -374,6 +398,7 @@ export class ChoreoSystem extends createSystem({}) {
         for (const b of this.crushing) b.dispose();
         this.crushing = [];
       }
+      this.endBurns();
       return;
     }
     if (this.generation !== match.generation) this.rebuild();
@@ -757,7 +782,8 @@ export class ChoreoSystem extends createSystem({}) {
 
   private resolve(z: LiveZone): void {
     z.resolved = true;
-    z.tg?.dispose();
+    // The mark doesn't vanish on the landing — it ignites and burns out.
+    if (z.tg) this.burning.push({ tg: z.tg, age: 0 });
     z.tg = null;
     if (z.blocks) {
       // The crush plays out past the zone's death, then disposes itself.
