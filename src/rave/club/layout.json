@@ -72,7 +72,9 @@
     "dividers": [
       -4.9,
       -1.9
-    ]
+    ],
+    "_northWallX": "The pods' north end wall stops here instead of running out to frontX: cut back by half so it no longer blocks THE STEP's door. club/build.ts trims the baked wall to match until build_club.py does.",
+    "northWallX": -10.35
   },
   "entrance": {
     "_doc": "The way out: a closed pair of club doors in a lit portal on the south wall (no stairs). halfW = the portal opening; the leaves fill it inside the jambs.",

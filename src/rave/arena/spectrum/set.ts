@@ -303,9 +303,9 @@ function rippleMaterial(floorIn: number): ShaderMaterial {
 }
 
 /* ── the sky ──────────────────────────────────────────────────────────── */
-function skyMaterial(): ShaderMaterial {
+function skyMaterial(reflective: boolean): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { uHorizon: { value: new Color() }, uGain: { value: 1 } },
+    uniforms: { uHorizon: { value: new Color() }, uGain: { value: 1 }, uDown: { value: reflective ? 1 : 0 } },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() {
@@ -315,12 +315,13 @@ function skyMaterial(): ShaderMaterial {
     fragmentShader: /* glsl */ `
       uniform vec3 uHorizon;
       uniform float uGain;
+      uniform float uDown;
       varying vec3 vDir;
       void main() {
         float el = normalize(vDir).y;
         float up = max(el, 0.0);
         float glow = exp(-up * 9.0) * 0.8 + exp(-up * 2.5) * 0.18;
-        float down = exp(max(-el, 0.0) * -16.0) * 0.35;       // its reflection in the glass
+        float down = exp(max(-el, 0.0) * -16.0) * 0.35 * uDown; // its reflection in the glass
         gl_FragColor = vec4(uHorizon * (el >= 0.0 ? glow : down) * uGain, 1.0);
         #include <colorspace_fragment>
       }`,
@@ -428,8 +429,9 @@ export class SpectrumSet {
   /** The record's turn so far (radians). */
   private spin = 0;
 
-  /** `parent` takes the set's root. `floorIn`: where the glass starts (outside whatever stands in the middle). */
-  constructor(parent: Object3D, { floorIn = FLOOR_IN }: { floorIn?: number } = {}) {
+  /** `parent` takes the set's root. `floorIn`: where the glass starts (outside whatever stands in the middle).
+   *  `reflective`: whether the glass doubles the world (the wall and the horizon) — off, it is matte black. */
+  constructor(parent: Object3D, { floorIn = FLOOR_IN, reflective = true }: { floorIn?: number; reflective?: boolean } = {}) {
     this.root.name = 'set-spectrum';
     this.root.visible = false;
 
@@ -461,14 +463,16 @@ export class SpectrumSet {
     }
     this.wall.frustumCulled = false;
     this.root.add(this.wall);
-    const reflection = new InstancedMesh(col, this.wallMats[1], WALL_N);
-    reflection.instanceMatrix = this.wall.instanceMatrix;
-    reflection.frustumCulled = false;
-    const mirror = new Group();
-    mirror.scale.y = -1;
-    mirror.position.y = -0.12;
-    mirror.add(reflection);
-    this.root.add(mirror);
+    if (reflective) {
+      const reflection = new InstancedMesh(col, this.wallMats[1], WALL_N);
+      reflection.instanceMatrix = this.wall.instanceMatrix;
+      reflection.frustumCulled = false;
+      const mirror = new Group();
+      mirror.scale.y = -1;
+      mirror.position.y = -0.12;
+      mirror.add(reflection);
+      this.root.add(mirror);
+    }
 
     // ── the record ───────────────────────────────────────────────────────
     this.vinyl = vinylMaterial();
@@ -503,7 +507,7 @@ export class SpectrumSet {
     this.root.add(glass);
 
     // ── the sky ──────────────────────────────────────────────────────────
-    this.sky = skyMaterial();
+    this.sky = skyMaterial(reflective);
     const dome = new Mesh(new SphereGeometry(135, 48, 24), this.sky);
     dome.renderOrder = -1;
     dome.frustumCulled = false;

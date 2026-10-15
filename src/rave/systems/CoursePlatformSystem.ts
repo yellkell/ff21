@@ -32,9 +32,9 @@
  * drives; an UNDERGLOW spilling onto the void's glass; a SCAN LINE sweeping
  * the face once a bar so every docked deck keeps the beat in your eye. All
  * of it is per-instance colour on shared banks — the whole circuit is nine
- * draws, and its reflection SHARES the live instance buffers (banks.ts), so
- * it hangs over its own image the whole way round for one extra draw per
- * bank.
+ * draws. (Its reflection can share the live instance buffers — banks.ts
+ * mirrorBank, one extra draw per bank — but VOIDSTEP's floor is matte now,
+ * so it is off: CourseVoidSystem FLOOR_REFLECTS.)
  */
 
 import { createSystem } from '@iwsdk/core';
@@ -65,7 +65,7 @@ import {
 import { course, G, platformSoundAt } from '../course/state.js';
 import { courseRoot } from '../course/world.js';
 import { courseView } from './CourseSystem.js';
-import { FLOOR_Y } from './CourseVoidSystem.js';
+import { FLOOR_REFLECTS, FLOOR_Y } from './CourseVoidSystem.js';
 
 const EDGE_OFF: Record<string, [number, number, number, number]> = {
   // cx, cz, sx, sz for a rim strip on each edge of a tile
@@ -279,14 +279,18 @@ export class CoursePlatformSystem extends createSystem({}) {
       this.etches.mesh,
       this.glows.mesh,
     );
-    root.add(
-      mirrorBank(this.decks, FLOOR_Y),
-      mirrorBank(this.keels, FLOOR_Y, 0.3),
-      mirrorBank(this.rims, FLOOR_Y, 0.22),
-      mirrorBank(this.vents, FLOOR_Y, 0.3),
-      mirrorBank(this.etches, FLOOR_Y, 0.45),
-      mirrorBank(this.glows, FLOOR_Y, 0.5),
-    );
+    // The floor is matte (CourseVoidSystem FLOOR_REFLECTS): no machine
+    // hangs over its own image unless that's switched back on.
+    if (FLOOR_REFLECTS) {
+      root.add(
+        mirrorBank(this.decks, FLOOR_Y),
+        mirrorBank(this.keels, FLOOR_Y, 0.3),
+        mirrorBank(this.rims, FLOOR_Y, 0.22),
+        mirrorBank(this.vents, FLOOR_Y, 0.3),
+        mirrorBank(this.etches, FLOOR_Y, 0.45),
+        mirrorBank(this.glows, FLOOR_Y, 0.5),
+      );
+    }
 
     this.buildGhosts(root);
   }

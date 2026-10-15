@@ -645,6 +645,16 @@ carried over verbatim: everything in it still applies to this code.
   spars the ROOKIE. The bout panel names the grade you're facing
   ("contender · gold grade"). Dev: `?bot=gold` pins a rank's row,
   `?botskill=0.6` a raw skill. Headless probe: `npm run check:bot`.
+- **THE PROMOTION** (`systems/PromotionSystem.ts`, art in
+  `ui/promoArt.ts`) — crossing into a new Bronze→Overlord tier plays a
+  rank-up pop-up in the lobby, painted in the holo kit like every other
+  screen: a holo-glass plate (filled near-opaque, because passthrough
+  puts a lit room behind it), magenta corner brackets, a cyan wheel of
+  light, a cyan shockwave with a magenta fringe and cyan sparks. PROMOTED
+  is a tracked cyan tag and the new tier is GLITCH type that tears on the
+  burst and settles. Preview: `/promo-preview.html?from=2&to=3`
+  (`&bg=street` for the dark district); live probe:
+  `node tools/promo-check.mjs`.
 - **THE MOVE GRAMMAR** (DESIGN.md §4, first pass) — the five titans
   learned RAVE RAID's dance: gates, crossfire rails + THE TRAP, THE X,
   the donut's one-two, marching waves that always turn, and GOLIATH's

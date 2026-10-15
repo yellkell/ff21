@@ -32,14 +32,13 @@ export function rankBadge(index: number): HTMLImageElement | null {
 }
 
 /**
- * Draw-scale for a tier's emblem. The LEGENDARY/OVERLORD art is wide
- * (wings out, ~2:1), so inside its square frame it stands only half as tall
- * as the round medals and reads too small next to them. Drawing those two
- * zoomed evens out the visual mass — their frames are transparent, so the
- * overflow never covers neighbouring paint.
+ * Draw-scale for a tier's emblem. Every badge now fills its square frame the
+ * same way (LEGENDARY/OVERLORD are crest-and-wings like MASTER, not the old
+ * ~2:1 wing strips that needed a 1.4× zoom), so all tiers draw at 1. Kept as a
+ * hook for any future art that sits small in its frame.
  */
-export function rankBadgeZoom(index: number): number {
-  return index >= 6 ? 1.4 : 1;
+export function rankBadgeZoom(_index: number): number {
+  return 1;
 }
 
 const texCache: Array<Texture | null> = images.map(() => null);

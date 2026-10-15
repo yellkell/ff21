@@ -21,9 +21,11 @@
 import {
   AdditiveBlending,
   BoxGeometry,
+  BufferGeometry,
   CanvasTexture,
   CylinderGeometry,
   EquirectangularReflectionMapping,
+  Float32BufferAttribute,
   Group,
   HemisphereLight,
   LinearFilter,
@@ -197,10 +199,151 @@ function loadVenue(root: Group, renderer: WebGLRenderer | null): void {
         else glossy.push(sm);
       }
     });
+    trimPodEndWall(venue);
     root.add(venue);
     venueNeon.mats = neonMats;
     mirrorTwin(venue);
   });
+}
+
+/**
+ * THE POD WALL, CUT BACK. The karaoke pods' north end wall used to run out
+ * to their open fronts, which put it square across THE STEP's door half a
+ * metre north of it: from the hall the door was round the back of a wall.
+ * It now stops halfway (layout.json pods.northWallX) — and until the
+ * Blender build is re-baked to the new layout, the baked wall is shortened
+ * here: its east end (the bevelled cap and the long faces' last edge) slides
+ * west, and the long faces' UVs are pulled in to match, so the baked light
+ * on what's left is the light that was on that half of the wall rather
+ * than the whole wall squeezed into it.
+ */
+function trimPodEndWall(venue: Object3D): void {
+  const west = venue.getObjectByName('ALLEY_west') as Mesh | undefined;
+  const g = west?.geometry;
+  const pos = g?.getAttribute('position');
+  const uv = g?.getAttribute('uv');
+  if (!g || !pos || !uv) return;
+  const P = CLUB.pods;
+  const builtEnd = P.frontX + 0.3; // where build_club.py puts the cap
+  const shift = P.northWallX - builtEnd;
+  if (shift >= 0) return;
+  // The wall's far (west) end — the anchor the long faces run from.
+  const westX = P.minX + 0.05;
+  // The wall's own vertices: inside its 14 cm, but never ON its centre
+  // line — that's where the pods' ceiling and its fascia meet it, and they
+  // run the whole length of the pods and stay put.
+  const inWall = (i: number): boolean => {
+    const dz = Math.abs(pos.getZ(i) - P.minZ);
+    return dz < 0.1 && dz > 0.005 && pos.getY(i) > -0.01 && pos.getY(i) < 2.71;
+  };
+  const atEnd = (i: number): boolean => inWall(i) && Math.abs(pos.getX(i) - builtEnd) < 0.1;
+  const atWestEnd = (i: number): boolean => inWall(i) && Math.abs(pos.getX(i) - westX) < 0.015;
+  // UVs first, while every position is still where it was baked: an end
+  // vertex sharing a triangle with a west-end vertex at the same height
+  // and depth is a long face's corner.
+  const idx = g.index;
+  const tris = idx ? idx.count / 3 : pos.count / 3;
+  const vi = (k: number): number => (idx ? idx.getX(k) : k);
+  const fixed = new Set<number>();
+  for (let t = 0; t < tris; t++) {
+    const v = [vi(t * 3), vi(t * 3 + 1), vi(t * 3 + 2)];
+    for (const e of v) {
+      if (fixed.has(e) || !atEnd(e)) continue;
+      const w = v.find(
+        (o) => o !== e && atWestEnd(o) && Math.abs(pos.getY(o) - pos.getY(e)) < 0.004 && Math.abs(pos.getZ(o) - pos.getZ(e)) < 0.004,
+      );
+      if (w === undefined) continue;
+      const xw = pos.getX(w);
+      const xe = pos.getX(e);
+      const f = (xe + shift - xw) / (xe - xw);
+      uv.setXY(e, uv.getX(w) + (uv.getX(e) - uv.getX(w)) * f, uv.getY(w) + (uv.getY(e) - uv.getY(w)) * f);
+      fixed.add(e);
+    }
+  }
+  let moved = 0;
+  for (let i = 0; i < pos.count; i++) {
+    if (!atEnd(i)) continue;
+    pos.setX(i, pos.getX(i) + shift);
+    moved++;
+  }
+  if (!moved) return;
+  pos.needsUpdate = true;
+  uv.needsUpdate = true;
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  patchFloorUnder(venue, P.northWallX - 0.06, builtEnd + 0.08, P.minZ - 0.11, P.minZ + 0.11);
+}
+
+/**
+ * The floor where the cut-back wall used to stand was never lit in the
+ * bake — it was under a wall — so it shows as a strip of garbage texels.
+ * Cover it with a sliver of the same floor (same material, so the same
+ * gloss and reflections) whose UVs are read from the floor a hand's width
+ * south: the bake from beside the old wall, laid over where it stood.
+ */
+function patchFloorUnder(venue: Object3D, x0: number, x1: number, z0: number, z1: number): void {
+  const ground = venue.getObjectByName('ALLEY_ground') as Mesh | undefined;
+  const g = ground?.geometry;
+  const pos = g?.getAttribute('position');
+  const uv = g?.getAttribute('uv');
+  if (!ground || !g || !pos || !uv) return;
+  const from = 0.3; // read the bake this far south of each point
+  const idx = g.index;
+  const tris = idx ? idx.count / 3 : pos.count / 3;
+  const vi = (k: number): number => (idx ? idx.getX(k) : k);
+  /** The floor's UV at (x, z), off whichever flat floor triangle holds it. */
+  const uvAt = (x: number, z: number): [number, number] | null => {
+    for (let t = 0; t < tris; t++) {
+      const a = vi(t * 3);
+      const b = vi(t * 3 + 1);
+      const c = vi(t * 3 + 2);
+      if (Math.max(Math.abs(pos.getY(a)), Math.abs(pos.getY(b)), Math.abs(pos.getY(c))) > 0.02) continue;
+      const ax = pos.getX(a), az = pos.getZ(a);
+      const v0x = pos.getX(b) - ax, v0z = pos.getZ(b) - az;
+      const v1x = pos.getX(c) - ax, v1z = pos.getZ(c) - az;
+      const v2x = x - ax, v2z = z - az;
+      const den = v0x * v1z - v1x * v0z;
+      if (Math.abs(den) < 1e-9) continue;
+      const v = (v2x * v1z - v1x * v2z) / den;
+      const w = (v0x * v2z - v2x * v0z) / den;
+      if (v < -1e-4 || w < -1e-4 || v + w > 1 + 1e-4) continue;
+      const u = 1 - v - w;
+      return [
+        u * uv.getX(a) + v * uv.getX(b) + w * uv.getX(c),
+        u * uv.getY(a) + v * uv.getY(b) + w * uv.getY(c),
+      ];
+    }
+    return null;
+  };
+  // A strip of quads along the wall line, fine enough that the borrowed
+  // bake follows the floor's own UV layout across triangle seams.
+  const n = 24;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const normals: number[] = [];
+  const index: number[] = [];
+  for (let i = 0; i <= n; i++) {
+    const x = x0 + ((x1 - x0) * i) / n;
+    for (const z of [z0, z1]) {
+      const t = uvAt(x, z + from);
+      if (!t) return;
+      positions.push(x, 0.002, z);
+      uvs.push(t[0], t[1]);
+      normals.push(0, 1, 0);
+    }
+    if (i < n) {
+      const k = i * 2;
+      index.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    }
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  geo.setIndex(index);
+  const patch = new Mesh(geo, ground.material);
+  patch.name = 'pod-wall-floor-patch';
+  venue.add(patch);
 }
 
 /** The venue's reflection panorama, once loaded (the DJ gear wears it too). */

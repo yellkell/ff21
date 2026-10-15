@@ -194,6 +194,9 @@ with the ROUND PLAQUE (round, first-to, a clock that goes amber then red)
 between; 2V2 stacks the columns with TEAM totals; FFA hangs the east and
 west fighters' cards OVER THEIR OWN PADS, turned to face you, with a
 STANDINGS strip over the plaque.
+The lobby's rank-up PROMOTION (`ui/promoArt.ts`) is the same kit: a
+holo-glass plate, near-opaque because passthrough puts a lit room
+behind it, cyan light, cyan sparks and the new tier in GLITCH type.
 
 ### 3.2 Watching — travel together, and the crowd that can't be heard
 
