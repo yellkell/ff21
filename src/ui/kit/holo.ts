@@ -7,8 +7,7 @@
  * magenta corner brackets and the readout ticks along the foot.
  *
  * Beside the glass it carries the few other pieces of the language the
- * match needs on a canvas: the skewed neon CELL (round pips, readout
- * bars), and GLITCH type — a white word lifted off a cyan/magenta
+ * match needs on a canvas: the skewed neon CELL (round pips) and BAR, and GLITCH type — a white word lifted off a cyan/magenta
  * chromatic split, the district's headline voice.
  */
 
@@ -182,16 +181,16 @@ export function neonCell(g: CanvasRenderingContext2D, x: number, y: number, w: n
 }
 
 /**
- * A segmented neon readout bar: `count` skewed cells, lit to exactly
- * `frac` (the level cuts through a cell, so a point's loss still shows)
- * with a white-hot leading edge, the rest dark tube.
+ * A neon readout bar: one solid skewed block lit to exactly `frac` with a
+ * white-hot leading edge, the rest dark tube. Pass `count` > 1 to split it
+ * into cells.
  */
 export function neonBar(
   g: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number,
   frac: number,
   colour: string,
-  count = 20,
+  count = 1,
   gap = 4,
 ): void {
   const f = Math.max(0, Math.min(1, frac));

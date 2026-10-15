@@ -179,7 +179,7 @@ in the neon district's own hand — the menu's HOLO GLASS, shared from
 `ui/kit/holo.ts` (see-through blue-black pane, scanlines, a lit edge
 tube, magenta corner brackets, Rajdhani). Every fighter gets a CARD
 whose tube burns in their team colour: a YOU / ALLY / RIVAL tag, the
-callsign, a big numeric health readout, a skewed SEGMENTED health bar
+callsign, a big numeric health readout, a skewed SOLID health bar
 with a magenta DAMAGE TRAIL, the rounds as lit skewed cells, LOW (bar
 and number go red and pulse) and OUT (the card dims), and a glitch tear
 on every hit (chromatic-split edge, scan rows flashing). Headline words

@@ -8,7 +8,7 @@
  * round cells all burn in it, so whose card you are reading is one glance.
  *
  * Every fighter in the bout gets a CARD: a YOU / ALLY / RIVAL tag, their
- * callsign, a big numeric health readout, a skewed SEGMENTED health bar
+ * callsign, a big numeric health readout, a skewed SOLID health bar
  * with a DAMAGE TRAIL (a magenta ghost of what they just lost, flaring
  * white on the hit and easing away behind the live level), the rounds
  * they hold as lit cells, and the two states a glance has to catch — LOW
@@ -183,11 +183,10 @@ const UV_VERT = /* glsl */ `
 `;
 
 /**
- * THE HEALTH READOUT, live: a skewed bar of twenty lit cells — the kit's
- * neon cell, leaning like every pip in the district — inside a thin tube
- * of the fighter's colour. The live level burns in that colour (red, and
- * pulsing, once LOW) with a glassy top light, a bloom spilling off it and
- * a white-hot leading edge; the damage trail is a magenta ghost of what
+ * THE HEALTH READOUT, live: one solid skewed block — leaning like every
+ * cell in the district — inside a thin tube of the fighter's colour. The
+ * live level burns in that colour (red, and pulsing, once LOW) with a
+ * glassy top light, a bloom spilling off it and a white-hot leading edge; the damage trail is a magenta ghost of what
  * the hit just took, flaring white for an instant, then easing away.
  */
 const BAR_FRAG = /* glsl */ `
@@ -197,8 +196,6 @@ const BAR_FRAG = /* glsl */ `
   varying vec2 vUv;
   ${SDF_GLSL}
   const float SKEW = 0.45; // run per rise — the kit's cell lean
-  const float CELLS = 20.0;
-  const float GAP = 4.0;
   void main() {
     vec2 hs = uSize * 0.5;
     vec2 px = (vUv - 0.5) * (uSize + 2.0 * uPad);
@@ -209,19 +206,16 @@ const BAR_FRAG = /* glsl */ `
     float inside = clamp(0.5 - d, 0.0, 1.0);
     float len = 2.0 * hb.x;
     float x01 = (q.x + hb.x) / len;
-    float cellW = len / CELLS;
-    float c = fract(x01 * CELLS) * cellW;
-    float cell = clamp(min(c, cellW - c) - GAP * 0.5 + 0.5, 0.0, 1.0) * inside;
     vec3 tone = mix(uColor, uDanger, uLow);
     float pulse = uLow * (0.5 + 0.5 * sin(uTime * 6.3));
-    // The dark tube: every cell faintly lit, so the empty run still reads.
-    vec4 col = over(vec4(0.0), vec3(0.47, 0.9, 1.0), 0.07 * cell);
+    // The dark track, faintly lit, so the empty run still reads.
+    vec4 col = over(vec4(0.0), vec3(0.47, 0.9, 1.0), 0.07 * inside);
     float lw = len * clamp(uFrac, 0.0, 1.0);
     if (uFrac > 0.0) {
       float fd = sdRound(q - vec2(-hb.x + lw * 0.5, 0.0), vec2(lw * 0.5, hb.y), 2.0);
       // The bloom, out into the pad round the bar.
       col = over(col, tone, (0.38 + 0.3 * pulse) * exp(-max(fd, 0.0) / 6.0) * (1.0 - inside));
-      float fill = clamp(0.5 - fd, 0.0, 1.0) * cell;
+      float fill = clamp(0.5 - fd, 0.0, 1.0) * inside;
       float down = (hs.y - px.y) / uSize.y; // 0 at the top edge, 1 at the foot
       vec3 lit = mix(tone, vec3(1.0), 0.42 * clamp(1.0 - down / 0.45, 0.0, 1.0));
       lit *= mix(1.0, 0.78, clamp((down - 0.5) * 2.0, 0.0, 1.0));
@@ -230,7 +224,7 @@ const BAR_FRAG = /* glsl */ `
     // The trail: what the hit just took — white on the hit, then magenta.
     float ghost = clamp((x01 - uFrac) * len + 0.5, 0.0, 1.0) * clamp((uTrail - x01) * len + 0.5, 0.0, 1.0);
     vec3 burn = mix(vec3(1.0, 0.24, 0.65), vec3(1.0), uFlash);
-    col = over(col, burn, (0.5 + 0.45 * uFlash) * ghost * cell);
+    col = over(col, burn, (0.5 + 0.45 * uFlash) * ghost * inside);
     // The leading edge, white-hot where the level stands.
     if (uFrac > 0.0 && uFrac < 1.0) {
       col = over(col, vec3(1.0), 0.95 * clamp(2.5 - abs(q.x - (-hb.x + lw)), 0.0, 1.0) * inside);
@@ -812,7 +806,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
         label(ctx, 'OUT', 104 + nameW + 16, y, 700, 18, KIT.danger, 4);
       }
       for (let p = 0; p < target; p++) neonCell(ctx, 410 + p * 30, y - 6, 24, 12, p < f.pips, f.neon);
-      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? KIT.danger : f.neon, 10, 3);
+      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? KIT.danger : f.neon);
     });
     tex.needsUpdate = true;
   };

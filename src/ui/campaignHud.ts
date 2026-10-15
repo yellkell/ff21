@@ -3,7 +3,7 @@
  * in as few words as possible:
  *
  *  - the titan's NAME (and the run clock) floating over the gap, with a
- *    slim segmented health bar under it — dark-souls style;
+ *    slim solid health bar under it — dark-souls style;
  *  - YOUR health as one small ember bar low in front of you;
  *  - a big centre TITLE for the beats (WARNING · the name reveal · FIGHT ·
  *    TITAN FELLED · SCRAPPED), one optional sub-line, nothing else.
@@ -11,7 +11,7 @@
  * Everything is a transparent canvas texture in the neon district's own
  * hand (ui/kit/holo.ts), the same one the fight cards and the menus use:
  * Rajdhani set in GLITCH type (a lit word on a cyan / magenta chromatic
- * split) and bars of skewed neon cells — signage hanging in the street,
+ * split) and solid skewed neon bars — signage hanging in the street,
  * not a billboard.
  */
 
@@ -165,7 +165,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         bossBar.key = key;
         const { ctx, w, h } = bossBar;
         ctx.clearRect(0, 0, w, h);
-        neonBar(ctx, 8, 8, w - 16, h - 16, bossFrac, accent, 24, 4);
+        neonBar(ctx, 8, 8, w - 16, h - 16, bossFrac, accent);
         bossBar.tex.needsUpdate = true;
       }
       const pkey = String(Math.round(playerFrac * 200));
@@ -173,7 +173,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         playerBar.key = pkey;
         const { ctx, w, h } = playerBar;
         ctx.clearRect(0, 0, w, h);
-        neonBar(ctx, 8, 8, w - 16, h - 16, playerFrac, UI.emberBright, 16, 4);
+        neonBar(ctx, 8, 8, w - 16, h - 16, playerFrac, UI.emberBright);
         playerBar.tex.needsUpdate = true;
       }
     },
@@ -193,7 +193,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         const y = 18 + i * 72;
         const down = r.frac <= 0;
         line(ctx, down ? `${r.name} · DOWN` : r.name, 10, y, 600, 26, down ? KIT.danger : KIT.text, 2, 'left');
-        neonBar(ctx, 10, y + 16, w - 20, 18, Math.max(0, r.frac), down ? KIT.danger : UI.emberBright, 14, 3);
+        neonBar(ctx, 10, y + 16, w - 20, 18, Math.max(0, r.frac), down ? KIT.danger : UI.emberBright);
       });
       squad.tex.needsUpdate = true;
     },
