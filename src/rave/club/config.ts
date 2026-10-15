@@ -92,11 +92,12 @@ export const CLUB = LAYOUT as unknown as {
   };
   /** THE ARCADE — the still room's loud opposite across the landing. SUPER
    *  OCTAGON's cabinet anchor (yaw: the way its screen faces), the wall board,
-   *  and the three attract-mode cabinets beside it. */
+   *  and the three cabinets beside it in the same row (`kind`: the baked
+   *  side art; `game`: what its live screen plays). */
   arcade: ClubRoom & {
     octagon: { x: number; z: number; yaw: number };
     board: { x: number; y: number; z: number; yaw: number };
-    decor: { x: number; kind: string }[];
+    decor: { x: number; kind: string; game: 'octagon' | 'pebbles' }[];
   };
   /** THE MIRROR — a great glass on the north wall of an OPEN bay off the
    *  hall (no room around it: you walk up to it from the floor). The shell's
