@@ -552,8 +552,8 @@ export class ChoreoSystem extends createSystem({}) {
         const tgStartBeat =
           move.kind === 'wave'
             ? landing.beat - chargeBeats // each stop runs the wave's own fuse, staggered
-            : landing.zone.kind === 'quad' && landing.zone.step < landing.zone.steps - 1
-              ? landing.beat // THE TRIDENT: a blow's quarters show only as it lands — read the DJ
+            : landing.zone.kind === 'quad' && landing.zone.step > 0 && landing.zone.step < landing.zone.steps - 1
+              ? landing.beat // THE TRIDENT: after the first blow's tell, a blow's quarters show only as it lands — read the DJ
               : landing.zone.kind === 'nova' && landingIdx > 0
                 ? prevFire(landing.beat)
                 : landing.zone.kind === 'donut' && landingIdx > 0
@@ -665,9 +665,16 @@ export class ChoreoSystem extends createSystem({}) {
         // THE TRIDENT keeps the floor dark: every blow's pane is invisible
         // until it lands, then burns its quarters in the afterburn. The
         // LAST blow's pane also carries the chalk quarter lines and opens
-        // with the move, so the split is lit the whole way through — the
-        // floor says where the lines are, never which side is coming.
-        const tg = quadTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, zone.hit, zone.step === zone.steps - 1);
+        // with the move, so the split is lit the whole way through. The
+        // FIRST blow is the one tell: it opens with the move too, its
+        // quarters lit in the weapon's colour — after that, know the pattern.
+        const tg = quadTelegraph(
+          OCTAGON_HALF_WIDTH,
+          OCTAGON_HALF_DEPTH,
+          zone.hit,
+          zone.step === zone.steps - 1,
+          zone.step === 0 ? (TRIDENT.forms[zone.form]?.color ?? null) : null,
+        );
         tg.group.position.y = 0.048;
         return tg;
       }

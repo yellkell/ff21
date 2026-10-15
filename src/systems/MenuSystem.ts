@@ -79,6 +79,8 @@ import { pulseHand } from '../input/haptics.js';
 import type { GearMap } from '../avatar/gearAtlas.js';
 import { applyGear, cleanGear, GEAR, gearDef, type GearSlot, wornGear } from '../avatar/gear.js';
 import { installGrammarDevHook } from '../campaign/grammar.js';
+import { BeltCeremony } from '../campaign/beltCeremony.js';
+import { beltOf, heldBelts } from '../campaign/belts.js';
 import { botGradeLine, botLive, installBotBrainDevHook } from '../combat/botBrain.js';
 import { KitMenuPanel } from '../menu/wrap.js';
 import type { PanelButton } from '../ui/kit/panel.js';
@@ -134,6 +136,7 @@ import {
   hasCustomName,
   leaderboard,
   leaderboardRows,
+  myClearTiers,
   myNote,
   myStats,
   refreshLeaderboard,
@@ -299,6 +302,10 @@ export class MenuSystem extends createSystem({}) {
   /** THE PODIUM: your blank standing beside the YOU wing, always on show
    *  in the lobby — the avatar IS the menu's centrepiece now. */
   private podium?: Group;
+  /** THE BELT RACK, HELD UP: a belt you click on the rack rises in front of
+   *  you the way it did the night you won it (campaign/beltCeremony.ts). */
+  private beltShow!: BeltCeremony;
+  private beltShowId: string | null = null;
   private skinVersion = 0;
   /** The opponent pad is modelling a STORE platform try-on (needs restoring). */
   private oppPadPreviewed = false;
@@ -376,6 +383,7 @@ export class MenuSystem extends createSystem({}) {
 
   init(): void {
     this.menu = createMenu(this.scene);
+    this.beltShow = new BeltCeremony(this.scene);
     // THE WRAP: the kit panels replace the legacy train/duel/info plates in
     // place (same ids, same slots) — see menu/wrap.ts. The second argument
     // lets the headless dev hook (__ff2.wrap.act) fire real actions.
@@ -688,6 +696,7 @@ export class MenuSystem extends createSystem({}) {
     this.wrap.tick(delta);
     this.bayPanel?.tick(delta, 0);
     for (const m of this.modals) if (m.mesh.visible) m.tick(delta, 0);
+    this.updateBeltShow(delta);
     // The loadout answers its own clicks, so nothing else knows to repaint it.
     const bk = ballsFaceKey();
     if (bk !== this.ballsKey) {
@@ -1042,9 +1051,44 @@ export class MenuSystem extends createSystem({}) {
     return scrollNews(dir * NEWS_SCROLL_STEP);
   }
 
+  /** The rack's held-up belt: turns in the light while the rack is open,
+   *  put away the moment it isn't. */
+  private updateBeltShow(delta: number): void {
+    if (!this.beltShow.active) return;
+    if (app.state !== 'menu' || campaignModal.pending !== 'belts') {
+      this.hideBelt();
+      return;
+    }
+    if (this.beltShow.update(delta, this.world.camera)) playCash();
+  }
+
+  /** Click a belt on THE BELT RACK: one you hold rises in front of you as
+   *  it did when you won it; the same belt again puts it back. One you
+   *  don't hold yet stays sealed (its hover tip says how to win it). */
+  private showBelt(id: string): void {
+    const belt = beltOf(id);
+    if (!belt || !heldBelts(myClearTiers()).has(id)) {
+      sfx.armorClank();
+      return;
+    }
+    if (this.beltShowId === id) {
+      this.hideBelt();
+      return;
+    }
+    this.beltShow.start(belt, 0);
+    this.beltShowId = id;
+  }
+
+  private hideBelt(): void {
+    this.beltShow.stop();
+    this.beltShowId = null;
+  }
+
   private run(action: MenuAction): void {
     sfx.ensureAudio();
     sfx.uiClick();
+    // A belt held up off the rack goes back on any other click.
+    if (!action.startsWith('badge-belt-')) this.hideBelt();
     // THE PROFILE card folds on any action that isn't its own.
     if (!action.startsWith('profile-') && !action.startsWith('badge-') && action !== 'rename' && action !== 'edit-note') {
       profilePop.open = false;
@@ -1571,6 +1615,11 @@ export class MenuSystem extends createSystem({}) {
         // (persisted). raiddiff-<tier>: the raid host mirrors it to the squad.
         // hitTest only returns unlocked tiers, so no re-check is needed.
         // shelf-<material>: the PLATFORMS board's shelf.
+        // badge-belt-<id>: a belt on THE BELT RACK — hold it up.
+        if (action.startsWith('badge-belt-')) {
+          this.showBelt(action.slice('badge-belt-'.length));
+          break;
+        }
         if (action.startsWith('shelf-')) {
           const shelf = action.slice('shelf-'.length);
           if (DECK_SHELVES.some(([id]) => id === shelf)) {

@@ -627,6 +627,12 @@ export const CAMPAIGN = {
   coreScale: 2.0,
   lowScale: 2.0, // the low blow — hard to hit, pays like the core
   podScale: 1.5,
+  /** The weak-point spheres, trimmed: at full bulge the head, core and
+   *  shoulders overlapped so much that one spot between them (VULTURE's
+   *  chest) paid whichever point was lit — no need to follow the blink.
+   *  Raid GOLIATH's shoulders keep the full bulge: a side seat has to be
+   *  able to reach them across his body. */
+  weakTrim: 0.85,
 
   // GOLIATH's crown circuit: five stops (head → right shoulder → core →
   // left shoulder → low) walked this many full loops to kill. The health
