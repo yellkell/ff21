@@ -11,6 +11,8 @@
     <!-- Dev-only look-dev harness for the RAVE RAID set: the void (SetEnvironment), the light rig
          (DiscoRig) and the ring of decks + stage, animated on a fake 128 BPM clock.
          ?seats=8&x=0&y=1.65&z=0&yaw=0&pitch=0.05&act=1&energy=0.8&track=combat&set=void&board=1
+         &beat=28 starts the clock there (28 = a phrase's gather, 32 = its hit); &look=tent pins the
+         light show's look (sweep · mirror · wave · chase · tent · ceiling).
          window.__raid.step(n) advances n frames and renders (for hidden panes). -->
     <script type="module">
       import { Color, FogExp2, NoToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
@@ -18,6 +20,7 @@
       import { SpectrumSet } from '/src/rave/arena/spectrum/set.ts';
       import { paletteFor } from '/src/rave/arena/spectrum/palettes.ts';
       import { DiscoRig } from '/src/rave/arena/disco.ts';
+      import { forceLook } from '/src/rave/arena/lightshow.ts';
       import { buildArena } from '/src/rave/arena/arena.ts';
       import { VOID_BG } from '/src/rave/arena/voidkit.ts';
       import { BOARD_Y, HoloBoard } from '/src/rave/ui/board.ts';
@@ -60,13 +63,14 @@
       camera.rotation.x = num('pitch', 0.05);
       const act = num('act', 1);
       const energy = num('energy', 0.8);
-      let t = 0;
+      if (params.get('look')) forceLook(params.get('look'));
+      let t = num('beat', 0) / (128 / 60);
       const frame = (dt) => {
         t += dt;
         const beat = t * (128 / 60);
         env.update(dt, beat, act, energy);
-        rig.update(dt, beat, act, energy);
         if (env.palette) rig.setPalette(env.palette.lasers);
+        rig.update(dt, beat, act, energy, env.cue ? { cue: env.cue, focus: env.focus, bass: env.bass } : {});
         renderer.render(scene, camera);
       };
       renderer.setAnimationLoop(() => frame(1 / 60));

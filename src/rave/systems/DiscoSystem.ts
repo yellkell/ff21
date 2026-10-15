@@ -2,6 +2,11 @@
  * DiscoSystem — parks the light rig on the stage, feeds it the beat, and
  * owns the SET's world:
  *
+ *  - THE LIGHT SHOW (arena/lightshow.ts): the wall's crest ring and the
+ *    stage's crown are two halves of one show — SpectrumSet keeps the cue
+ *    and the crown takes it, so every laser in the room changes look on
+ *    the same phrase, gathers onto the record over the same bar and bursts
+ *    open on the same downbeat.
  *  - SPECTRUM (arena/spectrum/set.ts): the world every set plays inside —
  *    a 360° equaliser wall that IS the record, a vinyl turning overhead
  *    whose playhead is the set's progress, kick ripples on the glass —
@@ -74,10 +79,6 @@ export class DiscoSystem extends createSystem({}) {
     this.duck += ((danger ? 1 : 0) - this.duck) * Math.min(1, delta * 6);
     energy *= 1 - this.duck * 0.75;
 
-    // A hidden rig doesn't animate — no laser sweeps or confetti
-    // math for a show that's packed away.
-    if (!menuRoom) rig.update(delta, beat, act, energy);
-
     // ── THE VOID: the set's world, whenever a set (or its podium) is up ──
     const inSet =
       match.screen === 'countdown' || match.screen === 'raid' || match.screen === 'podium';
@@ -88,6 +89,14 @@ export class DiscoSystem extends createSystem({}) {
       this.env.update(delta, beat, act, energy);
       // The light rig wears the record's sleeve too.
       rig.setPalette(this.env.palette.lasers);
+    }
+    // A hidden rig doesn't animate — no laser sweeps or confetti math for a
+    // show that's packed away. The crown takes the set's cue, so the stage
+    // and the wall are one light show (arena/lightshow.ts).
+    if (!menuRoom) {
+      rig.update(delta, beat, act, energy, inSet
+        ? { cue: this.env.cue, focus: this.env.focus, bass: this.env.bass, clear: this.duck }
+        : { clear: this.duck });
     }
     // Fog belongs to whoever's place is up: ours during the set, the
     // club's in the menus — never clobber a fog we didn't set.

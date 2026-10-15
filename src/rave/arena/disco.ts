@@ -1,12 +1,20 @@
 /**
- * The light rig — four laser fans on the stage rim and the confetti
- * cannons for the podium. (The mirror ball that used to hang over the
- * stage is gone: there is no ceiling in the void for it to hang from, so it
- * floated on a rod to nowhere — and the holo board took its airspace.) Everything additive, everything cheap,
- * everything moving ON THE BEAT (DiscoSystem feeds the song clock in).
+ * The light rig — THE CROWN of laser fans round the stage rim, and the
+ * confetti cannons for the podium. (The mirror ball that used to hang over
+ * the stage is gone: there is no ceiling in the void for it to hang from,
+ * so it floated on a rod to nowhere — and the holo board took its airspace.)
  *
- * Perf note: no fullscreen post — the "bloom" is additive sprites and
- * cones over the void's black, which reads shockingly disco on a Quest.
+ * The crown is the stage's half of the light show (lightshow.ts); the wall
+ * crest (spectrum/set.ts) is the other half, and both are conducted by the
+ * same cue, so the boss's beams and the wall's sweep, chase, wave, meet in
+ * the tent and gather onto the record together. Eight emitters face OUT
+ * from the rim and climb steeply: they used to lie across the floor at
+ * chest height and read as glowing poles; now they rise round the
+ * GOOPLIATH like a cage of light and clear every dancer's head.
+ *
+ * Perf note: no fullscreen post — the "bloom" is additive ribbons and
+ * sprites over the void's black, which reads shockingly disco on a Quest.
+ * The whole crown is four draws: beams, lenses, pucks, hit glints.
  */
 
 import {
@@ -16,24 +24,28 @@ import {
   Color,
   CylinderGeometry,
   Group,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   Points,
   PointsMaterial,
-  Sprite,
   Vector3,
 } from 'three';
-import { LASER_HUES, RING, hueToColor } from '../config.js';
-import { beamGradientTexture, glintTexture, glowSprite } from '../materials/glow.js';
+import { RING, hueToColor } from '../config.js';
+import { glintTexture } from '../materials/glow.js';
 import { arena } from './arena.js';
+import { LaserBeams, LaserFlares } from './laserBeams.js';
+import { CROWN_MIN_PITCH, aimBeam, cueAt, emitterRing, newAim, newCue, type Cue } from './lightshow.js';
+import { PALETTES } from './spectrum/palettes.js';
 
 // The GOOPLIATH stands ~4.3 m at raid scale and the holo board floats over
 // him; the podium's confetti bursts from above the board and rains past it.
 const CONFETTI_Y = 8.4;
-const FANS = 4;
-const BEAMS_PER_FAN = 5;
-const BEAM_LEN = 15;
+const CROWN_N = 8;
+const CROWN_BEAMS = 3;
+const BEAM_LEN = 34;
 const CONFETTI = 240;
 
 /** Platform circumradius (widest OCTAGON_VERTICES corner ≈ 0.94 m) plus a
@@ -43,6 +55,10 @@ const DECK_R = 0.98;
 // Scratch space for the beam-vs-deck pass — no per-frame allocation.
 const _o = new Vector3();
 const _d = new Vector3();
+const _p = new Vector3();
+const _col = new Color();
+const _aim = newAim();
+const _ownCue = newCue();
 
 /**
  * Where a light ray first lands on the show's real surfaces — any dancer
@@ -78,80 +94,81 @@ function rayHitsFloor(o: Vector3, d: Vector3, maxT: number): number {
   return best;
 }
 
+export interface ShowFeed {
+  /** The light show's moment (SpectrumSet's) — omit and the crown keeps its own. */
+  cue?: Cue;
+  /** Where the gather pulls the beams (the record), stage frame. */
+  focus?: Vector3;
+  /** The record's bass, 0..1. */
+  bass?: number;
+  /** 0..1: a telegraph owns MY deck — the crown lifts clear as it dims. */
+  clear?: number;
+}
+
+const DEFAULT_FOCUS = new Vector3(0, 52, -78);
+
 export class DiscoRig {
   readonly root = new Group();
 
-  private fans: { pivot: Group; mat: MeshBasicMaterial; phase: number }[] = [];
-  private beams: { mesh: Mesh; glint: Sprite; fan: number }[] = [];
+  private crown = emitterRing('crown', CROWN_N, RING.stageRadius * 0.9, RING.stageHeight + 0.08);
+  private beams = new LaserBeams(CROWN_N * CROWN_BEAMS, { width: 0.032, fade: 22, hot: 0.8, haze: 0.35, segments: 6 });
+  private lenses = new LaserFlares(CROWN_N, 0.55);
+  /** Where beams land on a deck or the stage: one Points batch. */
+  private glints!: Points;
+  private glintPos = new Float32Array(CROWN_N * CROWN_BEAMS * 3);
+  private glintCol = new Float32Array(CROWN_N * CROWN_BEAMS * 3);
   private confetti!: Points;
   private confettiPos!: Float32Array;
   private confettiVel!: Float32Array;
   private confettiAge = 999;
-  private hueCursor = 0;
-  /** The record's laser colours (SpectrumSet's sleeve); null = the hue wheel. */
-  private palette: number[] | null = null;
+  /** The record's laser colours (SpectrumSet's sleeve). */
+  private colors: Color[] = PALETTES.synthwave.lasers.map((h) => new Color(h));
+  private peak = new Color(0xffffff);
 
-  /** Dress the lasers in a record's colours (taken on the next bar). */
+  /** Dress the lasers in a record's colours. */
   setPalette(colors: number[] | null): void {
-    this.palette = colors && colors.length ? colors : null;
+    const src = colors && colors.length ? colors : PALETTES.synthwave.lasers;
+    if (src.length !== this.colors.length) this.colors = src.map((h) => new Color(h));
+    else src.forEach((h, i) => this.colors[i].setHex(h));
   }
-  private lastBar = -1;
 
   constructor() {
     this.root.name = 'disco-rig';
-    this.buildFans();
+    this.buildCrown();
     this.buildConfetti();
   }
 
-  private buildFans(): void {
-    // One shared beam: anchored at the emitter (so scale.y clips its far
-    // end), tapering slightly as it travels, alpha ramping to nothing —
-    // a laser through haze, not a fifteen-metre glowing rod.
-    const beamGeo = new CylinderGeometry(0.05, 0.016, BEAM_LEN, 6, 1, true);
-    beamGeo.translate(0, BEAM_LEN / 2, 0);
-
-    for (let i = 0; i < FANS; i++) {
-      const pivot = new Group();
-      const around = (i / FANS) * Math.PI * 2 + Math.PI / FANS;
-      pivot.position.set(
-        Math.sin(around) * RING.stageRadius * 0.9,
-        RING.stageHeight + 0.1,
-        Math.cos(around) * RING.stageRadius * 0.9,
-      );
-      const mat = new MeshBasicMaterial({
-        color: hueToColor(LASER_HUES[i % LASER_HUES.length], 0.6),
-        map: beamGradientTexture(false), // bright at the emitter
+  private buildCrown(): void {
+    this.root.add(this.beams.mesh);
+    this.root.add(this.lenses.points);
+    // Emitter pucks, one instanced draw: the beams grow out of real lamps.
+    const pucks = new InstancedMesh(
+      new CylinderGeometry(0.09, 0.12, 0.08, 8),
+      new MeshStandardMaterial({ color: 0x171a20, metalness: 0.8, roughness: 0.35 }),
+      CROWN_N,
+    );
+    const m = new Matrix4();
+    for (const em of this.crown) pucks.setMatrixAt(em.i, m.makeTranslation(em.x, em.y - 0.05, em.z));
+    this.root.add(pucks);
+    // The hit glints: a hot spot that lives where a beam lands on a deck
+    // (rank lifts put decks in the crown's way) and hides when it flies
+    // clean into the void.
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new BufferAttribute(this.glintPos, 3));
+    geo.setAttribute('color', new BufferAttribute(this.glintCol, 3));
+    this.glints = new Points(
+      geo,
+      new PointsMaterial({
+        size: 0.5,
+        map: glintTexture(),
+        vertexColors: true,
         transparent: true,
-        opacity: 0.65,
         blending: AdditiveBlending,
         depthWrite: false,
-      });
-      for (let b = 0; b < BEAMS_PER_FAN; b++) {
-        const beam = new Mesh(beamGeo, mat);
-        beam.rotation.x = Math.PI / 2 - 0.22; // tipped up-and-out over the ring
-        beam.rotation.y = (b - (BEAMS_PER_FAN - 1) / 2) * 0.14;
-        pivot.add(beam);
-
-        // The hit glint: a hot spot that lives where this beam lands on a
-        // deck (rank lifts put decks in the fans' way constantly) and hides
-        // when the beam flies clean into the void.
-        const glint = glowSprite(0xffffff, 0.4, 0.9);
-        glint.visible = false;
-        this.root.add(glint);
-        this.beams.push({ mesh: beam, glint, fan: i });
-      }
-      // Emitter puck + lens so the beams grow out of a hot lamp.
-      const puck = new Mesh(
-        new CylinderGeometry(0.09, 0.12, 0.08, 8),
-        new MeshStandardMaterial({ color: 0x171a20, metalness: 0.8, roughness: 0.35 }),
-      );
-      pivot.add(puck);
-      const lens = glowSprite(0xffffff, 0.26, 0.8);
-      lens.position.y = 0.06;
-      pivot.add(lens);
-      this.root.add(pivot);
-      this.fans.push({ pivot, mat, phase: (i / FANS) * Math.PI * 2 });
-    }
+      }),
+    );
+    this.glints.frustumCulled = false;
+    this.root.add(this.glints);
   }
 
   private buildConfetti(): void {
@@ -205,65 +222,66 @@ export class DiscoRig {
   }
 
   /**
-   * Drive the rig. `beat` is the continuous song beat (negative pre-drop),
-   * `act` the musical intensity 0..3, `energy` 0..1 (0 in the lobby idle).
+   * Drive the rig. `beat` is the continuous show beat (negative pre-drop),
+   * `act` the musical intensity 0..3, `energy` 0..1 (pre-ducked). `feed`
+   * carries the light show from the set's world so the two rigs are one.
    */
-  update(dt: number, beat: number, act: number, energy: number): void {
-    const beatFrac = beat - Math.floor(beat);
-    const pulse = Math.max(0, 1 - beatFrac * 2.2); // hits on the kick, dies fast
-    const slow = performance.now() / 1000;
+  update(dt: number, beat: number, act: number, energy: number, feed: ShowFeed = {}): void {
+    const cue = feed.cue ?? cueAt(_ownCue, beat, act);
+    const focus = feed.focus ?? DEFAULT_FOCUS;
+    const pump = Math.max(cue.kick, feed.bass ?? 0);
+    const clear = feed.clear ?? 0;
 
-    // Laser fans: sweep with the bars, snap hue per bar.
-    const bar = Math.floor(beat / 4);
-    if (bar !== this.lastBar && beat > 0) {
-      this.lastBar = bar;
-      this.hueCursor = (this.hueCursor + 1) % LASER_HUES.length;
-      const pal = this.palette;
-      for (let i = 0; i < this.fans.length; i++) {
-        this.fans[i].mat.color.setHex(
-          pal
-            ? pal[(this.hueCursor + i) % pal.length]
-            : hueToColor(LASER_HUES[(this.hueCursor + i) % LASER_HUES.length], 0.6),
-        );
-      }
-    }
-    for (const fan of this.fans) {
-      const sweep = beat > -Infinity && energy > 0 ? Math.sin(beat * 0.7 + fan.phase) : Math.sin(slow * 0.3 + fan.phase);
-      fan.pivot.rotation.y = sweep * (0.7 + act * 0.25);
-      fan.pivot.rotation.x = Math.sin(beat * 0.35 + fan.phase * 2) * 0.12 * energy;
-      fan.mat.opacity = energy > 0 ? 0.3 + pulse * 0.45 : 0.18;
-    }
-
-    // ── Light lands where it lands ────────────────────────────────────
-    // Fresh world matrices for the sweeps set above, then clip every beam
-    // against the decks and the stage. A beam that meets a deck STOPS there
-    // and leaves a hot spot. This is the pass that stops lasers stabbing
-    // through platforms.
+    // ── THE CROWN ─────────────────────────────────────────────────────
+    // Fresh world matrices (the root follows the sinking stage), then aim
+    // every beam off the cue and clip it against the decks and the stage:
+    // a beam that meets a deck STOPS there and leaves a hot spot.
     this.root.updateMatrixWorld(true);
     const rootPos = this.root.position;
-
-    for (const b of this.beams) {
-      const fan = this.fans[b.fan];
-      const e = b.mesh.matrixWorld.elements;
-      _o.set(e[12], e[13], e[14]);
-      _d.set(e[4], e[5], e[6]).normalize(); // beams grow along local +Y
-      const t = rayHitsFloor(_o, _d, BEAM_LEN);
-      if (t < Infinity) {
-        b.mesh.scale.y = t / BEAM_LEN;
-        b.glint.position.set(
-          _o.x + _d.x * t - rootPos.x,
-          _o.y + _d.y * t - rootPos.y + 0.02,
-          _o.z + _d.z * t - rootPos.z,
-        );
-        b.glint.scale.setScalar(0.28 + pulse * 0.22);
-        b.glint.material.color.copy(fan.mat.color);
-        b.glint.material.opacity = fan.mat.opacity;
-        b.glint.visible = true;
-      } else {
-        b.mesh.scale.y = 1;
-        b.glint.visible = false;
+    // While a telegraph owns my deck the crown stands up straight, out of
+    // the way, as it dims.
+    const lift = clear * 0.45;
+    for (const em of this.crown) {
+      _o.set(em.x, em.y, em.z);
+      let lens = 0;
+      for (let b = 0; b < CROWN_BEAMS; b++) {
+        const i = em.i * CROWN_BEAMS + b;
+        aimBeam(cue, em, b, CROWN_BEAMS, focus, _aim);
+        _d.set(_aim.dx, _aim.dy, _aim.dz);
+        if (lift > 0) {
+          const h = Math.hypot(_d.x, _d.z);
+          const p = Math.min(1.52, Math.max(CROWN_MIN_PITCH + lift, Math.atan2(_d.y, h)));
+          const k = h > 1e-6 ? Math.cos(p) / h : 0;
+          _d.set(_d.x * k, Math.sin(p), _d.z * k);
+        }
+        const c = this.colorFor(_aim.slot, cue.hit);
+        const g = _aim.gain * (0.5 + 0.5 * pump);
+        // The ray test runs in world space.
+        _p.copy(_o).add(rootPos);
+        const t = rayHitsFloor(_p, _d, BEAM_LEN);
+        const len = t < Infinity ? t : BEAM_LEN;
+        this.beams.set(i, _o, _d, len, c, g);
+        if (t < Infinity && g * energy > 0.02) {
+          this.glintPos[i * 3] = _o.x + _d.x * t;
+          this.glintPos[i * 3 + 1] = _o.y + _d.y * t + 0.02;
+          this.glintPos[i * 3 + 2] = _o.z + _d.z * t;
+          const k = g * energy * (0.6 + pump * 0.4);
+          this.glintCol[i * 3] = c.r * k;
+          this.glintCol[i * 3 + 1] = c.g * k;
+          this.glintCol[i * 3 + 2] = c.b * k;
+        } else {
+          this.glintPos[i * 3 + 1] = -50;
+          this.glintCol.fill(0, i * 3, i * 3 + 3);
+        }
+        lens = Math.max(lens, g);
       }
+      this.lenses.set(em.i, _o, _col, Math.min(1.6, lens) * energy);
     }
+    this.beams.gain = energy * 0.75;
+    this.beams.commit(dt);
+    this.lenses.commit();
+    (this.glints.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
+    (this.glints.geometry.getAttribute('color') as BufferAttribute).needsUpdate = true;
 
     // Confetti physics.
     if (this.confettiAge < 6) {
@@ -284,6 +302,13 @@ export class DiscoRig {
       }
       (this.confetti.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
     }
+  }
+
+  /** The sleeve's colour for a slot, whitened by the phrase's hit. */
+  private colorFor(slot: number, hit: number): Color {
+    const n = this.colors.length;
+    _col.copy(this.colors[((slot % n) + n) % n]);
+    return hit > 0.01 ? _col.lerp(this.peak, hit * 0.55) : _col;
   }
 
   dispose(): void {
