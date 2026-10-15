@@ -1,7 +1,8 @@
 /**
- * The light rig — an absolute disco 🪩: the mirror ball over the stage, the
- * sweeping shafts it throws, four laser fans on the stage rim, and the
- * confetti cannons for the podium. Everything additive, everything cheap,
+ * The light rig — four laser fans on the stage rim and the confetti
+ * cannons for the podium. (The mirror ball that used to hang over the
+ * stage is gone: there is no ceiling in the void for it to hang from, so it
+ * floated on a rod to nowhere — and the holo board took its airspace.) Everything additive, everything cheap,
  * everything moving ON THE BEAT (DiscoSystem feeds the song clock in).
  *
  * Perf note: no fullscreen post — the "bloom" is additive sprites and
@@ -12,30 +13,24 @@ import {
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
-  CanvasTexture,
   Color,
-  ConeGeometry,
   CylinderGeometry,
-  DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
-  PlaneGeometry,
   Points,
   PointsMaterial,
-  SphereGeometry,
   Sprite,
   Vector3,
 } from 'three';
-import { LASER_HUES, PALETTE, RING, hueToColor } from '../config.js';
-import { beamGradientTexture, glintTexture, glowSprite, glowTexture } from '../materials/glow.js';
+import { LASER_HUES, RING, hueToColor } from '../config.js';
+import { beamGradientTexture, glintTexture, glowSprite } from '../materials/glow.js';
 import { arena } from './arena.js';
 
-// The GOOPLIATH stands ~4.3 m at raid scale — the ball hangs clear above
-// him, and the holo board slots between the two.
-const BALL_Y = 7.2;
-const SHAFTS = 6;
+// The GOOPLIATH stands ~4.3 m at raid scale and the holo board floats over
+// him; the podium's confetti bursts from above the board and rains past it.
+const CONFETTI_Y = 8.4;
 const FANS = 4;
 const BEAMS_PER_FAN = 5;
 const BEAM_LEN = 15;
@@ -86,9 +81,6 @@ function rayHitsFloor(o: Vector3, d: Vector3, maxT: number): number {
 export class DiscoRig {
   readonly root = new Group();
 
-  private ball!: Group;
-  private shaftMats: MeshBasicMaterial[] = [];
-  private shafts: { cone: Mesh; mat: MeshBasicMaterial; pool: Mesh; poolMat: MeshBasicMaterial; len: number }[] = [];
   private fans: { pivot: Group; mat: MeshBasicMaterial; phase: number }[] = [];
   private beams: { mesh: Mesh; glint: Sprite; fan: number }[] = [];
   private confetti!: Points;
@@ -107,89 +99,8 @@ export class DiscoRig {
 
   constructor() {
     this.root.name = 'disco-rig';
-    this.buildBall();
     this.buildFans();
     this.buildConfetti();
-  }
-
-  private buildBall(): void {
-    this.ball = new Group();
-    this.ball.position.y = BALL_Y;
-
-    // Faceted mirror ball. There is no env map to reflect, so the
-    // facets are painted on: a bright checker texture over a flat-shaded
-    // sphere reads as glitter from across the room (and never goes black).
-    const facets = document.createElement('canvas');
-    facets.width = facets.height = 128;
-    const fg = facets.getContext('2d')!;
-    for (let y = 0; y < 16; y++) {
-      for (let x = 0; x < 16; x++) {
-        const glint = Math.random();
-        const l = glint > 0.86 ? 96 : 52 + Math.floor(glint * 28);
-        fg.fillStyle = `hsl(${210 + glint * 40}, 18%, ${l}%)`;
-        fg.fillRect(x * 8, y * 8, 7, 7);
-      }
-    }
-    const ballTex = new CanvasTexture(facets);
-    const ball = new Mesh(
-      new SphereGeometry(0.55, 18, 12),
-      new MeshBasicMaterial({ map: ballTex, color: PALETTE.mirror }),
-    );
-    this.ball.add(ball);
-    const rod = new Mesh(
-      new CylinderGeometry(0.02, 0.02, 2.2, 6),
-      new MeshStandardMaterial({ color: 0x22262e, metalness: 0.8, roughness: 0.4 }),
-    );
-    rod.position.y = 1.55;
-    this.ball.add(rod);
-    this.ball.add(glowSprite(0xffffff, 1.7, 0.5));
-
-    // The speckle sweep: additive cones hanging off the ball at odd angles —
-    // as the ball turns they rake the room like mirror glints. Each cone
-    // wears the beam gradient (bright at the ball, dissolving down its
-    // length) so it reads as light through haze instead of a solid lamp
-    // shade, and each carries a POOL — a soft splash of light it leaves on
-    // whatever deck it is currently raking (see update).
-    for (let i = 0; i < SHAFTS; i++) {
-      const mat = new MeshBasicMaterial({
-        color: 0xffffff,
-        map: beamGradientTexture(true), // apex (the ball) is the bright end
-        transparent: true,
-        opacity: 0.14,
-        blending: AdditiveBlending,
-        depthWrite: false,
-        side: DoubleSide,
-      });
-      // Long enough to actually rake the floor from the ball's height —
-      // short cones read as stubby lampshades, not spotlight beams.
-      const len = 12 + (i % 3) * 3;
-      const geo = new ConeGeometry(0.5 + (i % 2) * 0.35, len, 10, 1, true);
-      // Apex at the mesh origin, body hanging down — so clipping the cone
-      // against a deck is just scale.y, pivoting at the ball.
-      geo.translate(0, -len / 2, 0);
-      const cone = new Mesh(geo, mat);
-      const hanger = new Group();
-      hanger.rotation.z = 0.5 + (i / SHAFTS) * 0.9;
-      hanger.rotation.y = (i / SHAFTS) * Math.PI * 2;
-      hanger.add(cone);
-      this.ball.add(hanger);
-      this.shaftMats.push(mat);
-
-      const poolMat = new MeshBasicMaterial({
-        map: glowTexture(),
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      });
-      const pool = new Mesh(new PlaneGeometry(1, 1), poolMat);
-      pool.rotation.x = -Math.PI / 2;
-      pool.visible = false;
-      this.root.add(pool);
-      this.shafts.push({ cone, mat, pool, poolMat, len });
-    }
-    this.root.add(this.ball);
   }
 
   private buildFans(): void {
@@ -283,7 +194,7 @@ export class DiscoRig {
     this.confettiAge = 0;
     for (let i = 0; i < CONFETTI; i++) {
       this.confettiPos[i * 3] = (Math.random() - 0.5) * 0.6;
-      this.confettiPos[i * 3 + 1] = BALL_Y - 0.6;
+      this.confettiPos[i * 3 + 1] = CONFETTI_Y;
       this.confettiPos[i * 3 + 2] = (Math.random() - 0.5) * 0.6;
       const a = Math.random() * Math.PI * 2;
       const r = 0.8 + Math.random() * 2.0;
@@ -301,14 +212,6 @@ export class DiscoRig {
     const beatFrac = beat - Math.floor(beat);
     const pulse = Math.max(0, 1 - beatFrac * 2.2); // hits on the kick, dies fast
     const slow = performance.now() / 1000;
-
-    // The ball turns always (the club never fully sleeps), faster with energy.
-    this.ball.rotation.y += dt * (0.25 + energy * 0.55);
-    for (let i = 0; i < this.shaftMats.length; i++) {
-      // The gradient texture spends the alpha budget — the flat number can
-      // afford to run hotter than the old untextured cones did.
-      this.shaftMats[i].opacity = 0.09 + energy * (0.09 + pulse * 0.16);
-    }
 
     // Laser fans: sweep with the bars, snap hue per bar.
     const bar = Math.floor(beat / 4);
@@ -333,34 +236,11 @@ export class DiscoRig {
 
     // ── Light lands where it lands ────────────────────────────────────
     // Fresh world matrices for the sweeps set above, then clip every beam
-    // and shaft against the decks and the stage. A beam that meets a deck
-    // STOPS there and leaves a hot spot; a shaft that rakes one pools on
-    // it. This is the pass that stops lasers stabbing through platforms
-    // and turns the ball's cones into light that actually falls on things.
+    // against the decks and the stage. A beam that meets a deck STOPS there
+    // and leaves a hot spot. This is the pass that stops lasers stabbing
+    // through platforms.
     this.root.updateMatrixWorld(true);
     const rootPos = this.root.position;
-
-    for (const s of this.shafts) {
-      const e = s.cone.matrixWorld.elements;
-      _o.set(e[12], e[13], e[14]);
-      _d.set(-e[4], -e[5], -e[6]).normalize(); // cones hang down local −Y
-      const t = rayHitsFloor(_o, _d, s.len);
-      if (t < Infinity) {
-        s.cone.scale.y = t / s.len;
-        const spread = 0.9 + 2.2 * (t / s.len);
-        s.pool.position.set(
-          _o.x + _d.x * t - rootPos.x,
-          _o.y + _d.y * t - rootPos.y + 0.02,
-          _o.z + _d.z * t - rootPos.z,
-        );
-        s.pool.scale.set(spread, spread, 1);
-        s.poolMat.opacity = Math.min(0.5, s.mat.opacity * 2.6);
-        s.pool.visible = s.poolMat.opacity > 0.02;
-      } else {
-        s.cone.scale.y = 1;
-        s.pool.visible = false;
-      }
-    }
 
     for (const b of this.beams) {
       const fan = this.fans[b.fan];

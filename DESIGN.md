@@ -184,7 +184,12 @@ with a magenta DAMAGE TRAIL, the rounds as lit skewed cells, LOW (bar
 and number go red and pulse) and OUT (the card dims), and a glitch tear
 on every hit (chromatic-split edge, scan rows flashing). Headline words
 with no neon plate are set in GLITCH type; the raid HUD's titan name,
-bars and beats speak the same language. 1V1 hangs the classic pair over the rival's pad
+bars and beats speak the same language. RAVE RAID's in-match HUD
+(`rave/ui/hud.ts`) wears the same kit: the score wedge is a slim holo
+pane bolted to the deck (it never chases your head) with a padded
+counter, a seat-coloured ×MULT chip, a PERFECT ×1.5 chip that burns on
+a perfect landing and the BEATS row, and PERFECT /
+HIT pop in GLITCH type on a sliver of dark glass. 1V1 hangs the classic pair over the rival's pad
 with the ROUND PLAQUE (round, first-to, a clock that goes amber then red)
 between; 2V2 stacks the columns with TEAM totals; FFA hangs the east and
 west fighters' cards OVER THEIR OWN PADS, turned to face you, with a

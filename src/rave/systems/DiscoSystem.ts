@@ -51,7 +51,7 @@ export class DiscoSystem extends createSystem({}) {
     if (!rig) return;
     const a = arena();
     // Follow every frame — the stage sinks as the ranks rise, and the
-    // whole light rig (ball, shafts, fans, confetti) stays with the show.
+    // whole light rig (laser fans, confetti) stays with the show.
     if (a) rig.root.position.copy(a.stage.position);
 
     // The rig is part of the SET — packed away while you're in the menus'
@@ -68,13 +68,13 @@ export class DiscoSystem extends createSystem({}) {
     const act = match.screen === 'raid' && onBeat ? actOfBeat(match.beat, match.phrases) : 0;
 
     // THE DUCK: while a telegraph charges on MY deck the disco stands back —
-    // lasers, shafts and the whole void drop away so the hazard shapes own
+    // lasers and the whole void drop away so the hazard shapes own
     // the room, then the party slams back in when the landing resolves.
     const danger = live && choreoView.zones.some((z) => !z.resolved && z.seat === match.mySeat);
     this.duck += ((danger ? 1 : 0) - this.duck) * Math.min(1, delta * 6);
     energy *= 1 - this.duck * 0.75;
 
-    // A hidden rig doesn't animate — no ball spin, shaft sweeps or confetti
+    // A hidden rig doesn't animate — no laser sweeps or confetti
     // math for a show that's packed away.
     if (!menuRoom) rig.update(delta, beat, act, energy);
 

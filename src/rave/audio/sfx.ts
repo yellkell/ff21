@@ -560,9 +560,10 @@ export function hitTaken(): void {
  *  set — deliberately, because a payoff is allowed to sing where a
  *  metronome is not.) */
 export function perfectChime(): void {
-  tone({ freq: 1046.5, type: 'triangle', dur: 0.07, gain: 0.15 }); // C6, the pickup
-  tone({ freq: 1568, type: 'triangle', dur: 0.2, gain: 0.19, delay: 0.06 }); // G6 — the lift
-  tone({ freq: 2093, to: 3136, type: 'sine', dur: 0.18, gain: 0.06, delay: 0.08 }); // the sparkle off the top
+  // ~+3 dB over its first mix: the chime has to cut through a full record.
+  tone({ freq: 1046.5, type: 'triangle', dur: 0.07, gain: 0.21 }); // C6, the pickup
+  tone({ freq: 1568, type: 'triangle', dur: 0.2, gain: 0.27, delay: 0.06 }); // G6 — the lift
+  tone({ freq: 2093, to: 3136, type: 'sine', dur: 0.18, gain: 0.085, delay: 0.08 }); // the sparkle off the top
 }
 
 /** Iron on iron: your orbiting ball parries theirs — hammer on anvil. */

@@ -27,7 +27,7 @@ import { GRADE, PLATFORM, PODIUM, RANK, hueToColor } from '../config.js';
 import { arena } from '../arena/arena.js';
 import { toLobby, toTour } from '../game/flow.js';
 import { gradeOf, match, standingOrder, type Dancer } from '../game/state.js';
-import { HoloBoard, type BoardRow } from '../ui/board.js';
+import { BOARD_Y, HoloBoard, type BoardRow } from '../ui/board.js';
 import { discoRig } from './DiscoSystem.js';
 import * as sfx from '../audio/sfx.js';
 
@@ -59,10 +59,11 @@ export class RankSystem extends createSystem({}) {
     const a = arena();
     if (!a) return;
 
-    // The board floats over the stage — above the giant, under the ball —
+    // The board floats high over the stage — well clear of the giant's
+    // head and hands, in the airspace the mirror ball used to take —
     // riding the stage's rank-sink, facing me (every client's board faces
     // its own dancer: the holo conceit).
-    this.board.group.position.set(a.stage.position.x, 5.6 + a.stage.position.y, a.stage.position.z);
+    this.board.group.position.set(a.stage.position.x, BOARD_Y + a.stage.position.y, a.stage.position.z);
     this.board.group.lookAt(_head.set(match.headX, match.headY, match.headZ));
 
     const inShow = match.screen === 'raid' || match.screen === 'podium';

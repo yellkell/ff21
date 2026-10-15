@@ -42,7 +42,7 @@ import { MC, RING, hueToColor, ringRadius, mcHueFor, mcVisitCount } from '../con
 import { arena } from '../arena/arena.js';
 import { CLUB as CLUB_LAYOUT } from '../club/config.js';
 import { ACCENT_REST, accentHex, buildDancer, type DancerPose, type DancerRig } from '../game/avatars.js';
-import { dressMc } from '../game/mcCostume.js';
+import { dressMc, type McSuit } from '../game/mcCostume.js';
 import { course } from '../course/state.js';
 import { PoseMotion } from '../game/poseMotion.js';
 import { match, type GestureCue, showBeat } from '../game/state.js';
@@ -51,6 +51,9 @@ import { inRoom } from '../net/session.js';
 /** The eat window (song beats, negative = count-in) — mirrors GoopliathSystem. */
 const EAT_START = -2.8;
 const EAT_LAND = -1.2;
+
+/** 33⅓ rpm, in radians a second — the chest platter's turn. */
+const PLATTER_RAD_S = ((100 / 3) * Math.PI * 2) / 60;
 
 /** Head heights in rig-local (human) metres. */
 const STAND = 1.56;
@@ -88,6 +91,7 @@ export const mcView = { hue: MC.hue, want: MC.hue, color: 0, screen: '', track: 
 
 export class McSystem extends createSystem({}) {
   private rig: DancerRig | null = null;
+  private suit: McSuit | null = null;
   /** The RENDERED pose — everything below writes `tgt` and the motion
    *  layer carries this toward it, so idle → wind-up → strike is one
    *  continuous motion and the figure never teleports between
@@ -120,7 +124,7 @@ export class McSystem extends createSystem({}) {
       this.hue = mcHueFor(match.screen, match.trackId);
       this.rig = buildDancer(this.hue);
       this.rig.root.name = 'the-mc'; // headless probes find him by name
-      dressMc(this.rig); // the neon district headliner's kit (helmet, mantle, gauntlets)
+      this.suit = dressMc(this.rig); // the neon district headliner's armour (game/mcCostume.ts)
       this.rig.root.scale.setScalar(MC.scale);
       // He faces the crowd — every client renders him looking at THEM.
       this.rig.root.rotation.y = Math.PI;
@@ -170,6 +174,8 @@ export class McSystem extends createSystem({}) {
       menuRoom || (raidish && (match.bossKind === 'mc' || (finaleNight && match.eatIntro && !this.eaten)));
     rig.root.visible = show;
     if (!show) return;
+    // The record on his chest turns at 33⅓, whatever he's doing.
+    if (this.suit?.platter) this.suit.platter.rotation.z -= delta * PLATTER_RAD_S;
 
     // Scale eases too, so green room ↔ stage never pops.
     const wantScale = menuRoom ? MENU_SPOT.scale : MC.scale;
