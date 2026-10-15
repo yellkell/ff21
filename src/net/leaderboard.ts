@@ -21,6 +21,7 @@ import { xpForArcade, xpForBot, xpForCampaign, xpForMatch, xpForTraining, xpForT
 import { myPackedLook } from '../avatar/paint.js';
 import { customization, myPackedGear } from '../menu/customization.js';
 import { addCoins } from '../menu/wallet.js';
+import { bestHeldBelt, type ClearTiers } from '../campaign/belts.js';
 import { CURRENCY, LADDER, seasonIndex, seasonScoreField, TV, type ArcadeMode, type Difficulty } from '../config.js';
 
 export interface LbRow {
@@ -49,6 +50,8 @@ export interface LbRow {
   /** Highest GOOPLIATH-raid clear, same tiers. (The tide has no hardcore —
    *  one long fight — so the drop never reddens.) */
   goopBest: number;
+  /** Rank of their best championship belt (campaign/belts.ts; 0 = none). */
+  beltBest?: number;
   /** The player's self-written note, shown on their profile. */
   note: string;
   /** Their packed paint look (avatar/paint.ts wire form; '' = unpainted) —
@@ -209,6 +212,7 @@ const profile = {
   raidBest: 0,
   raidBestHc: 0,
   goopBest: 0,
+  beltBest: 0,
 };
 
 /** Your own profile as a board row (for the PROFILE face when viewing self). */
@@ -226,6 +230,7 @@ export function myProfileRow(): LbRow {
     raidBest: profile.raidBest,
     raidBestHc: profile.raidBestHc,
     goopBest: profile.goopBest,
+    beltBest: profile.beltBest,
     note: profile.note,
     look: myPackedLook(),
     tone: customization.avatar,
@@ -496,6 +501,10 @@ export function initLeaderboard(): void {
         profile.raidBest = (d.raidBest as number) ?? 0;
         profile.raidBestHc = (d.raidBestHc as number) ?? 0;
         profile.goopBest = (d.goopBest as number) ?? 0;
+        profile.beltBest = (d.beltBest as number) ?? 0;
+        // Belts won offline, or before belts were synced (a boss beaten long
+        // ago still hands its title belt over): bring the card up to date.
+        syncBeltBest();
         // Seed the look-mirror key so an unchanged look never re-writes; the
         // syncLookMirror() below then catches up a look painted offline.
         mirroredLook = `${(d.tone as string) ?? ''}|${(d.look as string) ?? ''}`;
@@ -547,6 +556,7 @@ export function initLeaderboard(): void {
           raidBest: 0,
           raidBestHc: 0,
           goopBest: 0,
+          beltBest: 0,
           look: myPackedLook(),
           tone: customization.avatar,
           gear: myPackedGear(),
@@ -611,6 +621,7 @@ export async function refreshLeaderboard(force = false): Promise<void> {
           raidBest: (d.data().raidBest as number) ?? 0,
           raidBestHc: (d.data().raidBestHc as number) ?? 0,
           goopBest: (d.data().goopBest as number) ?? 0,
+          beltBest: (d.data().beltBest as number) ?? 0,
           note: (d.data().note as string) ?? '',
           look: (d.data().look as string) ?? '',
           tone: (d.data().tone as string) ?? 'blank',
@@ -805,6 +816,23 @@ export function reportRunClear(kind: 'gauntlet' | 'raid' | 'goopliath', difficul
     }
   }
   if (Object.keys(patch).length) writeMine(patch);
+}
+
+/** Your synced clear tiers and best belt — what proves your belts. */
+export function myClearTiers(): ClearTiers {
+  return profile;
+}
+
+/**
+ * Your best championship belt onto your card: its rank (campaign/belts.ts)
+ * is written whenever it beats what the card shows, so other players see
+ * it. Call after a belt is won; it's a no-op when nothing's better.
+ */
+export function syncBeltBest(): void {
+  const best = bestHeldBelt(profile);
+  if (!best || best.rank <= profile.beltBest) return;
+  profile.beltBest = best.rank;
+  if (profile.id) writeMine({ beltBest: best.rank });
 }
 
 /**

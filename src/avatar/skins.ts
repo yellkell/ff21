@@ -118,10 +118,10 @@ export const PLATFORM_SKINS: PlatformSkin[] = [
   { id: 'meteorite', name: 'METEORITE', deck: 'meteorite', neon: 0x9fd8ff, trim: TRIM.chrome, price: 1500, shelf: 'forge', blurb: 'iron from the sky, acid-etched' },
   // ── earned, never sold ────────────────────────────────────────────────
   // CHAMPION: the first fell of GOLIATH, king of the titan gauntlet.
-  { id: 'champion', name: 'CHAMPION', deck: 'lacquer', neon: 0xfff3cf, trim: TRIM.gold, earnedBy: 'FELL GOLIATH', blurb: 'crimson lacquer, gold inlay' },
+  { id: 'champion', name: 'CHAMPION', deck: 'lacquer', neon: 0xfff3cf, trim: TRIM.gold, earnedBy: 'NOT EARNABLE RIGHT NOW', blurb: 'crimson lacquer, gold inlay' },
   // TIDEBREAKER: fell GOOPLIATH with a raid squad — the pool still surges
   // across it (arena.ts keeps the tide FX under this id).
-  { id: 'tidebreaker', name: 'TIDEBREAKER', deck: 'tide', neon: 0x5aff7a, trim: TRIM.iron, earnedBy: 'FELL RAID GOOPLIATH', blurb: 'wet green stone under the pool' },
+  { id: 'tidebreaker', name: 'TIDEBREAKER', deck: 'tide', neon: 0x5aff7a, trim: TRIM.iron, earnedBy: 'NOT EARNABLE RIGHT NOW', blurb: 'wet green stone under the pool' },
   // BLAZING: clear any run or raid on the blazing breaker — the burning
   // rail and corner flame crowns stay (arena.ts).
   { id: 'blazing', name: 'BLAZING', deck: 'charred', neon: 0xff4a26, trim: TRIM.iron, earnedBy: 'WIN ON BLAZING', blurb: 'scorched boards under a burning rail' },

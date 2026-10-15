@@ -15,6 +15,7 @@
 import { Vector3 } from 'three';
 import { ARENA_GAP, CAMPAIGN, type Difficulty } from '../config.js';
 import type { PeerMessage } from '../net/protocol.js';
+import { BOUT_OF_TITAN } from './career.js';
 
 export const campaign = {
   /** World point player throws are aim-assisted toward during a titan bout. */
@@ -39,8 +40,15 @@ export function fmtRunTime(seconds: number): string {
 // --- persisted progress -------------------------------------------------------
 
 export interface CampaignProgress {
-  /** One flag per stage: true once that titan has been felled. */
+  /** One flag per CAREER bout (campaign/career.ts): true once it's won. */
   cleared: boolean[];
+  /** 2 = `cleared` is indexed by career bout (seven); older saves held one
+   *  flag per titan (five) and are remapped on load. */
+  careerVersion: number;
+  /** Title defenses won, per belt id. */
+  defenses: Record<string, number>;
+  /** The career's prize has been paid. */
+  careerPrized: boolean;
   /** Best GAUNTLET RUN times (seconds of fight time), ascending, capped. */
   runTimesGauntlet: number[];
   /** Best HARDCORE run times — no healing between titans. */
@@ -57,6 +65,8 @@ export interface CampaignProgress {
   hardUnlocked: boolean;
   /** BLAZING unlocks by clearing any run on Hard-or-higher. */
   blazingUnlocked: boolean;
+  /** Championship belts won (campaign/belts.ts ids): one per run per tier. */
+  belts: string[];
 }
 
 const KEY = 'ff-campaign';
@@ -64,6 +74,9 @@ const KEY = 'ff-campaign';
 function fresh(): CampaignProgress {
   return {
     cleared: new Array(CAMPAIGN.stages).fill(false),
+    careerVersion: 2,
+    defenses: {},
+    careerPrized: false,
     runTimesGauntlet: [],
     runTimesHardcore: [],
     hardcoreUnlocked: false,
@@ -72,6 +85,7 @@ function fresh(): CampaignProgress {
     raidGoopliathCleared: false,
     hardUnlocked: false,
     blazingUnlocked: false,
+    belts: [],
   };
 }
 
@@ -80,8 +94,18 @@ function load(): CampaignProgress {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const p = { ...fresh(), ...JSON.parse(raw) } as CampaignProgress;
+      if (p.careerVersion !== 2) {
+        // A five-titan save: each titan's flag moves to the bout that first
+        // beats it; the two defenses start unwon.
+        const old = p.cleared.slice(0, 5);
+        p.cleared = new Array(CAMPAIGN.stages).fill(false);
+        old.forEach((c, titan) => (p.cleared[BOUT_OF_TITAN[titan]] = c === true));
+        p.careerVersion = 2;
+      }
+      if (!p.defenses || typeof p.defenses !== 'object') p.defenses = {};
       // Older saves (or a future stage-count bump) may carry a short array.
       while (p.cleared.length < CAMPAIGN.stages) p.cleared.push(false);
+      if (!Array.isArray(p.belts)) p.belts = [];
       return p;
     }
   } catch {
@@ -106,9 +130,10 @@ export function stageUnlocked(stage: number): boolean {
   return campaignProgress.cleared[stage - 1] === true;
 }
 
-/** The gauntlet run opens once every titan has been felled at least once. */
+/** The gauntlet run opens once every titan has been defeated at least once
+ *  (the defenses aren't needed — they're rematches, not new titans). */
 export function gauntletUnlocked(): boolean {
-  return campaignProgress.cleared.every((c) => c === true);
+  return BOUT_OF_TITAN.every((i) => campaignProgress.cleared[i] === true);
 }
 
 /** GOOPLIATH's campaign entry unseals with the gauntlet: fell all five

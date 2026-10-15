@@ -13,6 +13,41 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE CAREER AND ITS BELTS** (FIRE FIGHT FLUX's title run and title
+  belts, brought to the campaign — `src/campaign/career.ts`,
+  `src/campaign/belts.ts`).
+  - **Seven bouts**: I AMATEUR (CHROMEHOOK) · II LOCAL (PISTONKAISER) ·
+    III NATIONAL (VULTURE) · IV INTERCONTINENTAL (JUGGERNAUT) · V TITLE
+    DEFENSE against a supercharged, bigger VULTURE+ · VI WORLD (GOLIATH) ·
+    VII WORLD TITLE DEFENSE against a supercharged GOLIATH+. Supercharged
+    titans are bigger, tougher, quicker and carry the elite attacks.
+    Five-titan saves are remapped onto the career.
+  - **Winning the career** (bout VII, first time) pays a 1500 iron-dollar
+    purse.
+  - **23 belts**, each called what it is: one per career title (THE
+    AMATEUR BELT … THE WORLD BELT); THE GOOPLIATH BELT for first defeating
+    him, plus his fight on Hard and Blazing; and one per tier (Normal ·
+    Hard · Blazing) for the gauntlet, hardcore, the titan raid, the
+    hardcore raid and the GOOPLIATH raid — THE HARD GAUNTLET BELT and so
+    on. Belts are kept forever; defenses are counted on their belt.
+  - **Neon** (`ui/beltArt.ts`): dark see-through glass with every edge a
+    lit tube — strap, stitch line, side plates with the titans' emblems in
+    light, a centre plate (octagon, crest or sunburst by tier), a glowing
+    stone, a lit ribbon and plaque; hardcore belts burn.
+  - **Held up when you win one** (`ui/beltModel.ts`,
+    `campaign/beltCeremony.ts`): the belt in 3D — bowed strap, dark glass
+    plates, glowing paint and stone — rises in front of you and the card
+    names it (or counts the defense).
+  - **THE BELT RACK** on the campaign panel: your best belt and count;
+    open it for all 23, yours lit, the rest as ghosts, hover for what each
+    is or how to win it. Career cards and the launch card show the belt at
+    stake.
+  - **The profile shows your best belt** in place of the old SPEEDRUN
+    badge; hover it and it says what it is. Its rank syncs as `beltBest`.
+  - **"FELLED" reads "DEFEATED"** across the campaign.
+  - **GOLIATH and GOOPLIATH unlock no platform for now** — their belts are
+    the bounty. CHAMPION and TIDEBREAKER stay with anyone who owns them;
+    BLAZING is still earned by a blazing run or raid.
 - **A HIT LOOKS LIKE FIRE, AND THE NUMBER LOOKS LIKE A COMIC.**
   - **The burst** (`fx/effects.ts`) used to be a comic "POW": an
     eleven-ray starburst, a perfect shockwave ring, flat glowing discs and
