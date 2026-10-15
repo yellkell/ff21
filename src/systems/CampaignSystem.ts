@@ -1598,7 +1598,7 @@ export class CampaignSystem extends createSystem({
     ) {
       this.enraged = true;
       this.flinch = 0.35;
-      this.hud.title(this.goopStage ? 'THE TIDE RISES' : 'ENRAGED', '', this.accentCss());
+      this.hud.title('ENRAGED', '', this.accentCss());
       this.cardTimer = 1.3;
       sfx.bossRoar(this.def.scale * 1.1);
     }
@@ -4936,7 +4936,7 @@ export class CampaignSystem extends createSystem({
       // Every raider banks the raid's belt too: one per raid kind per tier.
       tierWon = awardTierBelt(solo ? 'goopraid' : app.raidHardcore ? 'raidhc' : 'raid', this.activeDifficulty());
       this.hud.title(
-        solo ? 'THE TIDE RECEDES' : 'RAID CLEARED',
+        'RAID CLEARED',
         (solo
           ? `GOOPLIATH DEFEATED · ${fmtRunTime(this.runClock)}`
           : app.raidHardcore
@@ -4967,7 +4967,7 @@ export class CampaignSystem extends createSystem({
       // A single stage: no payout readout — just the defeat (and its belt).
       this.hud.title(
         stageGoop ? 'GOOPLIATH DEFEATED' : 'TITAN DEFEATED',
-        stageGoop ? 'the tide recedes' : '',
+        '',
         this.accentCss(),
       );
     }
