@@ -76,7 +76,7 @@ import {
 } from '../campaign/gestures.js';
 import { RecitalBlockfall } from '../campaign/blockfall.js';
 import { titanTrident } from '../campaign/titanKit.js';
-import { MELEE, pickMelee, segmentDistance, strikePoint, windupOffset, type MeleeMove, type MeleePath } from '../campaign/melee.js';
+import { MELEE, SPIN, isSpin, pickMelee, segmentDistance, spinPoint, spinTurn, strikePoint, windupOffset, type MeleeMove, type MeleePath } from '../campaign/melee.js';
 import { CyberTrident } from '../rave/arena/trident.js';
 import { TRIDENT } from '../rave/config.js';
 import type { Zone } from '../campaign/zones.js';
@@ -360,7 +360,13 @@ export class CampaignSystem extends createSystem({
     to: Vector3;
     lunge: number;
     blocked: boolean;
+    /** A spinning blow's turn (melee.ts spinTurn), and where a recovery
+     *  picks it up from. */
+    turn: number;
+    turnFrom: number;
   } | null = null;
+  /** The body's yaw off square-on while a spinning blow turns it. */
+  private meleeSpin = 0;
   private meleeLast: MeleePath | null = null;
   private meleeStreak = false;
   /** The reach's lunge: eased toward its target, added to the root along
@@ -456,6 +462,9 @@ export class CampaignSystem extends createSystem({
   private lastTarget = -1;
   /** Seconds left of the full-turn lash a squad sweep detonates with. */
   private spinT = 0;
+  /** GOLIATH's raid sweep IS his spinning backfist: how far the striking
+   *  arm is handed to that pose (0 = the gesture owns it). */
+  private backfistW = 0;
 
   init(): void {
     this.hud = createCampaignHud(this.scene);
@@ -630,6 +639,7 @@ export class CampaignSystem extends createSystem({
     if (this.rig) {
       this.animateTitan(delta);
       this.updateTrident(delta);
+      this.updateRaidBackfist(delta);
     }
     else if (this.goop) this.animateGoop(delta);
     this.placeHitboxes();
@@ -1087,6 +1097,7 @@ export class CampaignSystem extends createSystem({
     this.hitsOnPoint = 0;
     this.invuln = 0;
     this.spinT = 0;
+    this.backfistW = 0;
     this.lungeAge = -1;
     this.lungeCur = 0;
     this.lungeOff.set(0, 0, 0);
@@ -3633,6 +3644,8 @@ export class CampaignSystem extends createSystem({
       to: new Vector3(),
       lunge: 0,
       blocked: false,
+      turn: 0,
+      turnFrom: 0,
     };
     for (const i of arms) rig.fistWorld(i, m.home[i]);
     this.melee = m;
@@ -3682,6 +3695,11 @@ export class CampaignSystem extends createSystem({
       // (there by 70 % of the windup, then held), swelling with light, and
       // the body leans a quarter of the way into the coming lunge.
       const u = smooth(m.t / (m.windup * 0.7));
+      if (isSpin(path)) {
+        // THE TELL no other move has: it turns its back on you.
+        m.turn = spinTurn('windup', m.t / m.windup);
+        this.meleeSpin = -(m.arms[0] === 0 ? -1 : 1) * m.turn;
+      }
       for (const i of m.arms) {
         this.meleeCocked(i, path, _v);
         m.at[i].copy(m.home[i]).lerp(_v, u);
@@ -3716,11 +3734,23 @@ export class CampaignSystem extends createSystem({
     if (m.stage === 'strike') {
       const u = m.t / (m.move.strike * this.diff.charge);
       const fistR = CAMPAIGN.meleeFistRadius * s;
+      const spinning = isSpin(path);
+      if (spinning) {
+        m.turn = spinTurn('strike', u);
+        this.meleeSpin = -(m.arms[0] === 0 ? -1 : 1) * m.turn;
+      }
       for (const i of m.arms) {
         // Outward is the arm's own side, in the world.
         _p.set(i === 0 ? -1 : 1, 0, 0).applyQuaternion(rig.root.quaternion);
         m.was[i].copy(m.at[i]);
-        strikePoint(path, m.from[i], m.to, _p, u, m.at[i]);
+        if (spinning) {
+          // Riding the turn round on a level arc about its spine, landing
+          // on you as the turn reaches contact; the arm unfurls from the
+          // cock on the way.
+          spinPoint(path, rig.root.position, m.to, (i === 0 ? -1 : 1) * (SPIN.contact - m.turn), u, SPIN.lift * s, m.at[i]);
+          this.meleeCocked(i, path, _v);
+          m.at[i].lerpVectors(_v, m.at[i], smooth(u / 0.4));
+        } else strikePoint(path, m.from[i], m.to, _p, u, m.at[i]);
         // Honest reach: the fist goes no further than the arm can carry it
         // from where the shoulder is now — and that is what gets judged.
         const arm = rig.arms[i];
@@ -3766,8 +3796,13 @@ export class CampaignSystem extends createSystem({
       return;
     }
 
-    // RECOVER: the fist comes home to the pose and the titan steps back.
+    // RECOVER: the fist comes home to the pose and the titan steps back
+    // (a spin finishes its revolution and faces you again).
     const u = Math.min(1, m.t / m.move.recover);
+    if (isSpin(path)) {
+      m.turn = spinTurn('recover', u, m.turnFrom);
+      this.meleeSpin = -(m.arms[0] === 0 ? -1 : 1) * m.turn;
+    }
     for (const i of m.arms) rig.reach[i].w = 1 - smooth(u);
     if (glowMat) glowMat.opacity = 0.9 * (1 - u);
     if (u < 1) return;
@@ -3809,6 +3844,7 @@ export class CampaignSystem extends createSystem({
   private meleeRecover(m: NonNullable<CampaignSystem['melee']>): void {
     m.stage = 'recover';
     m.t = 0;
+    m.turnFrom = m.turn;
     this.meleeLungeTarget = 0;
     this.meleeLungeRate = 2.4;
   }
@@ -3876,6 +3912,56 @@ export class CampaignSystem extends createSystem({
     });
   }
 
+  /** Is this GOLIATH's squad sweep — his spinning backfist across the ring? */
+  private raidBackfist(): boolean {
+    const a = this.attack;
+    return this.raid() && this.def.style === 'king' && a?.kind === 'sweep' && a.seats.length > 1;
+  }
+
+  /** The backfist's windup turn: its back to the squad by the charge's end
+   *  (melee.ts spinTurn — the same tell as the solo spin), 0 otherwise. The
+   *  lash (spinT) then carries the turn on round. */
+  private backfistWind(): number {
+    const a = this.attack;
+    if (!this.raidBackfist() || !a || a.time >= a.chargeTime) return 0;
+    return spinTurn('windup', a.time / Math.max(0.2, a.chargeTime));
+  }
+
+  /**
+   * GOLIATH's raid sweep, told as THE SPINNING BACKFIST: through the charge
+   * his striking fist folds across his chest as he turns his back; as the
+   * blade cascades round the ring the fist is flung straight out and rides
+   * the full-turn lash across every platform. The blade is still the cut
+   * (duck it); the arm is the read. Arm 0 strikes — the lash turns +y,
+   * which is the way that shoulder leads backwards.
+   */
+  private updateRaidBackfist(delta: number): void {
+    const rig = this.rig;
+    if (!rig?.reach) return;
+    const a = this.attack;
+    const live = this.raidBackfist() && a;
+    const lashing = this.spinT > 0 && this.raid() && this.def.style === 'king';
+    const target = live || lashing ? 1 : 0;
+    this.backfistW += (target - this.backfistW) * Math.min(1, delta * (target ? 5 : 3));
+    if (this.backfistW < 0.01 && !target) this.backfistW = 0;
+    if (this.backfistW === 0) return;
+    const sc = this.def.scale;
+    const arm = rig.arms[0];
+    if (lashing || (a && a.time >= a.chargeTime)) {
+      // Flung straight out from the shoulder, a little low: the fist IS the
+      // edge of the turn.
+      const len = arm.elbow.position.length() + arm.wrist.position.length() + arm.fist.position.length();
+      _v.set(-len * 0.96, -0.35 * sc, 0).add(arm.pivot.position);
+    } else {
+      // Folded across the chest, the back of the fist out (melee.ts).
+      windupOffset('spinback', -1, _v).multiplyScalar(sc).add(arm.pivot.position);
+    }
+    rig.root.localToWorld(_v);
+    rig.reach[0].at.lerp(_v, Math.min(1, delta * 10));
+    rig.reach[0].w = this.backfistW;
+    rig.reach[1].w = 0;
+  }
+
   /**
    * THE TRIDENT in the titan's fist. It materialises over the charge (the
    * colour is the read), rides the visible fist, and aims its prongs at
@@ -3892,7 +3978,10 @@ export class CampaignSystem extends createSystem({
       this.scene.add(this.trident.root);
     }
     const t = this.trident;
-    if (!t || !rig) return;
+    if (!t || !rig) {
+      if (rig?.reach && !this.melee && this.backfistW === 0) rig.reach[1].w = rig.reach[0].w = 0;
+      return;
+    }
     // The next blow still to land (its quarters are where the prongs go).
     let next: Zone | null = null;
     let nextDue = Infinity;
@@ -3914,14 +4003,27 @@ export class CampaignSystem extends createSystem({
     this.tridentFlash = Math.max(0, this.tridentFlash - delta * 4);
     if (next && next.kind === 'pair') t.setColor(TRIDENT.forms[next.form]?.color ?? this.def.accent);
     t.update(delta, this.tridentReveal, this.tridentFlash, 1);
-    if (this.tridentReveal <= 0) return;
-    // Grip: the striking arm's VISIBLE fist (a kit titan re-solves its arms).
     const arm = live?.arm ?? 1;
-    const fist = rig.root.getObjectByName(`HAND_${arm}_shown`) ?? rig.arms[arm].fist;
-    fist.getWorldPosition(_v);
+    // THE GRIP: in front of the titan's own body, not wherever a gesture
+    // flings the fist (a big titan's two-handed point reached right over
+    // your head and took the weapon with it). Cocked out to the side at
+    // chest height; each blow drives it forward and down at the quarters.
+    // A kit titan's hand is put ON the grip (the reach override); a box rig
+    // just rides its fist.
+    const sx = arm === 0 ? -1 : 1;
+    const sc = this.def.scale;
+    _v.set(sx * 0.45, 1.05, -0.55).lerp(_head.set(sx * 0.3, 0.8, -0.95), this.tridentFlash).multiplyScalar(sc);
+    rig.root.localToWorld(_v);
+    if (rig.reach && !this.melee && this.backfistW === 0) {
+      rig.reach[arm].at.copy(_v);
+      rig.reach[arm].w = Math.min(1, this.tridentReveal * 1.5);
+      rig.reach[arm === 0 ? 1 : 0].w = 0;
+    }
+    if (this.tridentReveal <= 0) return;
+    if (!rig.reach) rig.arms[arm].fist.getWorldPosition(_v);
     t.root.position.copy(_v);
-    t.root.scale.setScalar(0.48 * this.def.scale);
-    // Between blows it is COCKED — upright, the prongs leaning toward the
+    t.root.scale.setScalar(0.64 * this.def.scale);
+    // Between blows it is COCKED, the prongs leaning out toward the
     // quarters the next blow takes; each landing STABS it down onto them
     // (the flash carries the stab), then it comes back up.
     if (next && next.kind === 'pair') {
@@ -3937,8 +4039,10 @@ export class CampaignSystem extends createSystem({
       this.tridentAim.lerp(_head, Math.min(1, delta * 8)).normalize();
     }
     const stab = this.tridentFlash;
-    _p.copy(this.tridentAim).multiplyScalar(0.55).add(_up).normalize(); // cocked
-    _head.copy(this.tridentAim).addScaledVector(_up, -0.5).normalize(); // the stab
+    // Cocked leaning well OUT toward the quarters, not upright: held at a
+    // big titan's raised fists an upright weapon stood clean out of view.
+    _p.copy(this.tridentAim).addScaledVector(_up, 0.35).normalize(); // cocked
+    _head.copy(this.tridentAim).addScaledVector(_up, -0.3).normalize(); // the stab
     _p.lerp(_head, stab).normalize();
     t.root.quaternion.setFromUnitVectors(_up, _p);
   }
@@ -4132,9 +4236,21 @@ export class CampaignSystem extends createSystem({
     // fist, and goes home after.
     this.meleeLunge += (this.meleeLungeTarget - this.meleeLunge) * Math.min(1, delta * this.meleeLungeRate);
     if (!fighting) this.meleeLunge = this.meleeLungeTarget = 0;
-    this.meleeOff.set(-Math.sin(rig.root.rotation.y), 0, -Math.cos(rig.root.rotation.y)).multiplyScalar(this.meleeLunge);
+    // (Solo, the reach always comes STRAIGHT at you — square-on, whatever
+    // a spinning blow is doing to the body's yaw.)
+    const reachYaw = this.raid() ? rig.root.rotation.y : Math.PI;
+    this.meleeOff.set(-Math.sin(reachYaw), 0, -Math.cos(reachYaw)).multiplyScalar(this.meleeLunge);
     rig.root.position.x += this.meleeOff.x;
     rig.root.position.z += this.meleeOff.z;
+    // A spinning blow turns the whole machine; anything left of a turn cut
+    // short unwinds the short way.
+    if (!this.raid()) {
+      if (!(this.melee && isSpin(this.melee.move.path))) {
+        this.meleeSpin = Math.atan2(Math.sin(this.meleeSpin), Math.cos(this.meleeSpin));
+        this.meleeSpin -= this.meleeSpin * Math.min(1, delta * 6);
+      }
+      if (fighting) rig.root.rotation.y = Math.PI + this.meleeSpin;
+    }
 
     // RAID: the whole machine squares up to whoever it's hunting — the body
     // yaw eases toward the CENTROID of the marked platforms (one raider: dead
@@ -4156,7 +4272,9 @@ export class CampaignSystem extends createSystem({
         }
         cx /= seats.length;
         cz /= seats.length;
-        const targetYaw = Math.atan2(-(cx - rig.root.position.x), -(cz - rig.root.position.z));
+        // GOLIATH's backfist tell: through the charge he turns his BACK on
+        // the squad (the turn the lash then carries on round).
+        const targetYaw = Math.atan2(-(cx - rig.root.position.x), -(cz - rig.root.position.z)) + this.backfistWind();
         let dy = targetYaw - rig.root.rotation.y;
         while (dy > Math.PI) dy -= Math.PI * 2;
         while (dy < -Math.PI) dy += Math.PI * 2;
