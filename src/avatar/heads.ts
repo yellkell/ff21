@@ -24,7 +24,7 @@
  *    they are rounded masses (ellipsoid) and tapered tufts (tuft) now.
  *  - SMOOTHER: denser lofts and spheres, UV'd for the gear atlas; the
  *    knight's cross and sight wrap the barrel instead of standing off it,
- *    and its gorget skirt is gone.
+ *    its gorget skirt is gone, and its breathing holes go right through.
  *  - REDESIGNED: the WOLF, FROG and BUNNY are FF2 builds, not FF1 ports
  *    (see their notes below).
  *
@@ -36,6 +36,7 @@ import {
   BoxGeometry,
   BufferGeometry,
   CatmullRomCurve3,
+  CircleGeometry,
   ConeGeometry,
   CylinderGeometry,
   DoubleSide,
@@ -44,7 +45,7 @@ import {
   LatheGeometry,
   Mesh,
   MeshBasicMaterial,
-  type MeshStandardMaterial,
+  MeshStandardMaterial,
   type Object3D,
   Raycaster,
   SphereGeometry,
@@ -91,6 +92,140 @@ function band(r0: number, r1: number, h: number, half: number, at = 0): BufferGe
   const profile = [new Vector2(r0, -h / 2), new Vector2(r1, -h / 2), new Vector2(r1, h / 2), new Vector2(r0, h / 2), new Vector2(r0, -h / 2)];
   // Lathe angle φ puts a point at (sin φ, cos φ)·x — dead-ahead (−z) is φ = π.
   return new LatheGeometry(profile, 24, Math.PI + at - half, half * 2);
+}
+
+/**
+ * A tapered barrel's SIDE with real holes cut through it — the knight's
+ * breathing holes. The side is a grid of `seg` columns (three's cylinder
+ * convention: x = R·sinθ, z = R·cosθ, so dead-ahead −z is θ = π) between
+ * the heights in `breaks`; a cell listed in `holes` ([column, row]) is
+ * built as a square with a round hole of radius `holeR` in it, its edge
+ * points laid on the cell's own chords so it meets the plain cells beside
+ * it without a crack. `wells` lines each hole: a short wall running `depth`
+ * into the helm and a back to it, so you look INTO a hole, not at a dot.
+ * Normals are the barrel's own (taper included), so the cut cells shade
+ * exactly like the rest; uv is (θ around, height up), one paint island.
+ */
+function holedBarrel(
+  breaks: number[],
+  rBot: number,
+  rTop: number,
+  seg: number,
+  holes: Array<[number, number]>,
+  holeR: number,
+  depth: number,
+): { skin: BufferGeometry; wells: BufferGeometry } {
+  const y0 = breaks[0];
+  const y1 = breaks[breaks.length - 1];
+  const R = (y: number): number => rBot + ((y - y0) / (y1 - y0)) * (rTop - rBot);
+  const lean = (rBot - rTop) / (y1 - y0); // narrowing upward tips the face up
+  const at = (th: number, y: number, inset = 0): Vector3 => new Vector3((R(y) - inset) * Math.sin(th), y, (R(y) - inset) * Math.cos(th));
+  const dTh = (Math.PI * 2) / seg;
+  const cut = new Set(holes.map(([k, j]) => `${k},${j}`));
+
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const vert = (p: Vector3, th: number): number => {
+    pos.push(p.x, p.y, p.z);
+    const n = new Vector3(Math.sin(th), lean, Math.cos(th)).normalize();
+    nrm.push(n.x, n.y, n.z);
+    uv.push(th / (Math.PI * 2), (p.y - y0) / (y1 - y0));
+    return pos.length / 3 - 1;
+  };
+
+  const wPos: number[] = [];
+  const wIdx: number[] = [];
+  const wVert = (p: Vector3): number => {
+    wPos.push(p.x, p.y, p.z);
+    return wPos.length / 3 - 1;
+  };
+
+  const SIDE = 8; // edge points per side of a cut cell (32 round the hole)
+  for (let j = 0; j < breaks.length - 1; j++) {
+    const ya = breaks[j];
+    const yb = breaks[j + 1];
+    for (let k = 0; k < seg; k++) {
+      const ta = k * dTh;
+      const tb = (k + 1) * dTh;
+      // Each edge is split SIDE ways where either cell on it is cut (eighths:
+      // exact in binary, so both cells land the same points bit for bit and
+      // no hairline opens along the seam), else left whole.
+      const isCut = cut.has(`${k},${j}`);
+      const split = (kk: number, jj: number): number => (isCut || cut.has(`${(kk + seg) % seg},${jj}`) ? SIDE : 1);
+      const st: Array<[number, number]> = [];
+      for (let i = 0, m = split(k, j - 1); i < m; i++) st.push([i / m, 0]);
+      for (let i = 0, m = split(k + 1, j); i < m; i++) st.push([1, i / m]);
+      for (let i = 0, m = split(k, j + 1); i < m; i++) st.push([1 - i / m, 1]);
+      for (let i = 0, m = split(k - 1, j); i < m; i++) st.push([0, 1 - i / m]);
+      const A = at(ta, ya);
+      const B = at(tb, ya);
+      const C = at(tb, yb);
+      const D = at(ta, yb);
+      // Weighted, not lerped: a corner's weight is exactly 1 or 0 on an edge,
+      // so a shared edge comes out the same sum from either cell.
+      const onCell = (u: number, v: number): Vector3 =>
+        A.clone()
+          .multiplyScalar((1 - u) * (1 - v))
+          .addScaledVector(B, u * (1 - v))
+          .addScaledVector(C, u * v)
+          .addScaledVector(D, (1 - u) * v);
+      if (!isCut) {
+        if (st.length === 4) {
+          const [a, b, c, d] = st.map(([u, v]) => vert(onCell(u, v), ta + u * dTh));
+          idx.push(a, b, c, a, c, d);
+        } else {
+          // Beside a hole: a fan from the middle takes the split edge whole.
+          const mid = vert(onCell(0.5, 0.5), ta + 0.5 * dTh);
+          const ring = st.map(([u, v]) => vert(onCell(u, v), ta + u * dTh));
+          for (let i = 0; i < ring.length; i++) idx.push(mid, ring[i], ring[(i + 1) % ring.length]);
+        }
+        continue;
+      }
+      // A cut cell: pair every edge point (anticlockwise seen from outside:
+      // θ is rightward, y up) with the point on the hole's rim in the same
+      // direction from its centre.
+      const tc = (ta + tb) / 2;
+      const yc = (ya + yb) / 2;
+      const Rc = R(yc);
+      const edge: number[] = [];
+      const rim: number[] = [];
+      const outer: number[] = [];
+      const inner: number[] = [];
+      for (const [u, v] of st) {
+        const p = onCell(u, v);
+        const th = ta + u * dTh;
+        edge.push(vert(p, th));
+        const beta = Math.atan2(p.y - yc, (th - tc) * Rc);
+        const ry = yc + holeR * Math.sin(beta);
+        const rth = tc + (holeR * Math.cos(beta)) / Rc;
+        rim.push(vert(at(rth, ry), rth));
+        outer.push(wVert(at(rth, ry)));
+        inner.push(wVert(at(tc + (holeR * Math.cos(beta)) / (Rc - depth), ry, depth)));
+      }
+      const n = st.length;
+      const back = wVert(at(tc, yc, depth));
+      const backRing = inner.map((i) => wVert(new Vector3(wPos[i * 3], wPos[i * 3 + 1], wPos[i * 3 + 2])));
+      for (let i = 0; i < n; i++) {
+        const i2 = (i + 1) % n;
+        idx.push(edge[i], edge[i2], rim[i2], edge[i], rim[i2], rim[i]);
+        wIdx.push(outer[i], outer[i2], inner[i2], outer[i], inner[i2], inner[i]);
+        wIdx.push(back, backRing[i], backRing[i2]);
+      }
+    }
+  }
+
+  const skin = new BufferGeometry();
+  skin.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  skin.setAttribute('normal', new Float32BufferAttribute(nrm, 3));
+  skin.setAttribute('uv', new Float32BufferAttribute(uv, 2));
+  skin.setIndex(idx);
+  const wells = new BufferGeometry();
+  wells.setAttribute('position', new Float32BufferAttribute(wPos, 3));
+  wells.setIndex(wIdx);
+  wells.computeVertexNormals();
+  return { skin, wells };
 }
 
 /** One cross-section of the lofted horse skull: the topline point (forehead /
@@ -275,10 +410,33 @@ function buildKnightHead(mat: MeshStandardMaterial, trimMat: MeshStandardMateria
   const g = new Group();
 
   // Flat-topped barrel helm fully enclosing the head, capped flat with a seam.
-  const barrel = new Mesh(new CylinderGeometry(r * 0.98, r * 1.06, r * 1.7, 20), mat);
-  barrel.position.y = r * 0.3;
-  g.add(barrel);
-  const cap = new Mesh(new CylinderGeometry(r * 0.99, r * 0.98, r * 0.16, 20), mat);
+  // Its side is built by hand so the BREATHING HOLES can go right through
+  // it: a 3 × 3 grid on each cheek, either side of the cross, each one a
+  // real hole with a wall and a dark inside. (They were seven-sided pegs
+  // stuck on a flat plane in a scatter — from anywhere off dead-ahead the
+  // outer ones stood clear of the curve like studs.) 48 columns of 7.5°:
+  // the cross runs down column seam 24 (dead-ahead), the holes fill
+  // columns 19–21 and 26–28, rows 1–3 of the breaks — square cells about
+  // 0.14 r a side, so the grid is even both ways.
+  const { skin, wells } = holedBarrel(
+    [-0.55, -0.39, -0.25, -0.11, 0.03, 1.15].map((y) => y * r),
+    r * 1.06,
+    r * 0.98,
+    48,
+    [19, 20, 21, 26, 27, 28].flatMap((k) => [1, 2, 3].map((j): [number, number] => [k, j])),
+    r * 0.05,
+    r * 0.08,
+  );
+  g.add(new Mesh(skin, mat));
+  const floor = new Mesh(new CircleGeometry(r * 1.06, 48).rotateX(Math.PI / 2), mat);
+  floor.position.y = -r * 0.55;
+  g.add(floor);
+  // The dark of the helm's inside, seen through the holes: not trim (that
+  // is pale steel on the onyx) — a hole is dark whatever the shell is.
+  const well = new Mesh(wells, new MeshStandardMaterial({ color: 0x060607, roughness: 1, metalness: 0, envMapIntensity: 0 }));
+  well.userData.trim = true; // keeps its own finish through the paint bake
+  g.add(well);
+  const cap = new Mesh(new CylinderGeometry(r * 0.99, r * 0.98, r * 0.16, 48), mat);
   cap.position.y = r * 1.2;
   g.add(cap);
   const ridge = new Mesh(new BoxGeometry(r * 0.12, r * 0.1, r * 2.05), mat);
@@ -305,18 +463,6 @@ function buildKnightHead(mat: MeshStandardMaterial, trimMat: MeshStandardMateria
     const eye = new Mesh(band(r * 1.04, r * 1.062, r * 0.05, 0.29, side * 0.52), glowMat);
     eye.position.y = r * 0.27;
     g.add(eye);
-  }
-
-  // Breathing holes — clustered dark studs across the lower face, both sides.
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < 7; i++) {
-      const col = i % 3;
-      const row = Math.floor(i / 3);
-      const hole = new Mesh(new CylinderGeometry(r * 0.05, r * 0.05, r * 0.05, 7), trimMat);
-      hole.rotation.x = Math.PI / 2;
-      hole.position.set(side * (r * 0.24 + col * r * 0.14), -r * 0.06 - row * r * 0.17 - col * r * 0.04, -r * 1.05);
-      g.add(hole);
-    }
   }
 
   // Riveted lower-front rim.
