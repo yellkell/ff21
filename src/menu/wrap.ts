@@ -16,6 +16,7 @@ import { ladderFace } from './ladder.js';
 import { settingsFace } from './settingsFace.js';
 import { CARD_H, CARD_W, CHIP_H, CHIP_W, profileCardFace, profileChipFace } from './profilePop.js';
 import { GAME_TITLE, warmRoomServer } from '../config.js';
+import { CAMP_W, CAREER_BOTTOM, CAREER_TOP, careerFace } from './campaignFace.js';
 
 /** One face of a wrap panel: everything Panel.paint needs. */
 interface Face {
@@ -78,19 +79,28 @@ export class KitMenuPanel implements MenuPanel {
 /* ── the wrap's tab state ─────────────────────────────────────────────── */
 
 export type CenterTab = 'fight' | 'practice' | 'club';
-export type PlayTab = 'duels' | 'titans' | 'rave';
+export type PlayTab = 'campaign' | 'duels' | 'rave';
 export type TownTab = 'town' | 'ladder' | 'news';
 export type YouTab = 'you' | 'store' | 'settings';
 
 /** Which tab each panel is on. */
 export const wrapNav = {
   center: 'fight' as CenterTab,
-  play: 'duels' as PlayTab,
+  // PLAY opens on the CAMPAIGN: the titan line-up is the first thing up.
+  play: 'campaign' as PlayTab,
   // The wing opens on the PAPER: the day's edition — or the welcome, for a
   // newcomer — is the first thing on the wall, not a chip count.
   town: 'news' as TownTab,
   you: 'you' as YouTab,
 };
+
+/** Put the PLAY slab on the CAMPAIGN tab (campaign bouts return here, win
+ *  or lose; the legacy open-campaign action lands here too). */
+export function showCampaign(): void {
+  wrapNav.center = 'fight';
+  wrapNav.play = 'campaign';
+  app.duelView = 'root';
+}
 
 /* ── shared bits ──────────────────────────────────────────────────────── */
 
@@ -147,8 +157,8 @@ function centerTabs(): PanelButton[] {
 }
 
 function playTabs(): PanelButton[] {
-  return (['duels', 'titans', 'rave'] as const).map((id, i) => ({
-    id: `wrap:play-${id}`, label: id === 'rave' ? 'RAVE RAID' : id === 'duels' ? 'VERSUS' : 'TITANS',
+  return (['campaign', 'duels', 'rave'] as const).map((id, i) => ({
+    id: `wrap:play-${id}`, label: id === 'rave' ? 'RAVE RAID / CO-OP RAIDS' : id === 'duels' ? 'VERSUS' : 'CAMPAIGN',
     x: M + i * 456, y: 144, w: 432, h: 72, small: true,
     selected: wrapNav.play === id, disabled: app.state === 'queueing' && id !== 'duels',
   }));
@@ -208,15 +218,6 @@ function fightRoot(): Face {
     },
     { id: 'arcade-2v2', label: '2V2', sub: 'Team battles', x: C2, y: 260, w: COL, h: 170, disabled: queueing },
     { id: 'arcade-ffa', label: 'FREE FOR ALL', sub: 'Four fighters - every player for themselves', x: C2, y: 460, w: COL, h: 170, disabled: queueing },
-    {
-      id: 'toggle-onlybots',
-      label: 'BOTS ONLY',
-      sub: 'Quick match / 2v2 / free for all',
-      x: C2, y: 660, w: COL, h: 110,
-      small: true,
-      selected: app.onlyBots,
-      toggle: true,
-    },
   ];
   return {
     title: GAME_TITLE,
@@ -336,23 +337,39 @@ function browserFace(): Face {
   };
 }
 
-function titansFace(): Face {
+/** PLAY / CAMPAIGN: THE CAREER itself (campaignFace.ts), scaled onto the
+ *  slab under the tab strips — no sub-menu between you and the titans. The
+ *  launch card and THE RACK still pop up on their own panel. */
+const CAREER_Y = 224; // just under the PLAY family tabs
+const CAREER_S = Math.min(WIDE / (CAMP_W - 128), (972 - CAREER_Y) / (CAREER_BOTTOM - CAREER_TOP));
+const CAREER_DX = (CW - CAMP_W * CAREER_S) / 2;
+const CAREER_DY = CAREER_Y - CAREER_TOP * CAREER_S;
+
+function campaignTabFace(): Face {
+  const f = careerFace();
+  const s = CAREER_S;
   return {
     title: GAME_TITLE,
-    body: () => {},
-    buttons: [
-      { id: 'open-campaign', label: 'CAMPAIGN', sub: 'Solo bosses, gauntlet and challenge runs', x: M, y: 280, w: COL, h: 230, primary: true },
-      { id: 'open-raid', label: 'CO-OP RAID', sub: app.onlyBots ? 'Turn off BOTS ONLY to form a raid' : app.raidsOpen > 0 ? `${app.raidsOpen} squads forming` : 'Host or join a squad against the titans', x: C2, y: 280, w: COL, h: 230, disabled: app.onlyBots },
-      { id: 'toggle-onlybots', label: 'BOTS ONLY', sub: 'Turn off for online ranked and raids', x: C2, y: 550, w: COL, h: 110, small: true, selected: app.onlyBots, toggle: true },
-    ],
+    body: (g, hover) => {
+      g.save();
+      g.translate(CAREER_DX, CAREER_DY);
+      g.scale(s, s);
+      f.body(g, hover);
+      g.restore();
+    },
+    buttons: f.buttons.map((b) => ({ ...b, x: CAREER_DX + b.x * s, y: CAREER_DY + b.y * s, w: b.w * s, h: b.h * s })),
   };
 }
 
+/** PLAY / RAVE RAID / CO-OP RAIDS: the rave, and the titans' CO-OP RAID beside it. */
 function raveFace(): Face {
   return {
     title: GAME_TITLE,
     body: () => {},
-    buttons: [{ id: 'open-rave', label: 'ENTER RAVE RAID', sub: 'Tour, solo tracks and multiplayer', x: M + 180, y: 300, w: WIDE - 360, h: 240, primary: true }],
+    buttons: [
+      { id: 'open-rave', label: 'ENTER RAVE RAID', sub: 'Tour, solo tracks and multiplayer', x: M, y: 280, w: COL, h: 230, primary: true },
+      { id: 'open-raid', label: 'CO-OP RAID', sub: app.onlyBots ? 'Turn off BOTS ONLY to form a raid' : app.raidsOpen > 0 ? `${app.raidsOpen} squads forming` : 'Host or join a squad against the titans', x: C2, y: 280, w: COL, h: 230, disabled: app.onlyBots },
+    ],
   };
 }
 
@@ -420,7 +437,7 @@ function centerFace(): Face {
         face = browserFace();
         break;
       default:
-        face = sealed() ? sealedFace() : wrapNav.play === 'titans' ? titansFace() : wrapNav.play === 'rave' ? raveFace() : fightRoot();
+        face = sealed() ? sealedFace() : wrapNav.play === 'campaign' ? campaignTabFace() : wrapNav.play === 'rave' ? raveFace() : fightRoot();
     }
   }
   const families = !sealed() && wrapNav.center === 'fight' && app.duelView === 'root' ? playTabs() : [];
@@ -583,12 +600,10 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
         return;
       case 'wrap:tab-arcade': // legacy deep link: boss activities now live in PLAY
         if (sealed() || app.state === 'queueing') return;
-        wrapNav.center = 'fight';
-        wrapNav.play = 'titans';
-        app.duelView = 'root';
+        showCampaign();
         return;
+      case 'wrap:play-campaign':
       case 'wrap:play-duels':
-      case 'wrap:play-titans':
       case 'wrap:play-rave':
         if (sealed() || app.state === 'queueing') return;
         wrapNav.play = id.slice('wrap:play-'.length) as PlayTab;

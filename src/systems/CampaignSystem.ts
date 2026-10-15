@@ -76,6 +76,7 @@ import {
 } from '../campaign/gestures.js';
 import { RecitalBlockfall } from '../campaign/blockfall.js';
 import { titanTrident } from '../campaign/titanKit.js';
+import { showCampaign } from '../menu/wrap.js';
 import { MELEE, SPIN, isSpin, pickMelee, segmentDistance, spinPoint, spinTurn, strikePoint, windupOffset, type MeleeMove, type MeleePath } from '../campaign/melee.js';
 import { CyberTrident } from '../rave/arena/trident.js';
 import { TRIDENT } from '../rave/config.js';
@@ -5289,9 +5290,9 @@ export class CampaignSystem extends createSystem({
       this.teardown();
       return;
     }
-    // Back to the titan line-up, not the main arc — win or lose, the
-    // gauntlet is where you pick your next fight (or your rematch).
-    app.campaignOpen = true;
+    // Back to the CAMPAIGN tab — win or lose, the line-up is where you pick
+    // your next fight (or your rematch).
+    showCampaign();
     app.state = 'menu';
     this.teardown();
   }
