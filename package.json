@@ -24,6 +24,7 @@
     "check:desert": "node tools/desert-check.mjs",
     "check:cove": "node tools/cove-check.mjs",
     "check:rave": "node tools/rave-check.mjs",
+    "check:lasers": "node tools/laser-check.mjs",
     "check:venue": "node tools/venue-check.mjs",
     "check:course": "node tools/course-check.mjs",
     "check:bot": "node tools/bot-check.mjs",
