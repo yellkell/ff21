@@ -1,7 +1,11 @@
 <!doctype html>
 <!-- DEV-ONLY harness: renders THE STAGE DECK (the wood platform) with a
-     grammar telegraph charging on it, for screenshots. ?shape=gate|donut|
-     x|routine|rail|lane picks the telegraph; ?fill=0.7 freezes the charge.
+     campaign titan's attack on it, for screenshots — the floor marks and
+     strikes exactly as CampaignSystem builds them (RAVE RAID's danger kit).
+     ?shape=slam|beam|sweep|nova|seesaw|surge|gate|row|donut|x|rail|lane|trident
+     picks the attack (&form=0|1|2 for the trident); ?fill=0.7 freezes the
+     charge — 1..2 is the landing's afterburn; ?strike=0.12 fires the
+     landing and freezes that many seconds after it.
      Not part of the game; never ship or link this page. -->
 <html>
   <body style="margin:0; background:#14100d">
@@ -9,6 +13,7 @@
       import {
         Color,
         DirectionalLight,
+        Group,
         HemisphereLight,
         PerspectiveCamera,
         Scene,
@@ -16,20 +21,28 @@
       } from 'three';
       import { makePlatform } from '/src/arena/arena.ts';
       import {
+        AFTERBURN_SEC,
+        beamTelegraph,
+        circleTelegraph,
         donutTelegraph,
         gateTelegraph,
+        halfTelegraph,
         laneTelegraph,
+        novaTelegraph,
+        quadTelegraph,
         quarterTelegraph,
         railTelegraph,
-        routineMarksTelegraph,
+        sweepTelegraph,
         xTelegraph,
       } from '/src/campaign/telegraphs.ts';
-      import { RoutineBlockfall } from '/src/campaign/blockfall.ts';
-      import { GRAMMAR, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '/src/config.ts';
+      import { StrikeFx } from '/src/rave/choreo/strikes.ts';
+      import { CAMPAIGN, GRAMMAR, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '/src/config.ts';
 
       const params = new URLSearchParams(location.search);
       const shape = params.get('shape') ?? 'gate';
       const fillAt = Number(params.get('fill') ?? 0.7);
+      const strikeAt = params.has('strike') ? Number(params.get('strike')) : null;
+      const form = Number(params.get('form') ?? 0);
 
       const scene = new Scene();
       scene.background = new Color(0x14100d);
@@ -47,47 +60,92 @@
       rim.position.set(-2.2, 2.0, -2.4);
       scene.add(rim);
 
-      const pad = makePlatform(0xff7a18);
-      scene.add(pad);
+      scene.add(makePlatform(0xff7a18));
+      // The seat's deck frame (CampaignSystem.deckOf): telegraphs and
+      // strikes hang off it in deck coordinates.
+      const deck = new Group();
+      scene.add(deck);
 
+      const W = OCTAGON_HALF_WIDTH, D = OCTAGON_HALF_DEPTH, Y = CAMPAIGN.decalY;
       const tgs = [];
-      const blocks = [];
-      if (shape === 'gate') {
-        tgs.push(gateTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, 0.4, 0.3, 0));
+      const dressing = [];
+      const put = (tg, x = 0, y = Y, z = 0, yaw = 0, list = tgs) => {
+        tg.group.position.set(x, y, z);
+        tg.group.rotation.y = yaw;
+        deck.add(tg.group);
+        list.push(tg);
+      };
+      const fx = new StrikeFx();
+      let fire = () => {};
+      const hit = form === 1 ? 0b0011 : form === 2 ? 0b1001 : 0b0101;
+      if (shape === 'slam') {
+        put(circleTelegraph(CAMPAIGN.slamRadius), 0.25, Y, 0.1);
+      } else if (shape === 'beam') {
+        // Aimed through the deck from the titan's side, as aimBeam leaves it.
+        put(beamTelegraph(CAMPAIGN.beamHalfWidth, 3.2), 0.12, Y, 1.5, 0.15);
+        fire = () => fx.beam(deck, 0.12 * Math.cos(0.15), 0.15, CAMPAIGN.beamHalfWidth);
+      } else if (shape === 'sweep') {
+        put(sweepTelegraph(W * 2 + 0.5, D * 2 + 0.3, 1.4, CAMPAIGN.sweepThickness, 1, true), 0, 0);
+        fire = () => fx.sweep(deck, 1, 1.4);
+      } else if (shape === 'nova') {
+        put(novaTelegraph(CAMPAIGN.novaRadius, 2.4, CAMPAIGN.novaHalfAngle));
+        fire = () => fx.nova(deck, 2.4, CAMPAIGN.novaHalfAngle);
+      } else if (shape === 'seesaw' || shape === 'surge') {
+        const axis = shape === 'surge' ? 1 : 0;
+        const halfW = (axis ? D : W) + 0.35;
+        const depth = (axis ? W : D) * 2 + 0.3;
+        put(halfTelegraph(1, halfW, depth), 0, Y, 0, axis ? -Math.PI / 2 : 0);
+        fire = () => fx.halfFlood(deck, 1, axis);
+      } else if (shape === 'gate' || shape === 'row') {
+        const axis = shape === 'row' ? 1 : 0;
+        put(gateTelegraph(W, D, 0.3, 0.24, axis));
+        fire = () => fx.gate(deck, 0.3, 0.24, axis);
       } else if (shape === 'donut') {
-        tgs.push(donutTelegraph(GRAMMAR.donutRadius, GRAMMAR.donutInnerR));
+        put(donutTelegraph(GRAMMAR.donutRadius, GRAMMAR.donutInnerR));
+        fire = () => fx.donut(deck, GRAMMAR.donutInnerR);
       } else if (shape === 'x') {
-        tgs.push(xTelegraph(GRAMMAR.laneXHalfW));
+        put(xTelegraph(GRAMMAR.laneXHalfW));
+        fire = () => {
+          fx.beam(deck, 0, Math.PI / 4, GRAMMAR.laneXHalfW);
+          fx.beam(deck, 0, -Math.PI / 4, GRAMMAR.laneXHalfW);
+        };
       } else if (shape === 'rail') {
-        tgs.push(railTelegraph(GRAMMAR.railHalfDepth, OCTAGON_HALF_WIDTH * 2 + 0.6, 1));
-        tgs[0].group.position.z = -0.3;
+        put(railTelegraph(GRAMMAR.railHalfDepth, W * 2 + 0.6, 1), 0, Y, -0.3);
+        fire = () => fx.rail(deck, -0.3, GRAMMAR.railHalfDepth, 1);
       } else if (shape === 'lane') {
-        tgs.push(laneTelegraph(GRAMMAR.laneHalfWidth, OCTAGON_HALF_DEPTH * 2 + 0.6));
-        tgs[0].group.position.x = 0.42;
-      } else if (shape === 'routine') {
-        tgs.push(quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH));
-        tgs.push(routineMarksTelegraph([0, 3, 1], OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH));
-        // Step one's blocks already falling on the three unlearned corners.
-        blocks.push(new RoutineBlockfall(scene, 0, 6, 5.4, 7, 0));
-      }
-      for (const t of tgs) {
-        t.group.position.y += 0.05;
-        scene.add(t.group);
+        const len = D * 2 + 0.6;
+        put(laneTelegraph(GRAMMAR.laneHalfWidth, len), 0.42, Y, len / 2);
+        fire = () => fx.beam(deck, 0.42, 0, GRAMMAR.laneHalfWidth);
+      } else if (shape === 'trident') {
+        put(quarterTelegraph(W, D), 0, Y, 0, 0, dressing);
+        put(quadTelegraph(W, D, hit, false));
+        fire = () => fx.trident(deck, hit, form);
       }
 
       const camera = new PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.05, 40);
       camera.position.set(0.0, 2.35, 2.9);
-      camera.lookAt(0, -0.15, -0.1);
+      camera.lookAt(0, shape === 'sweep' ? 0.4 : -0.15, -0.1);
 
       let time = 0;
       let frames = 0;
+      let fired = false;
       renderer.setAnimationLoop(() => {
-        time += 1 / 60;
         frames += 1;
-        for (const t of tgs) t.update(fillAt, time);
-        for (const b of blocks) b.update(Math.min(5.9, time * 2.2), 1 / 60);
+        const dt = 1 / 60;
+        // A strike freezes `strikeAt` seconds after its landing: the mark in
+        // its afterburn, the strike's own clock run up to the same point.
+        if (strikeAt !== null && !fired) {
+          fired = true;
+          fire();
+          for (let t = 0; t < strikeAt; t += dt) fx.update(Math.min(dt, strikeAt - t));
+        }
+        if (strikeAt === null) time += dt;
+        const fill = strikeAt !== null ? 1 + Math.min(1, strikeAt / AFTERBURN_SEC) : fillAt;
+        for (const t of tgs) t.update(fill, time + frames * 1e-4);
+        for (const t of dressing) t.update(Math.min(fillAt, 0.999), time + frames * 1e-4);
         renderer.render(scene, camera);
         document.title = `deck ${shape} f${frames}`;
+        if (frames > 3) window.__ready = true;
       });
     </script>
   </body>

@@ -17,10 +17,6 @@
  *   press    the gate: arms spread, then CLOSE toward the gap that lives
  *   ring     the donut: arms up in a wide V framing the rim, a hoop's
  *            width apart, then slam down wide
- *   teach    THE LESSON: the king POINTS at each taught quarter in turn —
- *            and shows an open PALM for a hold
- *   conduct  THE RECITAL: forearms up like a conductor, the baton hand
- *            flicking on every cue; a hold is a palm held out — STAY
  *   march    the wave: the piston drumline — arms pump on the beat
  *   blade    the duckdonut's cut: the classic sweep's wind-out
  *
@@ -71,8 +67,6 @@ export type GestureShape =
   | 'scissor'
   | 'press'
   | 'ring'
-  | 'teach'
-  | 'conduct'
   | 'march'
   | 'blade'
   | 'hammer'
@@ -98,13 +92,11 @@ export const CLASSIC_SHAPE: Record<string, GestureShape> = {
  *  `side` lateral (+x is the player's right — the titan's LEFT arm, arm 0),
  *  `fwd` depth (+z is the player's side of the deck, away from the titan).
  *  Zero means "no preference" (a centre lane, the donut, a full-width row).
- *  `hold` is THE RECITAL's blue cue: this step says STAY. The classics add
- *  `arm`, the striking arm CampaignSystem chose, and `both`, a multi-target
+ *  The classics add `arm`, the striking arm CampaignSystem chose, and `both`, a multi-target
  *  windup that raises the pair. */
 export interface GestureFocus {
   side: number;
   fwd: number;
-  hold?: boolean;
   arm?: 0 | 1;
   both?: boolean;
 }
@@ -175,9 +167,7 @@ function restArm(): ArmDelta {
 /**
  * Map a grammar move's next pending zone onto its gesture shape. The kind
  * matters too: a lane inside the WAVE is one step of the march, not a
- * pointed strip, and a lane with a yaw is one arm of THE X. A quad is the
- * LESSON's teach; CampaignSystem swaps in the conductor once the recital
- * itself is under way (the body must not point at the answer then).
+ * pointed strip, and a lane with a yaw is one arm of THE X.
  */
 export function gestureShapeOf(
   kind: GrammarKind | string,
@@ -193,8 +183,6 @@ export function gestureShapeOf(
       return 'press';
     case 'ring':
       return 'ring';
-    case 'quad':
-      return 'teach';
     case 'sweep':
       return 'blade';
     case 'pair':
@@ -214,9 +202,7 @@ export function gestureFocusOf(zone: {
   z?: number;
   at?: number;
   axis?: number;
-  corner?: number;
   from?: number;
-  hold?: boolean;
 }): GestureFocus {
   switch (zone.kind) {
     case 'lane':
@@ -227,8 +213,6 @@ export function gestureFocusOf(zone: {
       return zone.axis === 1
         ? { side: 0, fwd: Math.sign(zone.at ?? 0) }
         : { side: Math.sign(zone.at ?? 0), fwd: 0 };
-    case 'quad':
-      return { side: (zone.corner ?? 0) & 1 ? 1 : -1, fwd: (zone.corner ?? 0) & 2 ? 1 : -1, hold: zone.hold === true };
     case 'pair':
       // Dead centre: the two-handed point (see gestureShapeOf).
       return { side: 0, fwd: 0 };
@@ -271,7 +255,7 @@ function leads(focus: GestureFocus): [boolean, boolean] {
 /**
  * The WINDUP pose for a shape at charge `fill` (0..1 across the read).
  * `beatPhase` is the titan's pulse in beats (time / beat) for the shapes
- * that step in time (the march, the conductor) or tremble (the hammer at
+ * that step in time (the march) or tremble (the hammer at
  * the top, the cannon as it cooks); `focus` steers the pointing shapes.
  */
 export function grammarGesture(
@@ -393,60 +377,6 @@ export function grammarGesture(
       }
       rise = 0.08 * e;
       lean = -0.05 * e;
-      break;
-    }
-    case 'teach': {
-      // THE LESSON: the king POINTS at the taught quarter — one arm level,
-      // straight, one finger out, swung to the quarter's side, dipped for a
-      // quarter near his feet, raised for one at the player's end — and his
-      // head follows it. A HOLD step shows an open PALM instead: the same
-      // arm, the wrist bent back, every finger spread — STAY.
-      const lead = armFor(focus.side);
-      const hold = focus.hold === true;
-      for (const i of [0, 1] as const) {
-        if (i === lead) {
-          arms[i].x = (focus.fwd > 0 ? -1.4 : -0.95) * e;
-          arms[i].z = (focus.fwd > 0 ? 0.6 : 0.45) * e * OUT[i];
-          if (hold) joints(arms[i], e, 0.25, -1.0, 0);
-          else joints(arms[i], e, 0.1, 0.2, 0.12);
-        } else {
-          // The off arm swings back and out — the teacher's stance, one
-          // arm forward and one behind, nothing like the drumline's pump.
-          arms[i].x = 0.6 * e;
-          arms[i].z = OUT[i] * 0.5 * e;
-          joints(arms[i], e, 0.85, 0.05, 0.9);
-        }
-      }
-      lean = 0.05 * e;
-      gaze = 1;
-      break;
-    }
-    case 'conduct': {
-      // THE RECITAL: the conductor. Both upper arms forward at chest
-      // height, forearms folded UP, the baton hand's wrist beating time —
-      // a small tick on every beat, the big flick coming on the cue
-      // (grammarFollowThrough). Nothing here points at a quarter: the
-      // answer lives in your ear now. A HOLD cue pushes the off hand
-      // forward, wrist back, fingers spread — the palm that says STAY.
-      const hold = focus.hold === true;
-      const tick = Math.max(0, Math.sin((beatPhase % 1) * Math.PI * 2)) * 0.35;
-      for (const i of [0, 1] as const) {
-        arms[i].x = -1.15 * e;
-        arms[i].z = OUT[i] * 0.3 * e;
-        if (i === 0) {
-          // The baton hand: fist closed, wrist ticking.
-          joints(arms[i], e, 1.45, 0.2 + tick, 0.95);
-        } else if (hold) {
-          arms[i].x = -1.5 * e;
-          arms[i].z = -OUT[i] * 0.15 * e;
-          joints(arms[i], e, 0.35, -1.05, 0);
-        } else {
-          joints(arms[i], e, 1.3, 0.05, 0.5);
-        }
-      }
-      lean = 0.03 * e;
-      rise = 0.02 * e;
-      gaze = 0;
       break;
     }
     case 'march': {
@@ -632,8 +562,7 @@ export function grammarGesture(
  * The FOLLOW-THROUGH after a landing fires — `k` runs 1 (the strike) → 0
  * (home) over the swing window. The gesture's promise is kept here: the
  * point JABS, the jaws CROSS, the press CLAPS, the ring SLAMS DOWN wide,
- * the teacher FLICKS, the conductor's baton comes DOWN (or the palm
- * PUSHES, on a hold), the drum PUMPS; the hammer is BURIED in the deck,
+ * the drum PUMPS; the hammer is BURIED in the deck,
  * the scythe swings THROUGH, the cannon KICKS, the launcher JOLTS, the
  * coil is THROWN wide, the tilt's low hand SLAPS, the shove DRIVES. The
  * shoulder values are deltas to blend; the elbow/wrist/curl are the
@@ -678,31 +607,6 @@ export function grammarFollowThrough(shape: GestureShape, k: number, arm: 0 | 1,
         strike(arms[i], 0.1, 0.6, 0.7); // slammed down wide, arms thrown straight
       }
       break;
-    case 'teach': {
-      const lead = armFor(focus.side);
-      arms[lead].x = -0.6 * k;
-      arms[lead].z = OUT[lead] * 0.3 * k;
-      strike(arms[lead], 0.2, focus.hold ? -0.9 : 0.7, focus.hold ? 0 : 0.2);
-      break;
-    }
-    case 'conduct': {
-      if (focus.hold) {
-        // The palm PUSHES at you: stay.
-        arms[1].x = -1.7 * k;
-        arms[1].z = -OUT[1] * 0.2 * k;
-        strike(arms[1], 0.15, -1.1, 0);
-        arms[0].x = -1.15 * k;
-        strike(arms[0], 1.45, 0.2, 0.95);
-      } else {
-        // The baton comes DOWN — the cue.
-        arms[0].x = -0.8 * k;
-        arms[0].z = OUT[0] * 0.3 * k;
-        strike(arms[0], 0.6, 1.1, 0.95);
-        arms[1].x = -1.15 * k;
-        strike(arms[1], 1.3, 0.05, 0.5);
-      }
-      break;
-    }
     case 'march':
       arms[arm].x = 0.9 * k;
       strike(arms[arm], 0.15, 0.3, 1); // driven straight down

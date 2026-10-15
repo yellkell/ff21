@@ -727,12 +727,17 @@ function popupTexture(text: string, fill: string, glow: string): CanvasTexture {
 const POP_RED = '#e3101b';
 /** The halftone's darker ink, printed over the red. */
 const POP_DOT = '#8e0010';
+/** Pop-art yellow, the GG's: the comic page's other primary — friendly,
+ *  never mistaken for a hit (red is damage's alone). */
+const POP_YELLOW = '#ffd21a';
+/** The halftone's ink over the yellow: a hot orange. */
+const POP_YELLOW_DOT = '#e2670a';
 const POP_INK = '#0b0a0d';
 /** The off-white of the page round the lettering. */
 const POP_PAPER = '#fff6e0';
 
 /**
- * The damage number as a pop-art panel lettering: flat red printed with
+ * The damage number (and the GG) as pop-art panel lettering: flat red printed with
  * Ben-Day dots that swell toward the bottom, a heavy black keyline inside a
  * paper border and a hard offset shadow, set on a slight italic lean.
  *
@@ -744,16 +749,18 @@ const POP_PAPER = '#fff6e0';
  */
 const DMG_W = 256;
 const DMG_H = 128;
-let dotSheet: HTMLCanvasElement | undefined;
+const dotSheets = new Map<string, HTMLCanvasElement>();
 let dmgFace: CanvasRenderingContext2D | undefined;
 
-function halftone(): HTMLCanvasElement {
+function halftone(ink: string): HTMLCanvasElement {
+  let dotSheet = dotSheets.get(ink);
   if (dotSheet) return dotSheet;
   dotSheet = document.createElement('canvas');
   dotSheet.width = DMG_W;
   dotSheet.height = DMG_H;
+  dotSheets.set(ink, dotSheet);
   const g = dotSheet.getContext('2d')!;
-  g.fillStyle = POP_DOT;
+  g.fillStyle = ink;
   const step = 6.5;
   for (let row = 0, y = 0; y < DMG_H + step; row++, y += step * 0.866) {
     const r = 0.5 + 2.3 * Math.min(1, Math.max(0, (y - DMG_H * 0.28) / (DMG_H * 0.6)));
@@ -771,8 +778,8 @@ function halftone(): HTMLCanvasElement {
   return dotSheet;
 }
 
-function damageTexture(text: string): CanvasTexture {
-  const key = `dmg|${text}`;
+function damageTexture(text: string, face = POP_RED, dots = POP_DOT): CanvasTexture {
+  const key = `dmg|${text}|${face}`;
   let tex = popupTextures.get(key);
   if (tex) return tex;
   const set = (g: CanvasRenderingContext2D): void => {
@@ -799,11 +806,11 @@ function damageTexture(text: string): CanvasTexture {
   f.globalCompositeOperation = 'source-over';
   f.clearRect(0, 0, DMG_W, DMG_H);
   set(f);
-  f.fillStyle = POP_RED;
+  f.fillStyle = face;
   f.fillText(text, cx, cy);
   f.setTransform(1, 0, 0, 1, 0, 0);
   f.globalCompositeOperation = 'source-atop';
-  f.drawImage(halftone(), 0, 0);
+  f.drawImage(halftone(dots), 0, 0);
 
   const canvas = document.createElement('canvas');
   canvas.width = DMG_W;
@@ -826,7 +833,7 @@ function damageTexture(text: string): CanvasTexture {
   g.drawImage(f.canvas, 0, 0);
 
   tex = new CanvasTexture(canvas);
-  tex.colorSpace = SRGBColorSpace; // the printed red, not a washed-out pink
+  tex.colorSpace = SRGBColorSpace; // the printed colour, not a washed-out pastel
   popupTextures.set(key, tex);
   warm(tex);
   return tex;
@@ -845,7 +852,7 @@ interface Popup {
   live: boolean;
 }
 
-/** The default popup style (the X, the GG pass their own colours). */
+/** The default popup style (the X passes its own colours). */
 const DMG_FILL = '#ff1605';
 const DMG_GLOW = 'rgba(255,30,10,1)';
 
@@ -915,7 +922,7 @@ export function initImpactFx(scene: Scene, renderer?: WebGLRenderer): void {
   }
   prewarm.push(
     () => popupTexture('X', '#ff2a2a', 'rgba(255,40,30,1)'),
-    () => popupTexture('GG', '#ffffff', 'rgba(255,255,255,0.95)'),
+    () => damageTexture('GG', POP_YELLOW, POP_YELLOW_DOT),
   );
 }
 
@@ -1004,6 +1011,13 @@ export function spawnDamagePopup(_world: World, pos: Vector3, dmg: number): void
   const big = d >= FIREBALL.headDamage;
   const scale = Math.min(1.5, 0.85 + d / 60) * (big ? 1.15 : 1);
   launchPopup(pos, damageTexture(String(d)), scale, (Math.random() - 0.5) * 0.28);
+}
+
+/** The GG (the B-button salute, a fist bump, the rival's echo): the damage
+ *  number's pop-art lettering in comic yellow, slapped on a little askew.
+ *  `scale` as spawnPopup — a celebratory GG rides bigger than a number. */
+export function spawnGgPopup(_world: World, pos: Vector3, scale = 2.4): void {
+  launchPopup(pos, damageTexture('GG', POP_YELLOW, POP_YELLOW_DOT), scale, (Math.random() - 0.5) * 0.28);
 }
 
 /**

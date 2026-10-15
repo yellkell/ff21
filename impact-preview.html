@@ -4,6 +4,7 @@
      never compile a shader). Not part of the game; never ship or link it.
      ?team=0|1  ?scale=1  ?t=<seconds after the hit to freeze on>
      ?loop=1 keeps punching (watch window.__programs stay flat).
+     ?gg pops the GG salute (B button / fist bump) instead of a hit.
      ?eye=<metres> lands the hit that far from the camera instead (a hit
      taken on your own head: the soot must thin out, not blind you).
      ?overdraw=1 measures FILL instead of drawing: every impact fragment
@@ -21,7 +22,7 @@
         ShaderMaterial, CustomBlending, OneFactor, DoubleSide, LinearSRGBColorSpace,
       } from 'three';
       import { initFirePools, updateFirePools } from '/src/fx/fire.ts';
-      import { initImpactFx, updateImpactFx, spawnFireImpact, spawnDamagePopup } from '/src/fx/effects.ts';
+      import { initImpactFx, updateImpactFx, spawnFireImpact, spawnDamagePopup, spawnGestureCue, spawnGgPopup } from '/src/fx/effects.ts';
 
       const q = new URLSearchParams(location.search);
       // Seeded, so a fill measurement means the same thing run to run.
@@ -70,6 +71,12 @@
         renderer.render(scene, camera);
       };
       const land = () => {
+        if (q.has('gg')) {
+          // The GG salute (B button / fist bump), as PlayerGestureSystem pops it.
+          spawnGestureCue(world, hitAt, 0.32);
+          spawnGgPopup(world, hitAt.clone().setY(hitAt.y + 0.18), 2.4);
+          return;
+        }
         spawnFireImpact(world, hitAt, team, scale, travel);
         spawnDamagePopup(world, hitAt, dmg);
       };

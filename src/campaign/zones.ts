@@ -17,12 +17,11 @@ export type Zone =
    *  burns — be across the centreline when it lands. */
   | { kind: 'half'; side: -1 | 1; axis: 0 | 1 }
   /** THE ENCORE's grammar zones (campaign/grammar.ts): lanes, rails, the
-   *  gate, the donut's ring and the recital's quarters — all target-local.
+   *  gate and the donut's ring — all target-local.
    *  (The grammar's height-less sweep maps onto the classic sweep above.) */
   | { kind: 'lane'; x: number; halfW: number; yaw?: number }
   | { kind: 'rail'; z: number; halfD: number; from: 1 | -1 }
   | { kind: 'gate'; at: number; half: number; axis: 0 | 1 }
   | { kind: 'ring'; innerR: number }
-  | { kind: 'quad'; corner: number; step: number; hold: boolean; pattern: readonly number[]; holds: readonly boolean[] }
   /** One blow of THE TRIDENT: the quarters in the `hit` mask burn. */
   | { kind: 'pair'; hit: number; form: number; step: number; steps: number };

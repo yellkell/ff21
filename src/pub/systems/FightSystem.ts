@@ -70,7 +70,7 @@ import {
   updateFirePools,
   type FireVisual,
 } from '../../fx/fire.js';
-import { spawnDamagePopup, spawnFireImpact, spawnGestureCue, spawnPopup } from '../../fx/effects.js';
+import { spawnDamagePopup, spawnFireImpact, spawnGestureCue, spawnGgPopup } from '../../fx/effects.js';
 import * as sfx from '../../audio/sfx.js';
 import { announce, preloadAnnouncer } from '../../audio/announcer.js';
 import { playCash, preloadCash } from '../../audio/cash.js';
@@ -1098,7 +1098,7 @@ export class FightSystem extends createSystem({}) {
     spawnGestureCue(this.world, pos, 0.32);
     _ggLift.copy(pos);
     _ggLift.y += 0.18;
-    spawnPopup(this.world, _ggLift, 'GG', '#ffffff', 'rgba(255,255,255,0.95)', 2.6);
+    spawnGgPopup(this.world, _ggLift, 2.6);
     sfx.fistBump();
   }
 

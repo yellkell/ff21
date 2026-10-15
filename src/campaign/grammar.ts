@@ -13,8 +13,8 @@
  *  - the SHAPES: gate (stand in the gap, both axes), cross (rails from the
  *    side emitters: singles, THE TRAP's jaws, the vertical twin + bounce),
  *    donut (the rim burns, the middle lives — usually opened by a middle
- *    laser: out, then back), THE RECITAL (a pattern of quarters taught
- *    with a note each, then called by ear alone),
+ *    laser: out, then back), THE TRIDENT (the weapon's colour is the
+ *    pattern; the deck's quarters burn in pairs, a hop on every blow),
  *    the wave (a march with a dark exit that ALWAYS turns), duckdonut (the
  *    combination: middle AND duck), and the beam's whole upgrade path as
  *    'lanes' (slots, the SPLIT corridor, the TWIN + bounce rally, THE X);
@@ -53,9 +53,9 @@ export function mulberry32(seed: number): () => number {
 
 /** The Encore moves this module builds. (The classic kinds — slam, sweep,
  *  beam, volley, nova, seesaw, surge — keep their existing machinery.) */
-export type GrammarKind = 'lanes' | 'cross' | 'gate' | 'donut' | 'recital' | 'wave' | 'duckdonut' | 'trident';
+export type GrammarKind = 'lanes' | 'cross' | 'gate' | 'donut' | 'wave' | 'duckdonut' | 'trident';
 
-export const GRAMMAR_KINDS: readonly GrammarKind[] = ['lanes', 'cross', 'gate', 'donut', 'recital', 'wave', 'duckdonut', 'trident'];
+export const GRAMMAR_KINDS: readonly GrammarKind[] = ['lanes', 'cross', 'gate', 'donut', 'wave', 'duckdonut', 'trident'];
 
 /** The escalation-act floor per kind (RAVE RAID's weight curves, folded to
  *  a single gate): below its act a kind never deals, so an EASY bout keeps
@@ -67,7 +67,6 @@ export const GRAMMAR_ACT_MIN: Record<GrammarKind, number> = {
   gate: 0,
   donut: 1,
   wave: 1,
-  recital: 2,
   duckdonut: 4,
   trident: 0,
 };
@@ -87,11 +86,6 @@ export type GrammarZone =
   /** The rim burns, the middle lives — everything outside `innerR` is
    *  doomed, so get to the centre. */
   | { kind: 'ring'; innerR: number }
-  /** One step of THE RECITAL: the deck's four quarters, `corner` the only
-   *  one that lives (bit 0 = local +x, bit 1 = local +z). A HOLD step
-   *  keeps the previous step's corner — the blue cue, "stay". Every step
-   *  carries the WHOLE pattern so the lesson can teach it up front. */
-  | { kind: 'quad'; corner: number; step: number; hold: boolean; pattern: readonly number[]; holds: readonly boolean[] }
   /** The blade overhead — duck (duckdonut borrows the classic sweep). */
   | { kind: 'sweep' }
   /** One blow of THE TRIDENT: the quarters in `hit` burn (a 4-bit mask,
@@ -125,7 +119,6 @@ export const VERB: Record<string, string> = {
   nova: 'compass',
   sweep: 'duck',
   volley: 'guard',
-  recital: 'corners',
   trident: 'hop',
   wave: 'travel', // the whole-deck crossing — its own verb, never damped
 };
@@ -185,7 +178,6 @@ export function evictsPark(landings: readonly GrammarLanding[], park: Park): boo
       case 'gate':
         return Math.abs((zone.axis ? park.z : park.x) - zone.at) > zone.half - 0.05;
       case 'sweep': // the duck is a demand wherever you stand
-      case 'quad': // the recital makes you commit, corner to corner
       case 'pair': // the trident's first blow is aimed AT the park
         return true;
     }
@@ -201,12 +193,6 @@ export function parkOf(kind: GrammarKind, landings: readonly GrammarLanding[], p
     case 'donut':
     case 'duckdonut':
       return { x: 0, z: 0 }; // hauled into the middle by definition
-    case 'recital': {
-      const quads = landings.filter((l) => l.zone.kind === 'quad');
-      const lastQ = quads[quads.length - 1]?.zone;
-      if (lastQ?.kind !== 'quad') return prev;
-      return { x: (lastQ.corner & 1 ? 1 : -1) * 0.45, z: (lastQ.corner & 2 ? 1 : -1) * 0.4 };
-    }
     case 'trident': {
       // The last blow's nearest living quarter — a fighter who hopped pair
       // to pair ends wherever the final hop put them.
@@ -321,8 +307,6 @@ export interface GrammarOpts {
   beat: number;
   /** Blazing serves expert law: the tight donut disc, the rally promise. */
   expert: boolean;
-  /** The per-fight coin for THE SWEPT RECITAL (act 4 only). */
-  swept: boolean;
   /** Where the last move parked a fighter who played it right. */
   park: Park;
 }
@@ -429,31 +413,6 @@ export function buildGrammarMove(kind: GrammarKind, rng: () => number, o: Gramma
         zone: { kind: 'lane', x: xSign * (0.2 + rng() * 0.32), halfW: GRAMMAR.laneHalfWidth },
       });
     }
-  } else if (kind === 'recital') {
-    // THE MEMORY TEST, by ear. A pattern of steps: each a MOVE to one of
-    // the three quarters you are not in, or a HOLD — stay where the last
-    // step put you (never two holds running, and the first step is always
-    // a move). THE LESSON lights every step in turn with its note; THE
-    // RECITAL calls the same notes with the marks dark. THE SWEPT RECITAL
-    // (act 4, per-fight coin): every blast arrives under the blade too.
-    const at = (a: readonly number[]): number => a[Math.min(act, a.length - 1)];
-    const n = Math.max(2, Math.min(6, at(GRAMMAR.recitalSteps)));
-    const holdChance = at(GRAMMAR.recitalHoldChance);
-    const pattern: number[] = [];
-    const holds: boolean[] = [];
-    let corner = Math.floor(rng() * 4);
-    for (let i = 0; i < n; i++) {
-      const hold = i > 0 && !holds[i - 1] && rng() < holdChance;
-      if (i > 0 && !hold) corner = (corner + 1 + Math.floor(rng() * 3)) & 3;
-      pattern.push(corner);
-      holds.push(hold);
-    }
-    const swept = o.swept && act >= 4;
-    const step = GRAMMAR.recitalStepBeats * beat;
-    pattern.forEach((c, i) => {
-      landings.push({ delay: i * step, zone: { kind: 'quad', corner: c, step: i, hold: holds[i], pattern, holds } });
-      if (swept) landings.push({ delay: i * step, zone: { kind: 'sweep' } });
-    });
   } else if (kind === 'trident') {
     // THE TRIDENT, as RAVE RAID's DJ throws it: one form per move — the
     // weapon's colour is the whole pattern — and the blows alternate
@@ -539,7 +498,7 @@ export function buildGrammarMove(kind: GrammarKind, rng: () => number, o: Gramma
 /**
  * Does a body sphere at (x, y, z) radius r stand in this zone's danger?
  * Same forgiveness law as the classic zones: a sphere counts at ~0.7 of its
- * radius, and the safe shapes carry their own margins. `quad` judges the
+ * radius, and the safe shapes carry their own margins. `pair` judges the
  * HEAD's commitment like the nova does — pass the head for it.
  */
 export function grammarZoneHit(zone: GrammarZone, x: number, z: number, r: number): boolean {
@@ -557,13 +516,6 @@ export function grammarZoneHit(zone: GrammarZone, x: number, z: number, r: numbe
     }
     case 'ring':
       return Math.hypot(x, z) > zone.innerR - r * 0.3;
-    case 'quad': {
-      // Committed past the quarter lines into the called corner, or burn —
-      // loitering at dead centre never satisfies the recital.
-      const sx = zone.corner & 1 ? 1 : -1;
-      const sz = zone.corner & 2 ? 1 : -1;
-      return !(x * sx > GRAMMAR.recitalMargin && z * sz > GRAMMAR.recitalMargin);
-    }
     case 'pair': {
       // The head's quarter burns — unless it is within a lip of a line
       // whose far side lives (the head reaching safe ground is the dodge).
@@ -590,7 +542,6 @@ export function installGrammarDevHook(): void {
         act: o?.act ?? 3,
         beat: o?.beat ?? 0.5,
         expert: o?.expert ?? false,
-        swept: o?.swept ?? false,
         park: o?.park !== undefined ? o.park : { x: 0, z: 0 },
       }),
     pick: (seed: number, weights: ReadonlyArray<readonly [string, number]>, last: string | null): string =>
@@ -614,8 +565,6 @@ export function zoneOnDeck(zone: GrammarZone): boolean {
       return Math.abs(zone.at) <= (zone.axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH);
     case 'ring':
       return zone.innerR > 0.2 && zone.innerR < OCTAGON_HALF_DEPTH;
-    case 'quad':
-      return zone.corner >= 0 && zone.corner <= 3;
     case 'pair':
       return zone.hit > 0 && zone.hit < 15;
     case 'sweep':
