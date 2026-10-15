@@ -15,6 +15,7 @@ import { CylinderGeometry, Mesh, MeshBasicMaterial, Object3D } from 'three';
 import { buildBoxer, setAvatarAccent, setGloveLit, solveTorso, type BoxerRig } from '../avatar/boxer.js';
 import { spawnPopup } from '../fx/effects.js';
 import { HAND_ADDUCTION, setHandCurl } from '../avatar/hands.js';
+import { setBlankFill } from '../avatar/mannequin.js';
 import {
   AVATAR_SKINS,
   OPPONENT_DEFAULT_AVATAR,
@@ -55,6 +56,15 @@ const DEAD_GREY = 0x8a8f99;
  * honest the moment something is.
  */
 const BOT_SKINS = AVATAR_SKINS.filter((s) => !s.locked);
+
+/**
+ * The TUTORIAL's sparring bot is "this rust bucket" — so he is one: the
+ * blank primed dark burnt orange (head + body, via the paint fill) with
+ * rust-steel hands. His neon is the rust accent TutorialSystem sets.
+ */
+const RUST = 0xa3480f;
+const RUST_FILL = `#${RUST.toString(16).padStart(6, '0')}`;
+const TUTORIAL_BOT_AVATAR: AvatarSkin = { id: 'blank', name: '', chassis: RUST, trim: 0x5a2a0c, accent: RUST };
 
 interface OppRig {
   rig: BoxerRig;
@@ -251,8 +261,10 @@ export class OpponentSystem extends createSystem({
     // Any seated mesh peer: look their cosmetics up by canonical seat.
     const seat = !duel && mesh.joined ? (localLayout()[slot]?.canonical ?? -1) : -1;
     const peer = seat >= 0 ? mesh.cosmetics[seat] : undefined;
+    const rust = !mesh.joined && app.mode === 'bot' && app.tutorial;
     let av: AvatarSkin;
-    if (duel && rival.avatarSkin) av = resolveAvatarSkin(rival.avatarSkin, rival.avColor, rival.avLight);
+    if (rust) av = TUTORIAL_BOT_AVATAR;
+    else if (duel && rival.avatarSkin) av = resolveAvatarSkin(rival.avatarSkin, rival.avColor, rival.avLight);
     else if (peer?.av) av = resolveAvatarSkin(peer.av, peer.avc ?? -1, peer.avl ?? 0.5);
     else if (!mesh.joined && app.mode === 'bot') {
       // BOTS wear a random head/chassis skin for the bout (the team-colour
@@ -283,10 +295,12 @@ export class OpponentSystem extends createSystem({
     const name = duel ? rival.name : seat >= 0 ? (mesh.names[seat] ?? '') : '';
     const hidden = paintHiddenAll() || (!!name && socialPaintHidden(name));
     const gr = duel ? rival.gear : (peer?.gr ?? '');
-    const key = `${av.id}|${peer?.avc ?? ''}|${peer?.avl ?? ''}|${duel ? pf.id : 'tint'}|${hidden ? '' : wire}|${gr}|${paintPrefs.version}|${socialState.version}`;
+    const key = `${rust ? 'rust' : av.id}|${peer?.avc ?? ''}|${peer?.avl ?? ''}|${duel ? pf.id : 'tint'}|${hidden ? '' : wire}|${gr}|${paintPrefs.version}|${socialState.version}`;
     if (key === r.appliedSkins) return;
     r.appliedSkins = key;
     for (const piece of r.rig.all) applyAvatarSkin(piece, av);
+    // Before the look bakes: it's the bake that lays the fill down.
+    for (const piece of r.rig.all) setBlankFill(piece, rust ? RUST_FILL : null);
     // Their GEAR first (off the same channels; bots wear none — nobody's
     // home), THEN the look: gear is a paint surface, so the bake must see it.
     for (const piece of r.rig.all) applyGear(piece, cleanGear(gr), av.id === 'onyx' ? 'onyx' : 'white');
