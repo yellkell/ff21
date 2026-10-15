@@ -6,11 +6,11 @@
  *               pick flagged BEST VALUE; under them THE ACCOUNT strip —
  *               PROTECT WITH EMAIL and RECOVER for a bare headset, or the
  *               PROTECTED chip — and the terms in one honest line.
- *   THE CHECKOUT PAY THROUGH YOUR HEADSET (the checkout in the headset's
- *               own browser) — or a QR of the short link: take a
- *               screenshot, open it on your phone (the Meta app syncs
- *               them) and tap the code. On the right the pack, the price,
- *               the state of play, CANCEL.
+ *   THE CHECKOUT a PAY CODE: six letters on lit plates, to type at
+ *               yellkell.com/dollars on a phone or computer, where you
+ *               pick a pack and pay — or PAY THROUGH YOUR HEADSET (the
+ *               pay page in the headset's own browser, code filled in).
+ *               Under it the pack, the price, the state of play, CANCEL.
  *               When the coins land the face says so, the wallet's readout
  *               counts them up, and PROTECT WITH EMAIL is offered right
  *               there, pre-filled with the email typed at the checkout.
@@ -25,7 +25,6 @@
 
 import { KIT, type PanelButton } from '../ui/kit/panel.js';
 import { font } from '../ui/kit/fonts.js';
-import { drawQr } from '../ui/qr.js';
 import { bank, type CoinPack, loadPacks, priceLabel } from '../net/bank.js';
 import { coinImage } from './coinIcon.js';
 
@@ -257,16 +256,79 @@ function drawPack(g: CanvasRenderingContext2D, t: PackTile, hot: boolean, open: 
 
 const QR_PX = 300;
 
+/**
+ * A pay code on six lit plates, one letter each in big type, so nobody
+ * mistakes a letter typing it on a phone; a wider gap down the middle,
+ * because two groups of three read faster than six in a row. Centred on
+ * `cx`, top at `y`.
+ */
+function codeTiles(g: CanvasRenderingContext2D, code: string, cx: number, y: number): void {
+  const n = code.length;
+  const tw = 116;
+  const th = 136;
+  const gap = 14;
+  const mid = n === 6 ? 30 : 0;
+  let x = cx - (n * tw + (n - 1) * gap + mid) / 2;
+  for (let i = 0; i < n; i++) {
+    if (n === 6 && i === 3) x += mid;
+    g.beginPath();
+    g.roundRect(x, y, tw, th, 16);
+    g.fillStyle = KIT.well;
+    g.fill();
+    g.lineWidth = 3;
+    g.strokeStyle = KIT.accent;
+    g.stroke();
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = font(700, 96);
+    g.fillStyle = KIT.textHi;
+    g.fillText(code[i], x + tw / 2, y + th / 2 + 4);
+    x += tw + gap;
+  }
+}
+
+/** The code on the board: where to go, what to type, what it buys. */
+function payCodeFace(co: NonNullable<typeof bank.checkout>, top: number, footY: number): BankFace {
+  const by = top + 446;
+  const buttons: PanelButton[] = [
+    { id: 'bank-open', label: 'PAY THROUGH YOUR HEADSET', sub: "opens the pay page in the headset's browser", x: M, y: by, w: 620, h: 92, small: true },
+    { id: 'bank-cancel', label: 'CANCEL', x: M + 640, y: by, w: INNER - 640, h: 92, small: true },
+  ];
+  return {
+    buttons,
+    body: (g) => {
+      heading(g, 'CHECKOUT', top + 16);
+      badge(g, top + 16);
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = font(600, 24);
+      g.fillStyle = KIT.dim;
+      g.fillText('on your phone or computer, go to', W / 2, top + 70);
+      g.font = font(700, 56);
+      g.fillStyle = KIT.accent;
+      g.fillText(co.page, W / 2, top + 120, INNER);
+      g.font = font(600, 24);
+      g.fillStyle = KIT.dim;
+      g.fillText('and type this code', W / 2, top + 172);
+      codeTiles(g, co.code, W / 2, top + 196);
+      g.font = font(600, 22);
+      g.fillStyle = KIT.faint;
+      g.fillText(`${co.pack.coins} iron-dollars · ${priceLabel(co.pack.minor)} — you can pick another pack there`, W / 2, top + 368, INNER);
+      g.font = font(600, 24);
+      g.fillStyle = KIT.info;
+      g.fillText('waiting for the payment — the coins land here the moment it clears', W / 2, top + 406, INNER);
+      terms(g, footY - 40);
+    },
+  };
+}
+
 function checkoutFace(co: NonNullable<typeof bank.checkout>, top: number, footY: number): BankFace {
+  if (co.state === 'waiting' && co.code) return payCodeFace(co, top, footY);
   const x0 = M + QR_PX + 40;
   const w0 = INNER - QR_PX - 40;
   const buttons: PanelButton[] = [];
-  const live = co.state === 'waiting';
   const p = bank.protecting;
-  if (live) {
-    buttons.push({ id: 'bank-open', label: 'PAY THROUGH YOUR HEADSET', sub: "opens the checkout in the headset's browser", x: x0, y: top + 372, w: w0, h: 92, small: true });
-    buttons.push({ id: 'bank-cancel', label: 'CANCEL', x: x0, y: top + 486, w: 240, h: 72, small: true });
-  } else if (co.state === 'paid') {
+  if (co.state === 'paid') {
     const bare = !bank.account.protected && p.stage !== 'done';
     buttons.push({ id: 'bank-done', label: 'DONE', x: x0, y: top + 372, w: bare ? 240 : 300, h: 92, primary: !bare, small: bare });
     if (bare) {
@@ -291,22 +353,8 @@ function checkoutFace(co: NonNullable<typeof bank.checkout>, top: number, footY:
       heading(g, co.state === 'paid' ? 'PAID' : 'CHECKOUT', top + 16);
       badge(g, top + 16);
       const qy = top + 56;
-      // THE QR — or the plate it will sit on.
-      if (co.state === 'waiting' && co.short) {
-        drawQr(g, co.short, M, qy, QR_PX);
-        // The other way to pay: a headset screenshot lands on the phone
-        // (the Meta app syncs them), and the phone's gallery reads the
-        // code straight off the picture.
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.font = font(600, 21);
-        g.fillStyle = KIT.dim;
-        g.fillText('or take a screenshot,', M + QR_PX / 2, qy + QR_PX + 28);
-        g.fillText('open it on your phone and tap the QR code', M + QR_PX / 2, qy + QR_PX + 54, QR_PX + 40);
-        g.font = font(500, 17);
-        g.fillStyle = KIT.faint;
-        g.fillText(co.short.replace(/^https?:\/\//, ''), M + QR_PX / 2, qy + QR_PX + 84, QR_PX);
-      } else {
+      // The plate the code sat on: what is happening, at a glance.
+      {
         g.beginPath();
         g.roundRect(M, qy, QR_PX, QR_PX, 14);
         g.fillStyle = KIT.well;

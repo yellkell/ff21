@@ -420,7 +420,7 @@ export class MenuSystem extends createSystem({}) {
         mode: bank.mode,
         packs: bank.packs.map((p) => p.id),
         checkout: bank.checkout
-          ? { id: bank.checkout.id, state: bank.checkout.state, short: bank.checkout.short, paid: bank.checkout.paid, note: bank.checkout.note }
+          ? { code: bank.checkout.code, state: bank.checkout.state, url: bank.checkout.url, paid: bank.checkout.paid, note: bank.checkout.note }
           : null,
         coins: coins.balance,
       }),

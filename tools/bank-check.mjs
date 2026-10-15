@@ -11,10 +11,11 @@
  * and walks the API as the headset would: the catalogue, a refused
  * checkout with no identity, a checkout for the 500 pack, the short
  * link's redirect, the dev PAY, a replayed PAY that credits nothing
- * twice, a claim that hands over the coins once and then nothing.
+ * twice, a claim that hands over the coins once and then nothing — and
+ * the PAY CODE loop the yellkell.com/dollars page drives.
  *
  * PART 2 (--headset) boots index.html against that server, opens the
- * STORE's BANK board, taps a pack, asserts the QR checkout is up, pays it
+ * STORE's BANK board, taps a pack, asserts the pay code is up, pays it
  * from outside (as the phone would), and watches the coins land in the
  * wallet — then checks the PLATFORMS board's new shelves and the gear
  * board's new pieces. --shots saves the boards beside this script.
@@ -110,6 +111,45 @@ try {
   check('the webhook has no Stripe to answer to in dev mode', wh.status === 503, String(wh.status));
   const dead = await fetch(`${base}/go/zzzzzzzz`);
   check('a dead short link says so', dead.status === 404, String(dead.status));
+
+  // PAY CODES: the board shows six letters, the buyer types them at
+  // yellkell.com/dollars, picks a pack there and pays.
+  console.log('\n=== PAY CODES: yellkell.com/dollars ===');
+  {
+    const anon = await api('/code', { method: 'POST', headers: jsonH, body: JSON.stringify({ pack: 'strongbox' }) });
+    check('a code with nobody signed in is refused', anon.status === 401, String(anon.status));
+    const made = await api('/code', { method: 'POST', headers: { ...jsonH, 'x-dev-uid': 'coder' }, body: JSON.stringify({ pack: 'strongbox' }) });
+    const code = made.body?.code ?? '';
+    check('the headset gets a six-letter code and the page to type it on', /^[A-HJKMNP-Z2-9]{6}$/.test(code) && made.body?.page === 'yellkell.com/dollars' && made.body?.url === `https://yellkell.com/dollars?c=${code}`, JSON.stringify(made.body));
+    const st = await api(`/code/${code.toLowerCase().slice(0, 3)}-${code.toLowerCase().slice(3)}`, { headers: { 'x-forwarded-for': '10.9.0.1' } });
+    check('the page finds it however it is typed, with the pack the board chose', st.body?.state === 'waiting' && st.body?.pack === 'strongbox' && st.body?.packs?.length === 4, JSON.stringify(st.body));
+    check('and never learns whose it is', !JSON.stringify(st.body).includes('coder'));
+    const unknown = await api('/code/ZZZZZZ', { headers: { 'x-forwarded-for': '10.9.0.1' } });
+    check('an unknown code says so', unknown.body?.state === 'unknown', JSON.stringify(unknown.body));
+    const badPack = await api(`/code/${code}/pay`, { method: 'POST', headers: jsonH, body: JSON.stringify({ pack: 'moon' }) });
+    check('paying for a pack that does not exist is refused', badPack.status === 400, String(badPack.status));
+    const pay = await api(`/code/${code}/pay`, { method: 'POST', headers: jsonH, body: JSON.stringify({ pack: 'purse' }) });
+    check('the page opens a checkout for the pack picked there', pay.status === 200 && /\/dev-pay\?s=dev_/.test(pay.body?.url ?? ''), pay.body?.url);
+    const sid = pay.body?.url ? new URL(pay.body.url).searchParams.get('s') : '';
+    const before = await api(`/code/${code}/done`, { method: 'POST', headers: jsonH, body: JSON.stringify({ session: sid }) });
+    check('not paid yet', before.body?.state === 'waiting', JSON.stringify(before.body));
+    // (the dev PAY button is a form post, like a buyer's tap)
+    const paid = await fetch(`${base}/dev-pay`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: `s=${sid}`, redirect: 'manual' });
+    const back = paid.headers.get('location') ?? '';
+    check('paying goes back to the page with the code and the session', paid.status === 303 && back.startsWith('https://yellkell.com/dollars?c=') && back.includes(code) && back.includes(sid), back);
+    const done = await api(`/code/${code}/done`, { method: 'POST', headers: jsonH, body: JSON.stringify({ session: sid }) });
+    check('back on the page, it is paid', done.body?.state === 'paid' && done.body?.coins === 1300, JSON.stringify(done.body));
+    const claim = await api('/claim', { method: 'POST', headers: { ...jsonH, 'x-dev-uid': 'coder' }, body: '{}' });
+    check('the headset that showed the code collects the pack picked on the page', claim.body?.coins === 1300, JSON.stringify(claim.body));
+    const again = await api(`/code/${code}/pay`, { method: 'POST', headers: jsonH, body: JSON.stringify({ pack: 'purse' }) });
+    check('a paid code opens no second checkout', again.body?.state === 'paid' && !again.body?.url, JSON.stringify(again.body));
+    let last = 0;
+    for (let i = 0; i < 7; i++) last = (await api('/code', { method: 'POST', headers: { ...jsonH, 'x-dev-uid': 'code-hoarder' }, body: JSON.stringify({ pack: 'pocket' }) })).status;
+    check('no more than six codes on the go at once', last === 429, String(last));
+    let first429 = 0;
+    for (let i = 1; i <= 12 && !first429; i++) if ((await api(`/code/ZZZZ${10 + i}`, { headers: { 'x-forwarded-for': 'code-guesser' } })).status === 429) first429 = i;
+    check('fishing for codes is stopped', first429 > 0, `stopped at try ${first429}`);
+  }
 
   // THE ACCOUNT: protect, and the handoff a new headset redeems.
   console.log('\n=== THE ACCOUNT: protect, handoff, redeem ===');
@@ -289,15 +329,17 @@ try {
     await wrap(`act('bank-pack-pocket')`);
     const waiting = await until(async () => (await bankState()).checkout?.state === 'waiting', 8000);
     let st = await bankState();
-    check('a tap opens a checkout: waiting, with a short link', waiting && /\/bank\/go\//.test(st.checkout?.short ?? ''), JSON.stringify(st.checkout));
+    check('a tap shows a pay code: waiting, six letters, the pay page with it filled in', waiting && /^[A-HJKMNP-Z2-9]{6}$/.test(st.checkout?.code ?? '') && (st.checkout?.url ?? '').endsWith(`?c=${st.checkout?.code}`), JSON.stringify(st.checkout));
     await page.waitForTimeout(700);
     ids = await m(`buttons('shop')`);
-    check('the checkout face: OPEN ON THIS DEVICE and CANCEL', has(ids, 'bank-open', 'bank-cancel'), ids.filter((b) => b.startsWith('bank-')).join(','));
+    check('the checkout face: PAY THROUGH YOUR HEADSET and CANCEL', has(ids, 'bank-open', 'bank-cancel'), ids.filter((b) => b.startsWith('bank-')).join(','));
     await shot('checkout');
 
-    // The phone pays.
-    if (st.checkout?.id) {
-      const pay = await api('/dev-pay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ s: st.checkout.id }) });
+    // The phone pays: types the code on the pay page, which opens a checkout and pays it.
+    if (st.checkout?.code) {
+      const opened = await api(`/code/${st.checkout.code}/pay`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pack: 'pocket' }) });
+      const sid = opened.body?.url ? new URL(opened.body.url).searchParams.get('s') : '';
+      const pay = await api('/dev-pay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ s: sid }) });
       check('paid from outside, as the phone would', pay.body?.paid === true, JSON.stringify(pay.body));
       const landed = await until(async () => (await bankState()).checkout?.state === 'paid', 12000);
       st = await bankState();
