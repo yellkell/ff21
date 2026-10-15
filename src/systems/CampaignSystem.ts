@@ -33,7 +33,6 @@ import {
   BoxGeometry,
   Color,
   CylinderGeometry,
-  DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -95,6 +94,7 @@ import {
   saveCampaignProgress,
 } from '../campaign/campaignState.js';
 import {
+  AFTERBURN_SEC,
   beamTelegraph,
   circleTelegraph,
   donutTelegraph,
@@ -102,7 +102,7 @@ import {
   halfTelegraph,
   laneTelegraph,
   novaTelegraph,
-  pairTelegraph,
+  quadTelegraph,
   quarterTelegraph,
   railTelegraph,
   recitalMarksTelegraph,
@@ -110,6 +110,8 @@ import {
   xTelegraph,
   type Telegraph,
 } from '../campaign/telegraphs.js';
+import { StrikeFx } from '../rave/choreo/strikes.js';
+import { HEAT } from '../rave/choreo/telegraphs.js';
 import { BallState, Fireball } from '../components/Fireball.js';
 import { Combatant } from '../components/Combatant.js';
 import { Health } from '../components/Health.js';
@@ -357,6 +359,14 @@ export class CampaignSystem extends createSystem({
    *  fighter who played it right. Reset to centre each stage. */
   private park: Park = { x: 0, z: 0 };
   private strikes: Strike[] = [];
+  /** THE DANGER KIT's volumes (RAVE RAID's strikes.ts): the sheets of
+   *  light every platform hit is drawn with, spawned on deckOf(seat). */
+  private strikeFx = new StrikeFx();
+  /** One stand-in per seat on that seat's platform frame (seatPoint +
+   *  seatYawDelta), parenting its telegraphs and strikes — the kit draws
+   *  in DECK space, so this is what lines its hatch, clip and rim up with
+   *  the platform underneath. Re-placed on every use; dropped at teardown. */
+  private decks = new Map<number, Group>();
   /** THE TRIDENT (VULTURE, GOLIATH): the weapon in the titan's fist while
    *  the move runs — conjured over the charge, flashing on every blow,
    *  dissolving after the last. Built once per bout, on first use. */
@@ -787,6 +797,30 @@ export class CampaignSystem extends createSystem({
     if (!this.raid() || seat === mesh.mySeat) return 0;
     const canonical = MODE_LAYOUT[app.arcade];
     return (canonical[seat]?.yaw ?? 0) - (canonical[mesh.mySeat]?.yaw ?? 0);
+  }
+
+  /** The seat's deck frame in my world (see `decks`): place a telegraph
+   *  or strike inside it in that seat's own platform coordinates. */
+  private deckOf(seat: number): Group {
+    let deck = this.decks.get(seat);
+    if (!deck) {
+      deck = new Group();
+      deck.name = `campaign-deck-${seat}`;
+      this.decks.set(seat, deck);
+    }
+    if (deck.parent !== this.scene) this.scene.add(deck);
+    this.seatPoint(seat, 0, 0, 0, deck.position);
+    deck.rotation.y = this.seatYawDelta(seat);
+    return deck;
+  }
+
+  /** Mount a telegraph on a seat's deck at deck-local (x, y, z), turned
+   *  `yaw` within the deck. */
+  private mount(tg: Telegraph, seat: number, x = 0, y: number = CAMPAIGN.decalY, z = 0, yaw = 0): Telegraph {
+    tg.group.position.set(x, y, z);
+    tg.group.rotation.set(0, yaw, 0);
+    this.deckOf(seat).add(tg.group);
+    return tg;
   }
 
   /** A seat's head position in MY world (mine tracked, theirs off the bus). */
@@ -1252,6 +1286,9 @@ export class CampaignSystem extends createSystem({
     this.disposeShots();
     for (const s of this.strikes) s.dispose();
     this.strikes = [];
+    this.strikeFx.clear();
+    for (const d of this.decks.values()) d.removeFromParent();
+    this.decks.clear();
     this.rig?.dispose();
     this.rig = undefined;
     this.disposeGoop();
@@ -2272,9 +2309,8 @@ export class CampaignSystem extends createSystem({
         }
       }
       for (const seat of seats) {
-        this.seatPoint(seat, 0, CAMPAIGN.decalY, 0, _v);
+        this.seatPoint(seat, 0, 0, 0, _v);
         const deckX = _v.x;
-        const deckY = _v.y;
         const deckZ = _v.z;
         const yawD = this.seatYawDelta(seat);
         // The sweep line (the duckdonut's blade / the swept recital) hangs
@@ -2307,43 +2343,30 @@ export class CampaignSystem extends createSystem({
             // second arm of the pair carries no telegraph of its own.
             if (!xDone.has(l.delay)) {
               xDone.add(l.delay);
-              tg = xTelegraph(gz.halfW);
-              tg.group.position.set(deckX, deckY, deckZ);
-              tg.group.rotation.y = yawD;
+              tg = this.mount(xTelegraph(gz.halfW), seat);
             }
           } else if (gz.kind === 'lane') {
-            tg = laneTelegraph(gz.halfW, OCTAGON_HALF_DEPTH * 2 + 0.6);
-            this.seatPoint(seat, gz.x, CAMPAIGN.decalY, 0, _v);
-            tg.group.position.copy(_v);
-            tg.group.rotation.y = yawD;
+            // The strip is authored from its near end: half its run back.
+            const len = OCTAGON_HALF_DEPTH * 2 + 0.6;
+            tg = this.mount(laneTelegraph(gz.halfW, len), seat, gz.x, CAMPAIGN.decalY, len / 2);
           } else if (gz.kind === 'rail') {
-            tg = railTelegraph(gz.halfD, OCTAGON_HALF_WIDTH * 2 + 0.6, gz.from);
-            this.seatPoint(seat, 0, CAMPAIGN.decalY, gz.z, _v);
-            tg.group.position.copy(_v);
-            tg.group.rotation.y = yawD;
+            tg = this.mount(railTelegraph(gz.halfD, OCTAGON_HALF_WIDTH * 2 + 0.6, gz.from), seat, 0, CAMPAIGN.decalY, gz.z);
           } else if (gz.kind === 'gate') {
-            tg = gateTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, gz.at, gz.half, gz.axis);
-            tg.group.position.set(deckX, deckY, deckZ);
-            tg.group.rotation.y = yawD;
+            tg = this.mount(gateTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, gz.at, gz.half, gz.axis), seat);
           } else if (gz.kind === 'ring') {
-            tg = donutTelegraph(GRAMMAR.donutRadius, gz.innerR);
-            tg.group.position.set(deckX, deckY, deckZ);
-            tg.group.rotation.y = yawD;
+            tg = this.mount(donutTelegraph(GRAMMAR.donutRadius, gz.innerR), seat);
           } else if (gz.kind === 'pair') {
-            tg = pairTelegraph(gz.hit, OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
-            tg.group.position.set(deckX, deckY, deckZ);
-            tg.group.rotation.y = yawD;
+            // THE TRIDENT's blow, by RAVE RAID's law: the floor stays dark
+            // but for the chalk quarter lines (below) — the read is the
+            // weapon's colour and where it is cocked — and the doomed
+            // quarters ignite as the blow lands (the afterburn).
+            tg = this.mount(quadTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, gz.hit, false), seat);
           } else if (gz.kind === 'sweep') {
-            const dir: 1 | -1 = arm === 0 ? -1 : 1;
-            tg = sweepTelegraph(OCTAGON_HALF_WIDTH * 2 + 0.5, OCTAGON_HALF_DEPTH * 2 + 0.3, sweepY, CAMPAIGN.sweepThickness, dir);
-            this.seatPoint(seat, 0, 0, 0, _v);
-            tg.group.position.copy(_v);
-            tg.group.rotation.y = yawD;
+            tg = this.mount(this.sweepMark(sweepY, arm, seat), seat, 0, 0, 0);
           }
           // quad: no zone telegraph — the lesson teaches (below), the NOTE
           // is the per-step warning, and the block only confirms it: a
           // short fall from low, too late to be read instead of remembered.
-          if (tg) this.scene.add(tg.group);
           telegraphs.push(tg);
           if (gz.kind === 'quad') {
             const bf = new RecitalBlockfall(
@@ -2368,11 +2391,7 @@ export class CampaignSystem extends createSystem({
         // THE TRIDENT keeps the floor dark but for the chalk quarter lines:
         // the read is the weapon's colour and where it is cocked.
         if (gk === 'trident') {
-          const quarters = quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
-          quarters.group.position.set(deckX, deckY, deckZ);
-          quarters.group.rotation.y = yawD;
-          this.scene.add(quarters.group);
-          dressing.push(quarters);
+          dressing.push(this.mount(quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH), seat));
         }
         const firstQuad = landings.find((l) => l.zone.kind === 'quad')?.zone;
         if (firstQuad?.kind === 'quad' && lesson) {
@@ -2385,12 +2404,7 @@ export class CampaignSystem extends createSystem({
             lesson.stepSecs,
             chargeTime,
           );
-          for (const d of [quarters, marks]) {
-            d.group.position.set(deckX, deckY, deckZ);
-            d.group.rotation.y = yawD;
-            this.scene.add(d.group);
-            dressing.push(d);
-          }
+          for (const d of [quarters, marks]) dressing.push(this.mount(d, seat));
         }
       }
     } else if (kind === 'decree') {
@@ -2403,12 +2417,7 @@ export class CampaignSystem extends createSystem({
         const localA = canonicalA - (canonical[s]?.yaw ?? 0);
         zones.push({ kind: 'nova', angle: localA, halfAngle });
         zoneSeats.push(s);
-        const tg = novaTelegraph(CAMPAIGN.novaRadius, localA, halfAngle);
-        this.seatPoint(s, 0, CAMPAIGN.decalY, 0, _v);
-        tg.group.position.copy(_v);
-        tg.group.rotation.y = this.seatYawDelta(s);
-        this.scene.add(tg.group);
-        telegraphs.push(tg);
+        telegraphs.push(this.mount(novaTelegraph(CAMPAIGN.novaRadius, localA, halfAngle), s));
         staggers.push(0);
         markers.push(null);
       }
@@ -2433,11 +2442,7 @@ export class CampaignSystem extends createSystem({
               : x0; // 'rehit' re-marks the SAME crater
           zones.push({ kind: 'circle', x, z: z0, r });
           zoneSeats.push(seat);
-          const tg = circleTelegraph(r);
-          this.seatPoint(seat, x, CAMPAIGN.decalY, z0, _v);
-          tg.group.position.copy(_v);
-          this.scene.add(tg.group);
-          telegraphs.push(tg);
+          telegraphs.push(this.mount(circleTelegraph(r), seat, x, CAMPAIGN.decalY, z0));
           // A breath of extra hang on top of the charge, so the fist lands a
           // touch later than the disc fills — a fairer window to clear it.
           staggers.push(
@@ -2459,25 +2464,7 @@ export class CampaignSystem extends createSystem({
         const y = params.y?.[ti] ?? 1.4;
         zones.push({ kind: 'sweep', y });
         zoneSeats.push(seat);
-        // Which way the cut will actually run. spawnBladeSweep starts the
-        // blade at `from * span` and drives it to `-from * span`, with
-        // from = arm === 0 ? 1 : -1 — so arm 0 travels toward −x and arm 1
-        // toward +x. The telegraph used to ignore the arm entirely and always
-        // wipe −x → +x, so every arm-0 sweep warned in the opposite direction
-        // to the blade that followed.
-        const dir: 1 | -1 = arm === 0 ? -1 : 1;
-        const tg = sweepTelegraph(
-          OCTAGON_HALF_WIDTH * 2 + 0.5,
-          OCTAGON_HALF_DEPTH * 2 + 0.3,
-          y,
-          CAMPAIGN.sweepThickness,
-          dir,
-        );
-        this.seatPoint(seat, 0, 0, 0, _v);
-        tg.group.position.copy(_v);
-        tg.group.rotation.y = this.seatYawDelta(seat);
-        this.scene.add(tg.group);
-        telegraphs.push(tg);
+        telegraphs.push(this.mount(this.sweepMark(y, arm, seat), seat, 0, 0, 0));
         staggers.push(ti * RAID.sweepCascade);
       });
     } else if (kind === 'beam') {
@@ -2490,7 +2477,7 @@ export class CampaignSystem extends createSystem({
           const offset = i === 0 ? 0 : (Math.random() < 0.5 ? -1 : 1) * rand(0.5, 0.8);
           const zone: Zone = { kind: 'beam', x: 0, z: 0, dx: 0, dz: 1, halfW: CAMPAIGN.beamHalfWidth };
           const tg = beamTelegraph(CAMPAIGN.beamHalfWidth, 3.2);
-          this.scene.add(tg.group);
+          this.deckOf(seat).add(tg.group);
           zones.push(zone);
           zoneSeats.push(seat);
           telegraphs.push(tg);
@@ -2518,15 +2505,10 @@ export class CampaignSystem extends createSystem({
         for (let i = 0; i < stages; i++) {
           zones.push({ kind: 'half', side, axis });
           zoneSeats.push(seat);
-          const tg = halfTelegraph(side, halfW, depth);
-          this.seatPoint(seat, 0, CAMPAIGN.decalY, 0, _v);
-          tg.group.position.copy(_v);
           // −90° (not +90°): a +90° turn maps the +x half to −z, but the hit
           // test damages the +z half (the one the player stands on) — so the
           // flood must land there too, or the shown danger reads inverted.
-          tg.group.rotation.y = this.seatYawDelta(seat) + (axis ? -Math.PI / 2 : 0);
-          this.scene.add(tg.group);
-          telegraphs.push(tg);
+          telegraphs.push(this.mount(halfTelegraph(side, halfW, depth), seat, 0, CAMPAIGN.decalY, 0, axis ? -Math.PI / 2 : 0));
           staggers.push(i * GOOPLIATH.seesawGap);
           markers.push(null);
           side = side === 1 ? -1 : 1;
@@ -2541,12 +2523,7 @@ export class CampaignSystem extends createSystem({
         const angle = params.a?.[ti] ?? 0;
         zones.push({ kind: 'nova', angle, halfAngle });
         zoneSeats.push(seat);
-        const tg = novaTelegraph(CAMPAIGN.novaRadius, angle, halfAngle);
-        this.seatPoint(seat, 0, CAMPAIGN.decalY, 0, _v);
-        tg.group.position.copy(_v);
-        tg.group.rotation.y = this.seatYawDelta(seat);
-        this.scene.add(tg.group);
-        telegraphs.push(tg);
+        telegraphs.push(this.mount(novaTelegraph(CAMPAIGN.novaRadius, angle, halfAngle), seat));
         staggers.push(0);
       });
     } else {
@@ -2808,6 +2785,27 @@ export class CampaignSystem extends createSystem({
     return g;
   }
 
+  /**
+   * The sweep's mark for one seat's deck — RAVE RAID's danger in the air
+   * (a roof at the limbo line, two blazing rails with chevrons dripping
+   * under them, the floor left unpainted: stay put and DROP). Its charge
+   * runs from the side the blade will enter: spawnBladeSweep starts the
+   * cut at `from * span` with from = arm === 0 ? 1 : -1, so the warning
+   * and the blade always agree on direction. A remote deck gets the
+   * silhouette only, not the first-person overhead layer.
+   */
+  private sweepMark(y: number, arm: 0 | 1, seat: number): Telegraph {
+    const from: 1 | -1 = arm === 0 ? 1 : -1;
+    return sweepTelegraph(
+      OCTAGON_HALF_WIDTH * 2 + 0.5,
+      OCTAGON_HALF_DEPTH * 2 + 0.3,
+      y,
+      CAMPAIGN.sweepThickness,
+      from,
+      seat === this.mySeatId(),
+    );
+  }
+
   /** Aim one beam zone (and its telegraph) at the TARGET, offset sideways.
    *  Beam zones live in MY world — a remote target's head comes off the pose
    *  bus, so every client rakes the strip through the same fighter. */
@@ -2826,9 +2824,18 @@ export class CampaignSystem extends createSystem({
     zone.dx = _v.x;
     zone.dz = _v.z;
     // Group origin at the NEAR (player-side) end; local −Z runs back
-    // toward the titan.
-    tg.group.position.set(px + _v.x * 1.5, CAMPAIGN.decalY, pz + _v.z * 1.5);
-    tg.group.rotation.y = Math.atan2(_v.x, _v.z); // local −Z → −dir
+    // toward the titan. The strip hangs on the seat's deck (the kit draws
+    // in deck space), so take my-world placement into that frame.
+    const nx = px + _v.x * 1.5;
+    const nz = pz + _v.z * 1.5;
+    const deck = this.deckOf(seat);
+    const yd = deck.rotation.y;
+    const c = Math.cos(yd);
+    const sn = Math.sin(yd);
+    const rx = nx - deck.position.x;
+    const rz = nz - deck.position.z;
+    tg.group.position.set(rx * c - rz * sn, CAMPAIGN.decalY, rx * sn + rz * c);
+    tg.group.rotation.y = Math.atan2(_v.x, _v.z) - yd; // local −Z → −dir
   }
 
   private advanceAttack(delta: number): void {
@@ -2866,8 +2873,27 @@ export class CampaignSystem extends createSystem({
       const dueAt = a.chargeTime + a.staggers[i];
       if (a.time >= dueAt) {
         a.resolved[i] = true;
-        a.telegraphs[i]?.dispose();
+        // THE AFTERBURN: the mark doesn't vanish on the landing — it
+        // ignites white-hot and burns out (fill 1 → 2), so warning and hit
+        // read as one object. Handed to the strike pool, which outlives
+        // the attack, so the next move's build never cuts it short.
+        const landed = a.telegraphs[i];
         a.telegraphs[i] = null;
+        if (landed) {
+          landed.group.visible = true;
+          const clock = (): number => this.time;
+          this.strikes.push({
+            age: 0,
+            life: AFTERBURN_SEC,
+            update(age) {
+              landed.update(1 + age / AFTERBURN_SEC, clock());
+            },
+            dispose() {
+              landed.dispose();
+            },
+          });
+          landed.update(1, this.time);
+        }
         // The bolt lands as the zone goes off — the strike visual takes over.
         a.bolts[i]?.dispose();
         a.bolts[i] = null;
@@ -3050,7 +3076,7 @@ export class CampaignSystem extends createSystem({
       this.startLungeAtPrey();
     } else if (kind === 'beam') {
       sfx.beamBlast();
-      if (zone.kind === 'beam') this.spawnBeamColumn(zone);
+      if (zone.kind === 'beam') this.spawnBeamColumn(zone, seat);
     } else if (kind === 'nova') {
       sfx.beamBlast();
       sfx.slamImpact();
@@ -3293,35 +3319,18 @@ export class CampaignSystem extends createSystem({
   }
 
   private spawnBladeSweep(y: number, arm: 0 | 1, seat: number): void {
-    // The SLICE: a tall glowing blade wall scythes across the whole TARGET
-    // platform at the marked height, shedding sparks as it goes — a cut you
-    // can watch travel, not a flicker. The travel runs along the target's
-    // local X; a remote platform gets the same cut, transformed.
-    const s = this.def.scale;
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    const yd = this.seatYawDelta(seat);
-    const cos = Math.cos(yd);
-    const sin = Math.sin(yd);
-    const blade = new Mesh(
-      new BoxGeometry(0.09, 0.4, OCTAGON_HALF_DEPTH * 2 + 0.7),
-      new MeshBasicMaterial({
-        color: this.def.accent,
-        transparent: true,
-        opacity: 0.9,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    blade.rotation.y = yd;
-    this.scene.add(blade);
-    const edge = glowSprite(this.def.accent, 0.5 * s);
-    this.scene.add(edge);
-    // THE DELIVERY's scythe: a lit haft from the striking fist to the blade
-    // for the whole cut, so the blade is visibly the END OF THE ARM sweeping
-    // your deck — not a wall that appears on it. (A unit cylinder along +y,
-    // stretched and turned onto fist → blade every frame.)
+    // The SLICE, in the danger kit (RAVE RAID's strikes.ts): a hanging
+    // curtain of light travels the TARGET's deck at the marked height,
+    // white-hot lip, all its mass above the line, clipped to the octagon —
+    // danger overhead, air below. A remote platform gets the same cut on
+    // its own deck.
+    const from: 1 | -1 = arm === 0 ? 1 : -1; // the striking arm's side (see yaw)
+    const deck = this.deckOf(seat);
+    this.strikeFx.sweep(deck, from, y);
+    // THE DELIVERY's scythe: a lit haft from the striking fist to the
+    // curtain's lip for the whole cut, so the blade is visibly the END OF
+    // THE ARM sweeping your deck — not a wall that appears on it. (A unit
+    // cylinder along +y, stretched and turned onto fist → lip every frame.)
     // GOOPLIATH's is a fat gel tendril (translucent, not lit) that goes
     // to blood with him.
     const gel = !!this.goop;
@@ -3339,23 +3348,23 @@ export class CampaignSystem extends createSystem({
     this.scene.add(haft);
     const fistAt = (out: Vector3): Vector3 => this.fistPos(arm, out);
     const fist = new Vector3();
-    const from = arm === 0 ? 1 : -1; // the striking arm's side (see yaw)
-    const span = OCTAGON_HALF_WIDTH + 0.7;
-    let emberClock = 0;
+    const cx = deck.position.x;
+    const cz = deck.position.z;
+    const cos = Math.cos(deck.rotation.y);
+    const sin = Math.sin(deck.rotation.y);
+    // The curtain's own travel (StrikeFx.sweep: enters at the rim, done
+    // travelling at 0.34 s).
+    const span = OCTAGON_HALF_WIDTH + 0.07;
     this.strikes.push({
       age: 0,
       life: 0.42,
       update(age) {
-        const k = Math.min(1, age / 0.34); // slow enough to watch it travel
+        const k = Math.min(1, age / 0.34);
         const bx = from * span * (1 - 2 * k);
         // Target-local (bx, 0) → my world (rotY then translate).
-        const wx = cx + bx * cos;
-        const wz = cz - bx * sin;
-        blade.position.set(wx, y, wz);
-        edge.position.set(wx, y, wz);
-        (blade.material as MeshBasicMaterial).opacity = 0.9 * (1 - k * k * k);
+        _p.set(cx + bx * cos, y, cz - bx * sin);
         fistAt(fist);
-        _p.set(wx, y, wz).sub(fist);
+        _p.sub(fist);
         const len = _p.length();
         haft.visible = len > 0.05;
         if (haft.visible) {
@@ -3364,20 +3373,8 @@ export class CampaignSystem extends createSystem({
           haft.scale.set(1, len, 1);
           (haft.material as MeshBasicMaterial).opacity = 0.75 * (1 - k * k * k);
         }
-        // Sparks shed along the cut.
-        if (age > emberClock) {
-          emberClock = age + 0.045;
-          const zr = rand(-OCTAGON_HALF_DEPTH, OCTAGON_HALF_DEPTH);
-          _v.set(cx + bx * cos + zr * sin, y - 0.1, cz - bx * sin + zr * cos);
-          emberBurst(_v, 4, true);
-        }
       },
       dispose() {
-        blade.geometry.dispose();
-        (blade.material as MeshBasicMaterial).dispose();
-        blade.removeFromParent();
-        edge.material.dispose();
-        edge.removeFromParent();
         haft.geometry.dispose();
         (haft.material as MeshBasicMaterial).dispose();
         haft.removeFromParent();
@@ -3385,277 +3382,90 @@ export class CampaignSystem extends createSystem({
     });
   }
 
-  private spawnBeamColumn(zone: Zone & { kind: 'beam' }): void {
-    // A blinding column from the boss's eyes raking down the strip — the
-    // titan's visor, or the gel's own hot amber stare.
+  private spawnBeamColumn(zone: Zone & { kind: 'beam' }, seat: number): void {
+    // On the deck, the danger kit's beam: a wall of light exactly on the
+    // strip (RAVE RAID's strikes.ts), its white-hot core sheet down the
+    // middle, clipped to the octagon. Beam zones live in MY world, so the
+    // line is taken into the target deck's own frame first.
+    const deck = this.deckOf(seat);
+    const yd = deck.rotation.y;
+    const c = Math.cos(yd);
+    const sn = Math.sin(yd);
+    const rx = zone.x - deck.position.x;
+    const rz = zone.z - deck.position.z;
+    const px = rx * c - rz * sn;
+    const pz = rx * sn + rz * c;
+    const dx = zone.dx * c - zone.dz * sn;
+    const dz = zone.dx * sn + zone.dz * c;
+    this.strikeFx.beam(deck, px * dz - pz * dx, Math.atan2(dx, dz), zone.halfW);
+    // Above it, the column from the boss's eyes raking down onto the strip
+    // — the titan's visor, or the gel's own stare — in the same heat:
+    // white-hot on the shot, burning out to danger red.
     if (this.rig) this.rig.head.getWorldPosition(_v);
     else this.goop!.headWorld(_v);
     const from = _v.clone();
-    const to = new Vector3(zone.x - zone.dx * 1.2, 0.05, zone.z - zone.dz * 1.2);
     const far = new Vector3(zone.x + zone.dx * 1.6, 0.05, zone.z + zone.dz * 1.6);
     const len = from.distanceTo(far);
-    const beam = new Mesh(
-      new CylinderGeometry(0.07, 0.12, len, 10),
-      new MeshBasicMaterial({
-        color: this.def.accent,
-        transparent: true,
-        opacity: 0.9,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
+    const mat = new MeshBasicMaterial({
+      color: HEAT.hot,
+      transparent: true,
+      opacity: 0.9,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    });
+    const beam = new Mesh(new CylinderGeometry(0.07, 0.12, len, 10), mat);
     beam.position.copy(from).add(far).multiplyScalar(0.5);
     beam.lookAt(far);
     beam.rotateX(Math.PI / 2); // cylinder axis onto the look direction
     this.scene.add(beam);
-    const world = this.world;
-    let burst = false;
+    const hot = new Color(HEAT.hot);
+    const danger = new Color(HEAT.danger);
     this.strikes.push({
       age: 0,
       life: 0.35,
       update(age) {
-        if (!burst) {
-          burst = true;
-          spawnFireImpact(world, to, 1);
-          spawnFireImpact(world, far, 1);
-        }
-        (beam.material as MeshBasicMaterial).opacity = 0.9 * (1 - (age / 0.35) ** 2);
+        const k = age / 0.35;
+        mat.color.copy(hot).lerp(danger, Math.min(1, k / 0.6));
+        mat.opacity = 0.9 * (1 - k * k);
       },
       dispose() {
         beam.geometry.dispose();
-        (beam.material as MeshBasicMaterial).dispose();
+        mat.dispose();
         beam.removeFromParent();
       },
     });
   }
 
-  /** The nova lands: fire sweeps the TARGET's platform, sparing only the
-   *  wedge. `angle` is target-local; the whole show is transformed onto
-   *  their platform (the DECREE fires one of these per raider at once). */
+  /** The nova lands: the danger kit's shock ring (RAVE RAID's strikes.ts)
+   *  races out over the TARGET's deck to its corners and no further, open
+   *  across the safe wedge. `angle` is target-local (the DECREE fires one
+   *  of these per raider at once). */
   private spawnNovaWave(angle: number, halfAngle: number, seat: number): void {
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    const yd = this.seatYawDelta(seat);
-    const cos = Math.cos(yd);
-    const sin = Math.sin(yd);
-    const ring = new Mesh(
-      new CylinderGeometry(1, 1, 0.06, 32, 1, true),
-      new MeshBasicMaterial({
-        color: this.def.accent,
-        transparent: true,
-        opacity: 0.9,
-        blending: AdditiveBlending,
-        depthWrite: false,
-        side: 2, // DoubleSide — the open tube must show both faces
-      }),
-    );
-    ring.position.set(cx, 0.1, cz);
-    this.scene.add(ring);
-    const world = this.world;
-    let burstClock = 0;
-    this.strikes.push({
-      age: 0,
-      life: 0.45,
-      update(age) {
-        const k = Math.min(1, age / 0.38);
-        ring.scale.set(0.15 + k * CAMPAIGN.novaRadius, 1, 0.15 + k * CAMPAIGN.novaRadius);
-        (ring.material as MeshBasicMaterial).opacity = 0.9 * (1 - k * k);
-        // Fire erupts along the expanding front — everywhere but the wedge.
-        if (age > burstClock) {
-          burstClock = age + 0.05;
-          for (let i = 0; i < 3; i++) {
-            const a = rand(-Math.PI, Math.PI);
-            const d = Math.abs(((a - angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-            if (d <= halfAngle) continue; // the safe ground stays safe
-            const rr = 0.15 + k * CAMPAIGN.novaRadius * 0.85;
-            const lx = Math.sin(a) * rr;
-            const lz = Math.cos(a) * rr;
-            _v.set(cx + lx * cos + lz * sin, 0.12, cz - lx * sin + lz * cos);
-            emberBurst(_v, 6, true);
-            if (i === 0 && k > 0.4) spawnFireImpact(world, _v, 1, 0.8);
-          }
-        }
-      },
-      dispose() {
-        ring.geometry.dispose();
-        (ring.material as MeshBasicMaterial).dispose();
-        ring.removeFromParent();
-      },
-    });
+    this.strikeFx.nova(this.deckOf(seat), angle, halfAngle);
   }
 
-  /** The seesaw/surge lands: a tide floods the doomed half — a slab of light,
-   *  fire along the deck, and wet splats stamped where it hit. All target-
-   *  local, transformed to the marked seat's platform. `axis` 0 = x split
-   *  (seesaw), 1 = z split (surge) — the whole show turns a quarter turn. */
-  /** A shared strip-of-fire landing: a glowing slab flashes over the strip
-   *  and settles into the deck with a run of embers — the lane's and the
-   *  rail's detonation (THE ENCORE's laser shapes). */
+  /** The lane's and the rail's detonation (THE ENCORE's laser shapes): the
+   *  danger kit's wall of light exactly on the strip (RAVE RAID's
+   *  strikes.ts) — a lane (THE X's arms yawed) or a rail, its emitter's
+   *  muzzle flaring. */
   private spawnStripStrike(zone: Zone & ({ kind: 'lane' } | { kind: 'rail' }), seat: number): void {
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    // Lane: a strip down local z at x (plus THE X's yaw). Rail: across at z.
-    const lane = zone.kind === 'lane';
-    const yd =
-      this.seatYawDelta(seat) + (lane ? (zone.yaw ?? 0) : Math.PI / 2);
-    const off = lane ? zone.x : zone.z;
-    const halfW = lane ? zone.halfW : zone.halfD;
-    const len = (lane ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH) * 2 + 0.6;
-    const cos = Math.cos(yd);
-    const sin = Math.sin(yd);
-    const slab = new Mesh(
-      new BoxGeometry(halfW * 2, 0.6, len),
-      new MeshBasicMaterial({
-        color: this.def.accent,
-        transparent: true,
-        opacity: 0.85,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    slab.rotation.y = yd;
-    // The strip's perpendicular offset, rotated into world (lane offsets run
-    // local x; the rail's quarter-turn folds its z offset onto the same axis).
-    const ox = lane ? off : -off;
-    slab.position.set(cx + ox * cos, 0.3, cz - ox * sin);
-    this.scene.add(slab);
-    let burstClock = 0;
-    this.strikes.push({
-      age: 0,
-      life: 0.45,
-      update(age) {
-        const k = Math.min(1, age / 0.4);
-        (slab.material as MeshBasicMaterial).opacity = 0.85 * (1 - k * k);
-        slab.scale.y = 1 - 0.6 * k;
-        if (age > burstClock) {
-          burstClock = age + 0.08;
-          const along = rand(-len / 2 + 0.2, len / 2 - 0.2);
-          _v.set(slab.position.x + along * sin, 0.12, slab.position.z + along * cos);
-          emberBurst(_v, 4, true);
-        }
-      },
-      dispose() {
-        slab.geometry.dispose();
-        (slab.material as MeshBasicMaterial).dispose();
-        slab.removeFromParent();
-      },
-    });
+    const deck = this.deckOf(seat);
+    if (zone.kind === 'lane') this.strikeFx.beam(deck, zone.x, zone.yaw ?? 0, zone.halfW);
+    else this.strikeFx.rail(deck, zone.z, zone.halfD, zone.from);
   }
 
-  /** The gate lands: everything EXCEPT the clear band goes up — two slabs
-   *  slam the doomed sides, leaving the doorway dark and standing. */
+  /** The gate lands: everything EXCEPT the clear band goes up as walls of
+   *  light and the doorposts burn white-hot (RAVE RAID's strikes.ts),
+   *  leaving the doorway dark and standing. */
   private spawnGateStrike(zone: Zone & { kind: 'gate' }, seat: number): void {
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    // axis 1 (the row gate) turns the whole picture a quarter, like its
-    // telegraph — extents swap so the platform stays covered.
-    const yd = this.seatYawDelta(seat) + (zone.axis ? Math.PI / 2 : 0);
-    const cos = Math.cos(yd);
-    const sin = Math.sin(yd);
-    const span = (zone.axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH) + 0.2;
-    const depth = (zone.axis ? OCTAGON_HALF_WIDTH : OCTAGON_HALF_DEPTH) * 2 + 0.3;
-    const at = zone.axis ? -zone.at : zone.at; // the quarter turn mirrors x
-    const slabs: Mesh[] = [];
-    for (const side of [-1, 1] as const) {
-      // Each doomed stretch runs from the gap's edge to the deck rim.
-      const edge = at + side * zone.half;
-      const rim = side * span;
-      const w = Math.max(0, (rim - edge) * side);
-      if (w < 0.05) continue;
-      const mid = (edge + rim) / 2;
-      const slab = new Mesh(
-        new BoxGeometry(w, 0.55, depth),
-        new MeshBasicMaterial({
-          color: this.def.accent,
-          transparent: true,
-          opacity: 0.7,
-          blending: AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      slab.rotation.y = yd;
-      slab.position.set(cx + mid * cos, 0.28, cz - mid * sin);
-      this.scene.add(slab);
-      slabs.push(slab);
-    }
-    let burst = false;
-    this.strikes.push({
-      age: 0,
-      life: 0.45,
-      update(age) {
-        const k = Math.min(1, age / 0.4);
-        if (!burst) {
-          burst = true;
-          for (const s of slabs) {
-            _v.copy(s.position);
-            _v.y = 0.15;
-            emberBurst(_v, 10, true);
-          }
-        }
-        for (const s of slabs) {
-          (s.material as MeshBasicMaterial).opacity = 0.7 * (1 - k * k);
-          s.scale.y = 1 - 0.6 * k;
-        }
-      },
-      dispose() {
-        for (const s of slabs) {
-          s.geometry.dispose();
-          (s.material as MeshBasicMaterial).dispose();
-          s.removeFromParent();
-        }
-      },
-    });
+    this.strikeFx.gate(this.deckOf(seat), zone.at, zone.half, zone.axis);
   }
 
-  /** The donut's rim comes down: a ring wall at the safe disc's edge flares
-   *  and collapses outward while the doomed rim burns — the middle lives. */
+  /** The donut's rim comes down: a ring of light RUSHES IN from the deck's
+   *  corners and stops dead on the doorpost circle (RAVE RAID's
+   *  strikes.ts) — the nova's opposite motion; the middle lives. */
   private spawnRingStrike(zone: Zone & { kind: 'ring' }, seat: number): void {
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    const wall = new Mesh(
-      new CylinderGeometry(zone.innerR, zone.innerR, 0.7, 40, 1, true),
-      new MeshBasicMaterial({
-        color: this.def.accent,
-        transparent: true,
-        opacity: 0.8,
-        blending: AdditiveBlending,
-        depthWrite: false,
-        side: DoubleSide,
-      }),
-    );
-    wall.position.set(cx, 0.35, cz);
-    this.scene.add(wall);
-    const world = this.world;
-    const innerR = zone.innerR;
-    let burstClock = 0;
-    this.strikes.push({
-      age: 0,
-      life: 0.5,
-      update(age) {
-        const k = Math.min(1, age / 0.45);
-        // The wall of fire sweeps OUT across the doomed rim and dies at it.
-        wall.scale.setScalar(1 + k * 1.6);
-        wall.scale.y = 1 - 0.5 * k;
-        (wall.material as MeshBasicMaterial).opacity = 0.8 * (1 - k * k);
-        if (age > burstClock) {
-          burstClock = age + 0.07;
-          const a = rand(0, Math.PI * 2);
-          const r = innerR * (1 + k * 1.4) + rand(0, 0.15);
-          _v.set(cx + Math.sin(a) * r, 0.12, cz + Math.cos(a) * r);
-          emberBurst(_v, 4, true);
-          if (k > 0.25 && k < 0.5) spawnFireImpact(world, _v, 1, 0.6);
-        }
-      },
-      dispose() {
-        wall.geometry.dispose();
-        (wall.material as MeshBasicMaterial).dispose();
-        wall.removeFromParent();
-      },
-    });
+    this.strikeFx.donut(this.deckOf(seat), zone.innerR);
   }
 
   /** THE REACH is a solo law: one fist, one head, a titan on its own pad. */
@@ -3904,54 +3714,12 @@ export class CampaignSystem extends createSystem({
   }
 
   /**
-   * A TRIDENT blow lands: each doomed quarter erupts in a sheet of the
-   * weapon's colour that settles into the deck (RAVE RAID's bolt-and-burn,
-   * told in the campaign's slab language).
+   * A TRIDENT blow lands: on every doomed quarter a bolt in the weapon's
+   * colour drives into the deck and the quarter erupts in heat over the
+   * floor's afterburn (RAVE RAID's strikes.ts, the same blow).
    */
   private spawnPairStrike(hit: number, form: number, seat: number): void {
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    const yd = this.seatYawDelta(seat);
-    const cos = Math.cos(yd);
-    const sin = Math.sin(yd);
-    const color = TRIDENT.forms[form]?.color ?? this.def.accent;
-    const hw = OCTAGON_HALF_WIDTH + 0.12;
-    const hd = OCTAGON_HALF_DEPTH + 0.12;
-    const slabs: Mesh[] = [];
-    for (let c = 0; c < 4; c++) {
-      if (!((hit >> c) & 1)) continue;
-      const lx = ((c & 1 ? 1 : -1) * hw) / 2;
-      const lz = ((c & 2 ? 1 : -1) * hd) / 2;
-      const slab = new Mesh(
-        new BoxGeometry(hw, 0.5, hd),
-        new MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: AdditiveBlending, depthWrite: false }),
-      );
-      slab.rotation.y = yd;
-      slab.position.set(cx + lx * cos + lz * sin, 0.26, cz - lx * sin + lz * cos);
-      this.scene.add(slab);
-      slabs.push(slab);
-      _v.set(slab.position.x, 0.1, slab.position.z);
-      emberBurst(_v, 10, true);
-    }
-    this.strikes.push({
-      age: 0,
-      life: 0.45,
-      update(age) {
-        const k = Math.min(1, age / 0.4);
-        for (const s of slabs) {
-          (s.material as MeshBasicMaterial).opacity = 0.6 * (1 - k * k);
-          s.scale.y = 1 - 0.75 * k;
-        }
-      },
-      dispose() {
-        for (const s of slabs) {
-          s.geometry.dispose();
-          (s.material as MeshBasicMaterial).dispose();
-          s.removeFromParent();
-        }
-      },
-    });
+    this.strikeFx.trident(this.deckOf(seat), hit, form);
   }
 
   /** Is this GOLIATH's squad sweep — his spinning backfist across the ring? */
@@ -4089,73 +3857,32 @@ export class CampaignSystem extends createSystem({
     t.root.quaternion.setFromUnitVectors(_up, _p);
   }
 
+  /** The seesaw/surge lands and SETTLES: a slab of light floods the
+   *  doomed half and sinks into the deck (RAVE RAID's strikes.ts). `axis`
+   *  0 = x split (seesaw), 1 = z split (surge). */
   private spawnHalfFlood(side: -1 | 1, seat: number, axis: 0 | 1): void {
-    this.seatPoint(seat, 0, 0, 0, _v);
-    const cx = _v.x;
-    const cz = _v.z;
-    const yd = this.seatYawDelta(seat) + (axis ? -Math.PI / 2 : 0); // match the telegraph's turn
-    const cos = Math.cos(yd);
-    const sin = Math.sin(yd);
-    // Extents in the (pre-rotation) local frame: w spans the SPLIT axis, d the
-    // other — swapped for a surge so the platform stays covered after the turn.
-    const w = (axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH) + 0.35;
-    const halfOther = axis ? OCTAGON_HALF_WIDTH : OCTAGON_HALF_DEPTH;
-    const d = halfOther * 2 + 0.3;
-    const slab = new Mesh(
-      new BoxGeometry(w, 0.5, d),
-      new MeshBasicMaterial({
-        color: this.def.accent,
-        transparent: true,
-        opacity: 0.55,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    slab.rotation.y = yd;
-    const lx = (side * w) / 2;
-    slab.position.set(cx + lx * cos, 0.26, cz - lx * sin);
-    this.scene.add(slab);
-    const world = this.world;
+    const deck = this.deckOf(seat);
+    this.strikeFx.halfFlood(deck, side, axis);
+    // GOOPLIATH's tide leaves wet evidence, stamped once where it came
+    // down (target-local, onto the marked seat's platform).
     const fx = this.goopFx;
-    let burstClock = 0;
-    let splatted = false;
-    this.strikes.push({
-      age: 0,
-      life: 0.5,
-      update(age) {
-        const k = Math.min(1, age / 0.42);
-        (slab.material as MeshBasicMaterial).opacity = 0.55 * (1 - k * k);
-        slab.scale.y = 1 - 0.7 * k; // the wave settles into the deck
-        if (!splatted) {
-          // Wet evidence stamped once, where the tide came down.
-          splatted = true;
-          for (let i = 0; i < 3; i++) {
-            const sx = side * rand(0.15, w - 0.2);
-            const sz = rand(-halfOther * 0.8, halfOther * 0.8);
-            _v.set(cx + sx * cos + sz * sin, 0.02, cz - sx * sin + sz * cos);
-            fx?.splat(_v, rand(0.3, 0.55));
-          }
-        }
-        if (age > burstClock) {
-          // Kept lean — this is the boss's busiest beat, and particle spam
-          // here stacks on top of the gel's own swing cost.
-          burstClock = age + 0.09;
-          const sx = side * rand(0.1, w - 0.2);
-          const sz = rand(-halfOther, halfOther);
-          _v.set(cx + sx * cos + sz * sin, 0.12, cz - sx * sin + sz * cos);
-          emberBurst(_v, 4, true);
-          if (k > 0.3 && k < 0.55) spawnFireImpact(world, _v, 1, 0.7);
-        }
-      },
-      dispose() {
-        slab.geometry.dispose();
-        (slab.material as MeshBasicMaterial).dispose();
-        slab.removeFromParent();
-      },
-    });
+    if (!fx) return;
+    const w = axis ? OCTAGON_HALF_DEPTH : OCTAGON_HALF_WIDTH;
+    const halfOther = axis ? OCTAGON_HALF_WIDTH : OCTAGON_HALF_DEPTH;
+    const cos = Math.cos(deck.rotation.y);
+    const sin = Math.sin(deck.rotation.y);
+    for (let i = 0; i < 3; i++) {
+      const split = side * rand(0.15, w - 0.2);
+      const other = rand(-halfOther * 0.8, halfOther * 0.8);
+      const lx = axis ? other : split;
+      const lz = axis ? split : other;
+      _v.set(deck.position.x + lx * cos + lz * sin, 0.02, deck.position.z - lx * sin + lz * cos);
+      fx.splat(_v, rand(0.3, 0.55));
+    }
   }
 
   private updateStrikes(delta: number): void {
+    this.strikeFx.update(delta);
     for (let i = this.strikes.length - 1; i >= 0; i--) {
       const s = this.strikes[i];
       s.age += delta;

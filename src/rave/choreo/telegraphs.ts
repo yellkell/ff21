@@ -92,7 +92,7 @@ export const OCT_GLSL = /* glsl */ `
 
 /** Shared vertex shader — UVs through, plus the fragment's position in
  *  DECK space (uPlace = the mesh's transform relative to the platform). */
-const VERT = /* glsl */ `
+export const VERT = /* glsl */ `
   uniform mat4 uPlace;
   varying vec2 vUv;
   varying vec2 vDeck;
@@ -107,7 +107,7 @@ const VERT = /* glsl */ `
  * ignition flash, ink() composes a scrim (wash) and neon lines (line).
  * octMask (OCT_GLSL) trims every mark to the deck.
  */
-const COMMON = /* glsl */ `
+export const COMMON = /* glsl */ `
   ${HEAT_GLSL}
   uniform float uFill, uTime;
   varying vec2 vUv;
@@ -399,7 +399,10 @@ const BLADE_FRAG = /* glsl */ `
 
 type Uniforms = Record<string, { value: unknown }>;
 
-function warnMat(frag: string, extra: Uniforms = {}): ShaderMaterial {
+/** A danger-kit material: `frag` built on COMMON, drawn additive over the
+ *  deck. Exported with makeTelegraph so the campaign's own shapes (the
+ *  titans' slam disc, THE LESSON's marks) are cut from the same cloth. */
+export function warnMat(frag: string, extra: Uniforms = {}): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: { uFill: { value: 0 }, uTime: { value: 0 }, uPlace: { value: new Matrix4() }, ...extra },
     vertexShader: VERT,
@@ -414,7 +417,10 @@ function warnMat(frag: string, extra: Uniforms = {}): ShaderMaterial {
 /** A pane's size in metres, for shaders that draw constant-width lines. */
 const size = (w: number, h: number): { value: Vector2 } => ({ value: new Vector2(w, h) });
 
-function makeTelegraph(meshes: Mesh[], mats: ShaderMaterial[]): Telegraph {
+/** Wrap a shape's meshes as a Telegraph. The group is placed relative to
+ *  its DECK (the platform root, or a stand-in on the same frame): that's
+ *  what makes uPlace — and so the hatch, the clip and the rim — deck space. */
+export function makeTelegraph(meshes: Mesh[], mats: ShaderMaterial[]): Telegraph {
   const group = new Group();
   for (const m of meshes) {
     // Draw after the deck furniture — a warning that loses the depth fight

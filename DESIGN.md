@@ -352,6 +352,28 @@ bracing its elbow), the volley's LAUNCHER, the nova's COIL, the seesaw's
 TILT (a balance beam tipping toward the flood), the surge's SHOVE. THE
 RECITAL is CONDUCTED — forearms up, a baton flick on every cue, a palm for
 a hold — and never pointed at.
+**SHIPPED (fourth pass — THE DANGER KIT on the titans' decks)**: the
+campaign's floor marks and platform strikes now meet RAVE RAID's standard
+(`rave/choreo/telegraphs.ts`, `strikes.ts`) — they ARE the rave's, not a
+copy. `campaign/telegraphs.ts` re-exports the rave's shapes (gate, donut,
+X, rail, lane, seesaw/surge, nova, sweep, the trident's quarters) and cuts
+the two it has no word for — the slam's disc, THE LESSON's marks — from the
+same kit: one heat ramp (amber charging, danger red arriving, white-hot on
+the landing), neon ink at constant width, one hazard hatch in deck space,
+every mark clipped to the octagon with the deck's rim burning where it
+crosses doomed ground. Every landed mark now burns out in the AFTERBURN
+instead of vanishing. CampaignSystem hangs each seat's marks and strikes on
+a deck stand-in (`deckOf`) so the kit's deck space lines up on every raid
+platform. The hits are the rave's sheets of light (`StrikeFx`) — beam
+walls (the visor's column above them, in heat), rails, gate walls, the
+donut closing in, the nova's shock ring, the tide, the trident's bolts, the
+sweep's curtain (THE DELIVERY's haft still rides to its lip); the slam's
+fist stays the titan's own. THE RECITAL's blocks heat amber → red as they
+fall and crush white-hot. The sweep's mark is the rave's — danger in the
+air, floor unpainted — and THE TRIDENT's floor stays dark but for the
+chalk quarter lines, its quarters igniting only as each blow lands: read
+the weapon, not the floor. `deck-preview.html` shows every attack, charge,
+afterburn and strike.
 
 Raid escalation carries over unchanged for the classic kinds (solo-target
 → two marks → whole squad, DECREE-style shared bearings, the resurrection

@@ -8,6 +8,11 @@
  * to the deck, flashes its quarter, and sinks away. The quarter you learned
  * stays bare.
  *
+ * THE DANGER KIT (rave/choreo/telegraphs.ts): the blocks wear the one heat
+ * ramp every attack wears — hazard amber at the top of the fall, danger
+ * red as they arrive (the fall IS the fill), WHITE-HOT on the crush,
+ * burning back out to red.
+ *
  * The judge is untouched (stand committed in the called corner at the
  * tick); this module is the danger made VISIBLE. In the recital the fall
  * is SHORT and starts LOW (`spawnY`): the note is the warning, and a
@@ -20,6 +25,7 @@
 import {
   AdditiveBlending,
   BufferGeometry,
+  Color,
   DodecahedronGeometry,
   EdgesGeometry,
   Group,
@@ -30,10 +36,12 @@ import {
   MeshBasicMaterial,
   OctahedronGeometry,
   RingGeometry,
+  type SpriteMaterial,
   TetrahedronGeometry,
   type Object3D,
 } from 'three';
-import { OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, PALETTE } from '../config.js';
+import { OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
+import { HEAT } from '../rave/choreo/telegraphs.js';
 import { glowSprite } from '../materials/glow.js';
 import { mix, mulberry32 } from './grammar.js';
 
@@ -60,12 +68,23 @@ function shapeSet(): ShapeSet[] {
 }
 const ringGeo = new RingGeometry(0.2, 0.27, 28);
 
+const AMBER = new Color(HEAT.amber);
+const DANGER = new Color(HEAT.danger);
+const HOT = new Color(HEAT.hot);
+const _heat = new Color();
+
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
 interface FallingBlock {
   group: Group;
   ring: Mesh;
   ringMat: MeshBasicMaterial;
   shellMat: MeshBasicMaterial;
   wireMat: LineBasicMaterial;
+  glowMat: SpriteMaterial;
   spinX: number;
   spinZ: number;
 }
@@ -94,15 +113,13 @@ export class RecitalBlockfall {
 
     const rng = mulberry32(mix(mix(seed, 0xb10c), step * 31 + safeCorner));
     const kit = shapeSet();
-    // The danger speaks hazard amber→red, like every other telegraph.
-    const colors = [PALETTE.amber, 0xff7a2a, PALETTE.danger];
+    // Born amber; update() runs the heat ramp from there.
+    const color = HEAT.amber;
 
-    let n = 0;
     for (let corner = 0; corner < 4; corner++) {
       if (corner === safeCorner) continue;
       const x = ((corner & 1 ? 1 : -1) * OCTAGON_HALF_WIDTH) / 2;
       const z = ((corner & 2 ? 1 : -1) * OCTAGON_HALF_DEPTH) / 2;
-      const color = colors[n % colors.length];
       const shape = kit[Math.floor(rng() * kit.length)];
       const radius = 0.3 + rng() * 0.1;
 
@@ -135,7 +152,8 @@ export class RecitalBlockfall {
       const wire = new LineSegments(shape.edges, wireMat);
       wire.scale.setScalar(radius * 1.04);
       group.add(wire);
-      group.add(glowSprite(color, radius * 3.6, 0.7));
+      const glow = glowSprite(color, radius * 3.6, 0.7);
+      group.add(glow);
       this.root.add(group);
 
       // The deck ring under it — brightens and tightens as the block closes.
@@ -157,10 +175,10 @@ export class RecitalBlockfall {
         ringMat,
         shellMat,
         wireMat,
+        glowMat: glow.material,
         spinX: (0.8 + rng() * 1.4) * (rng() > 0.5 ? 1 : -1),
         spinZ: 0.6 + rng() * 1.2,
       });
-      n++;
     }
   }
 
@@ -170,6 +188,8 @@ export class RecitalBlockfall {
       // The crush: squash flat, flare the ring wide, fade everything out.
       this.landAge += delta;
       const k = Math.min(1, this.landAge / 0.45);
+      // Ignites white-hot on the crush, burns out to danger red.
+      this.heat(_heat.copy(HOT).lerp(DANGER, smoothstep(0, 0.6, k)));
       for (const b of this.blocks) {
         b.group.scale.y = Math.max(0.12, 1 - k * 1.1);
         b.group.scale.x = b.group.scale.z = 1 + k * 0.35;
@@ -189,6 +209,8 @@ export class RecitalBlockfall {
     const fall = Math.min(1, Math.max(0, t));
     // Eased-in so the last stretch reads fastest — a drop, not an elevator.
     const y = this.spawnY - (this.spawnY - CRUSH_Y) * fall * fall;
+    // The fall is the fill: amber charging, danger red as it arrives.
+    this.heat(_heat.copy(AMBER).lerp(DANGER, smoothstep(0.55, 0.95, fall)));
     for (const b of this.blocks) {
       b.group.position.y = y;
       b.group.rotation.x += b.spinX * delta;
@@ -196,6 +218,16 @@ export class RecitalBlockfall {
       // DOWN's ring law: brightens as the shape closes in.
       b.ringMat.opacity = 0.12 + fall * 0.75;
       b.ring.scale.setScalar(1.9 - fall * 0.9);
+    }
+  }
+
+  /** Every block, its glow and its deck ring wear the ramp's colour now. */
+  private heat(c: Color): void {
+    for (const b of this.blocks) {
+      b.shellMat.color.copy(c);
+      b.wireMat.color.copy(c);
+      b.glowMat.color.copy(c);
+      b.ringMat.color.copy(c);
     }
   }
 
@@ -217,6 +249,7 @@ export class RecitalBlockfall {
     for (const b of this.blocks) {
       b.shellMat.dispose();
       b.wireMat.dispose();
+      b.glowMat.dispose();
       b.ringMat.dispose();
     }
     this.blocks = [];
