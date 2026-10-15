@@ -32,7 +32,7 @@ import { customization, myPackedGear } from '../menu/customization.js';
 import { myPackedLook } from '../avatar/paint.js';
 import { setSpeakerPosition, updateListener } from '../net/voice.js';
 import type { PeerMessage, PoseTuple } from '../net/protocol.js';
-import { spawnDamagePopup, spawnFireImpact, spawnGestureCue, spawnPopup } from '../fx/effects.js';
+import { spawnDamagePopup, spawnFireImpact, spawnGestureCue, spawnGgPopup } from '../fx/effects.js';
 import { fistBumpEchoSuppressed, markFistBumpShown } from './PlayerGestureSystem.js';
 import * as sfx from '../audio/sfx.js';
 import { playVictory, startBattleMusic } from '../audio/battleMusic.js';
@@ -253,7 +253,7 @@ export class NetworkSystem extends createSystem({
         _p.copy(opponent.headPos);
         _p.y += 0.32;
         spawnGestureCue(this.world, opponent.headPos, 0.3);
-        spawnPopup(this.world, _p, 'GG', '#ffffff', 'rgba(255,255,255,0.95)', 2.2);
+        spawnGgPopup(this.world, _p, 2.2);
         sfx.fistBump();
         break;
       }
