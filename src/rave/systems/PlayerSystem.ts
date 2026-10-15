@@ -21,9 +21,9 @@
  * near-black outline so it never dissolves into the deck wearing that same
  * colour. They burn brighter as the combo climbs, and every REWARDED swap
  * answers from the hand that went up:
- * the stick pulses, the palm ticks, and a burst of SPARKS jumps off the tip
- * — a few faint motes when the groove is young, a hotter, denser fountain
- * as it deepens. No numbers, no panels: the sticks themselves are the
+ * the stick pulses, the palm ticks, and a jet of SPARKS leaves the tip
+ * along the stick — a few thin tracers when the groove is young, a hotter,
+ * denser jet as it deepens. No numbers, no panels: the sticks themselves are the
  * combo meter.
  *
  * AND THEY'RE WET: each of your sticks is a frosted tube of LIQUID glow —
@@ -36,22 +36,17 @@
 
 import { createSystem, Vector3 } from '@iwsdk/core';
 import {
-  AdditiveBlending,
   BackSide,
-  BufferAttribute,
-  BufferGeometry,
   CapsuleGeometry,
   Color,
-  DynamicDrawUsage,
   Group,
   Mesh,
   MeshBasicMaterial,
   Object3D,
-  Points,
   Quaternion,
 } from 'three';
 import { CHOREO, GROOVE, hueToColor } from '../config.js';
-import { glintTexture, sizedPointsMaterial } from '../materials/glow.js';
+import { TracerField } from '../materials/tracers.js';
 import { createLiquid, HandMotion, type LiquidVisual } from '../materials/liquid.js';
 import { danceHue } from '../game/profile.js';
 import { match, me, showBeat } from '../game/state.js';
@@ -63,8 +58,7 @@ const _rHand = new Vector3();
 const _sw = new Vector3();
 // The burst frame: the cone's axis and the scatter disc around it.
 const _bAxis = new Vector3();
-const _bT1 = new Vector3();
-const _bT2 = new Vector3();
+const _tipAxis = new Vector3();
 const _tube = new Vector3();
 const _axis = new Vector3();
 const _ws = new Vector3();
@@ -173,83 +167,62 @@ function casingMat(): MeshBasicMaterial {
 }
 
 /**
- * The groove's voice: NEON SPARKLES — lens glints, not dots and never
- * squares. One additive Points cloud, world-space, recycled, wearing the
- * shared glint texture (hot core, crossing streaks), with a TWIN cloud
- * mirrored under the deck plane: the polished slab you dance on gets the
- * reflection the void's floor already has, so every burst lands twice.
- * Sparks fade by darkening (additive black = gone) and DIE IN THE AIR —
- * a glint that settles on the floor is litter, and litter is retro.
+ * The groove's voice: SPARKS OFF THE TIP — hot tracers, not sparkles.
  *
- * Two things sell SPARKLE over "particles", and neither costs a draw call:
- * a SIZE POPULATION — dust and grains around the odd HERO glint, via the
- * per-particle size attribute — and every glint twinkling at its own rate
- * AND its own depth (the dust scintillates hard, the heroes burn steady).
- * And a burst inherits THE SWING: the sparks leave with a share of the
- * tip's own velocity, so a hard upswing throws its light the way a struck
- * sparkler does instead of pouring the same canned fountain whatever the
- * arm actually did.
+ * A paid swap throws a short JET out of the end of the stick that paid:
+ * along the stick's own axis, so it leaves the way your hand is pointing
+ * it, leaning into the swing the harder the tip was moving. Each spark is a
+ * streak along its own path (materials/tracers.ts), white-hot off the tip
+ * and cooling into your seat colour as it falls, the way a struck tube or a
+ * cutting wheel throws light — no lens-glint stars, no twinkle. A twin
+ * field hangs mirrored under the deck plane, dimmed, so every jet still
+ * lands in the polish. A deeper streak throws more of them, faster.
  */
-const MAX_SPARKS = 192;
-/** Below this height a spark twinkles out rather than landing. */
-const SPARK_FLOOR = 0.12;
-/** How much of the tip's velocity a burst carries away, and the ceiling
- *  on it (m/s) — enough to read the swing, never enough to shotgun. */
-const SPARK_SWING = 0.55;
+const MAX_SPARKS = 160;
+/** How much of the tip's velocity a jet carries away, and the ceiling on
+ *  it (m/s) — enough to read the swing, never enough to shotgun. */
+const SPARK_SWING = 0.5;
 const SPARK_SWING_MAX = 2.2;
+/** How far the swing may bend the jet off the stick's axis (0 = never,
+ *  1 = all the way round to the swing). */
+const SPARK_LEAN = 0.45;
+/** The jet's cone, half-angle (radians): tight — a nozzle, not a fountain. */
+const SPARK_SPREAD = 0.3;
 
 class SparkPool {
-  readonly points: Points;
-  // Primary sparks in [0, MAX); their mirror twins in [MAX, 2·MAX).
-  private pos = new Float32Array(MAX_SPARKS * 6);
-  private col = new Float32Array(MAX_SPARKS * 6);
-  private size = new Float32Array(MAX_SPARKS * 2);
-  private vel = new Float32Array(MAX_SPARKS * 3);
-  private base = new Float32Array(MAX_SPARKS * 3);
-  private age = new Float32Array(MAX_SPARKS);
-  private life = new Float32Array(MAX_SPARKS);
-  private twinkle = new Float32Array(MAX_SPARKS);
-  private flickDepth = new Float32Array(MAX_SPARKS);
-  private cursor = 0;
-  private posAttr: BufferAttribute;
-  private colAttr: BufferAttribute;
-  private sizeAttr: BufferAttribute;
-  /** Anything still alight? A pool with nothing burning skips its whole
-   *  walk AND the buffer re-uploads — most of every set, the groove is
-   *  between bursts. */
-  private lit = false;
+  readonly root = new Group();
+  private field: TracerField;
+  private twin: Mesh;
 
   constructor() {
-    const geo = new BufferGeometry();
-    this.pos.fill(0);
-    for (let i = 0; i < MAX_SPARKS * 2; i++) this.pos[i * 3 + 1] = -999; // parked
-    this.size.fill(1);
-    this.posAttr = new BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage);
-    this.colAttr = new BufferAttribute(this.col, 3).setUsage(DynamicDrawUsage);
-    this.sizeAttr = new BufferAttribute(this.size, 1).setUsage(DynamicDrawUsage);
-    geo.setAttribute('position', this.posAttr);
-    geo.setAttribute('color', this.colAttr);
-    geo.setAttribute('aSize', this.sizeAttr);
-    this.points = new Points(
-      geo,
-      sizedPointsMaterial({
-        size: 0.075,
-        map: glintTexture(),
-        vertexColors: true,
-        transparent: true,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    this.points.name = 'groove-sparks'; // headless probes read the pool by name
-    this.points.frustumCulled = false;
-    this.points.renderOrder = 29;
+    this.field = new TracerField(MAX_SPARKS, {
+      width: 0.0055,
+      streak: 0.028,
+      maxLen: 0.12,
+      gravity: 5.5,
+      drag: 1.1,
+      floorY: 0.03,
+      hot: 0.22,
+    });
+    this.root.name = 'groove-sparks'; // headless probes read the pool by name
+    this.root.add(this.field.mesh);
+    // The twin in the polish: the same instance buffers drawn through a
+    // flip about y = 0, at the dimness the void mirrors its own towers.
+    const twinMat = this.field.material.clone();
+    twinMat.uniforms.uGain.value = 0.38;
+    this.twin = new Mesh(this.field.mesh.geometry, twinMat);
+    this.twin.frustumCulled = false;
+    this.twin.renderOrder = this.field.mesh.renderOrder;
+    const flip = new Group();
+    flip.scale.y = -1;
+    flip.add(this.twin);
+    this.root.add(flip);
   }
 
-  /** `heat` 0..1 — deeper groove throws more, faster, whiter sparkles.
-   *  `swing` is the emitting tip's velocity; the burst carries a share. */
-  burst(at: Vector3, heat: number, colorHex: number, swing?: Vector3): void {
-    // Copy-first: callers may hand us the shared scratch vector itself.
+  /** `heat` 0..1 — deeper groove throws more, faster, whiter sparks.
+   *  `axis`: the stick's world axis out of the tip. `swing`: the tip's
+   *  velocity; the jet leans into it and carries a share. */
+  burst(at: Vector3, heat: number, colorHex: number, axis: Vector3, swing?: Vector3): void {
     if (swing) {
       _sw.copy(swing).multiplyScalar(SPARK_SWING);
       const l = _sw.length();
@@ -257,129 +230,32 @@ class SparkPool {
     } else {
       _sw.set(0, 0, 0);
     }
-    // THE BURST LEAVES ALONG THE FLING. The old cone was a fixed upward
-    // fountain with the swing merely added on top, so a hard sideways
-    // throw still read as the same fountain with a lean. Now the swing
-    // owns the cone's AXIS: an idle burst still fountains (axis = up),
-    // but the harder the tip was moving the further the whole cone tips
-    // into its direction of travel — the way a struck sparkler throws its
-    // light where the strike sent it. The scatter disc opens around that
-    // axis, and the swing share still rides on top as carried momentum.
+    _bAxis.copy(axis);
+    if (_bAxis.lengthSq() < 1e-6) _bAxis.set(0, 1, 0);
+    _bAxis.normalize();
     const swingLen = _sw.length();
-    _bAxis.set(0, 1, 0);
     if (swingLen > 1e-3) {
-      const w = Math.min(1, swingLen / 1.1); // fully committed by ~1.1 m/s of carried swing
+      const w = Math.min(1, swingLen / 1.1) * SPARK_LEAN;
       _bAxis.multiplyScalar(1 - w).addScaledVector(_sw, w / swingLen);
-      // A dead-vertical downward fling cancels to ~zero — fall back to up.
-      if (_bAxis.lengthSq() < 1e-6) _bAxis.set(0, 1, 0);
+      if (_bAxis.lengthSq() < 1e-6) _bAxis.copy(axis);
       _bAxis.normalize();
     }
-    _bT1.set(Math.abs(_bAxis.x) > 0.9 ? 0 : 1, 0, Math.abs(_bAxis.x) > 0.9 ? 1 : 0);
-    _bT1.cross(_bAxis).normalize();
-    _bT2.crossVectors(_bAxis, _bT1);
-
-    const M3 = MAX_SPARKS * 3;
-    const count = Math.round(6 + heat * 22);
-    for (let n = 0; n < count; n++) {
-      const i = this.cursor;
-      this.cursor = (this.cursor + 1) % MAX_SPARKS;
-      const i3 = i * 3;
-      this.pos[i3] = at.x;
-      this.pos[i3 + 1] = at.y;
-      this.pos[i3 + 2] = at.z;
-      // Muzzle speed along the axis (the old fountain's vertical budget),
-      // scatter across the disc, and the swing's share carried whole.
-      const a = Math.random() * Math.PI * 2;
-      const r = (0.25 + Math.random() * 0.45) * (0.7 + heat * 0.8);
-      const along = (0.7 + Math.random() * 0.9) * (0.8 + heat * 0.9);
-      const sx = _bT1.x * Math.cos(a) + _bT2.x * Math.sin(a);
-      const sy = _bT1.y * Math.cos(a) + _bT2.y * Math.sin(a);
-      const sz = _bT1.z * Math.cos(a) + _bT2.z * Math.sin(a);
-      this.vel[i3] = _bAxis.x * along + sx * r + _sw.x;
-      this.vel[i3 + 1] = _bAxis.y * along + sy * r + _sw.y;
-      this.vel[i3 + 2] = _bAxis.z * along + sz * r + _sw.z;
-      // THE POPULATION: mostly grains, some dust, and about one glint in
-      // seven a HERO — the big catch the eye reads the burst by. Heroes
-      // live a shade longer, burn steadier and run a touch whiter (the
-      // lens caught the source); the dust twinkles hardest.
-      const hero = Math.random() < 0.15;
-      const size = hero ? 1.7 + Math.random() * 0.7 : 0.55 + Math.random() * 0.75;
-      this.size[i] = size;
-      this.size[i + MAX_SPARKS] = size * 0.92;
-      this.flickDepth[i] = hero ? 0.14 + Math.random() * 0.1 : 0.26 + Math.random() * 0.22;
-      // Seat colour, run hotter (toward white) as the streak deepens —
-      // each sparkle jittered so the burst shimmers instead of banding.
-      _c.setHex(colorHex).lerp(_white, Math.min(1, heat * 0.55 + Math.random() * 0.3 + (hero ? 0.15 : 0)));
-      this.base[i3] = _c.r;
-      this.base[i3 + 1] = _c.g;
-      this.base[i3 + 2] = _c.b;
-      // Born ALIGHT: colour lands with the position, so the glint shows on
-      // the very frame of the swap instead of black-holing its first one.
-      this.col[i3] = _c.r;
-      this.col[i3 + 1] = _c.g;
-      this.col[i3 + 2] = _c.b;
-      this.col[i3 + M3] = _c.r * 0.38;
-      this.col[i3 + 1 + M3] = _c.g * 0.38;
-      this.col[i3 + 2 + M3] = _c.b * 0.38;
-      this.pos[i3 + M3] = at.x;
-      this.pos[i3 + 1 + M3] = -at.y;
-      this.pos[i3 + 2 + M3] = at.z;
-      this.age[i] = 0;
-      this.life[i] = 0.35 + Math.random() * 0.35 + heat * 0.2 + (hero ? 0.15 : 0);
-      // Each glint scintillates at its own rate — the difference between
-      // "particles" and "sparkles" is that sparkles TWINKLE.
-      this.twinkle[i] = 7 + Math.random() * 9;
-    }
-    this.lit = true;
-    this.posAttr.needsUpdate = true;
-    this.colAttr.needsUpdate = true;
-    this.sizeAttr.needsUpdate = true;
+    const count = Math.round(7 + heat * 17);
+    const speed = 1.5 + heat * 1.4;
+    // Seat colour, run hotter as the streak deepens.
+    _c.setHex(colorHex).lerp(_white, heat * 0.35);
+    this.field.spray(
+      at.x, at.y, at.z,
+      _bAxis.x, _bAxis.y, _bAxis.z,
+      count, speed, SPARK_SPREAD,
+      0.34 + heat * 0.16,
+      _c.getHex(),
+      _sw,
+    );
   }
 
   update(delta: number): void {
-    if (!this.lit) return;
-    const M3 = MAX_SPARKS * 3;
-    let burning = 0;
-    for (let i = 0; i < MAX_SPARKS; i++) {
-      if (this.life[i] <= 0) continue;
-      const i3 = i * 3;
-      this.age[i] += delta;
-      const k = this.age[i] / this.life[i];
-      const grounded = this.pos[i3 + 1] <= SPARK_FLOOR;
-      if (k >= 1 || grounded) {
-        this.life[i] = 0;
-        this.pos[i3 + 1] = -999;
-        this.pos[i3 + 1 + M3] = -999;
-        this.col[i3] = this.col[i3 + 1] = this.col[i3 + 2] = 0;
-        this.col[i3 + M3] = this.col[i3 + 1 + M3] = this.col[i3 + 2 + M3] = 0;
-        continue;
-      }
-      burning++;
-      this.vel[i3 + 1] -= 2.4 * delta; // light gravity — a fountain, not confetti
-      const drag = Math.max(0, 1 - 1.4 * delta);
-      this.vel[i3] *= drag;
-      this.vel[i3 + 2] *= drag;
-      this.pos[i3] += this.vel[i3] * delta;
-      this.pos[i3 + 1] += this.vel[i3 + 1] * delta;
-      this.pos[i3 + 2] += this.vel[i3 + 2] * delta;
-      const depth = this.flickDepth[i];
-      const flicker = 1 - depth + depth * Math.sin(this.age[i] * this.twinkle[i] + i * 1.7);
-      const fade = (1 - k) * (1 - k) * flicker;
-      this.col[i3] = this.base[i3] * fade;
-      this.col[i3 + 1] = this.base[i3 + 1] * fade;
-      this.col[i3 + 2] = this.base[i3 + 2] * fade;
-      // The twin in the polish: same glint, upside down, dimmed the way
-      // the void mirrors its own towers.
-      this.pos[i3 + M3] = this.pos[i3];
-      this.pos[i3 + 1 + M3] = -this.pos[i3 + 1];
-      this.pos[i3 + 2 + M3] = this.pos[i3 + 2];
-      this.col[i3 + M3] = this.col[i3] * 0.38;
-      this.col[i3 + 1 + M3] = this.col[i3 + 1] * 0.38;
-      this.col[i3 + 2 + M3] = this.col[i3 + 2] * 0.38;
-    }
-    this.posAttr.needsUpdate = true;
-    this.colAttr.needsUpdate = true;
-    if (burning === 0) this.lit = false;
+    this.field.step(delta);
   }
 }
 
@@ -405,18 +281,23 @@ export class PlayerSystem extends createSystem({}) {
 
   init(): void {
     this.sticks = { left: this.buildStick(), right: this.buildStick() };
-    this.scene.add(this.sparks.points);
+    this.scene.add(this.sparks.root);
     grooveView.burst = (heat = 1) => {
       const s = this.sticks.right;
       s.pulse = 1; // the whole reward answer, not just the sparks
       s.liquid.slosh.energy = Math.max(s.liquid.slosh.energy, 0.9); // …liquid churn included
-      if (s.attachedTo) s.tip.getWorldPosition(_hand);
-      else _hand.set(0.25, 1.35, -0.4);
+      if (s.attachedTo) {
+        s.tip.getWorldPosition(_hand);
+        this.tipAxis(s, _tipAxis);
+      } else {
+        _hand.set(0.25, 1.35, -0.4);
+        _tipAxis.set(0.2, 0.85, -0.5);
+      }
       // A parked rig has no real swing — play the burst off a canned
       // upswing so the tuning view shows the whole effect.
       _sw.copy(s.vel);
       if (_sw.lengthSq() < 0.01) _sw.set(0.3, 1.6, 0);
-      this.sparks.burst(_hand, Math.min(1, Math.max(0, heat)), hueToColor(danceHue(match.mySeat, true), 0.6), _sw);
+      this.sparks.burst(_hand, Math.min(1, Math.max(0, heat)), hueToColor(danceHue(match.mySeat, true), 0.6), _tipAxis, _sw);
     };
     grooveView.controllers = () =>
       (['left', 'right'] as const).map((hand) => {
@@ -440,6 +321,13 @@ export class PlayerSystem extends createSystem({}) {
       match.grooveStreak = 0;
       match.grooveScore = 0;
     };
+  }
+
+  /** The stick's own axis in the world, out through its tip — the way
+   *  the hand is pointing it, shake and all. */
+  private tipAxis(s: Stick, out: Vector3): Vector3 {
+    s.group.getWorldQuaternion(_q);
+    return out.set(0, 1, 0).applyQuaternion(_q);
   }
 
   private buildStick(): Stick {
@@ -806,9 +694,11 @@ export class PlayerSystem extends createSystem({}) {
     // this just guarantees the churn lands ON the reward, every time.)
     stick.liquid.slosh.energy = Math.max(stick.liquid.slosh.energy, 0.9);
     if (stick.attachedTo) {
-      // Off the TIP — the hot end — carrying the swing that earned it.
+      // Off the TIP — the hot end — out along the stick, carrying the
+      // swing that earned it.
       stick.tip.getWorldPosition(_hand);
-      this.sparks.burst(_hand, Math.min(this.streak, 50) / 50, hueToColor(this.stickHue, 0.6), stick.vel);
+      this.tipAxis(stick, _tipAxis);
+      this.sparks.burst(_hand, Math.min(this.streak, 50) / 50, hueToColor(this.stickHue, 0.6), _tipAxis, stick.vel);
     }
     this.buzz(hand, 0.28 + Math.min(this.streak, 50) * 0.004, 40);
 

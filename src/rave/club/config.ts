@@ -80,7 +80,9 @@ export const CLUB = LAYOUT as unknown as {
   /** Karaoke pods down the west wall: table centres. */
   boothX: number;
   boothZs: number[];
-  pods: { minX: number; frontX: number; minZ: number; maxZ: number; dividers: number[] };
+  /** `northWallX`: where the north end wall stops — cut back short of the
+   *  open front so THE STEP's door, just north of it, isn't walled off. */
+  pods: { minX: number; frontX: number; minZ: number; maxZ: number; dividers: number[]; northWallX: number };
   /** The way in: a landing at the hall's south edge, stairs up to the alley. */
   /** The way out: a closed pair of doors in a lit portal on the south wall. */
   entrance: { halfW: number; h: number; depth: number; leafH: number; landingZ: number };
@@ -303,6 +305,9 @@ export const TELEPORT_AREAS: FloorArea[] = [
   ...crescentBands(2.4, MID),
   // Inside the karaoke pods (their dividers are walls below).
   { minX: P.minX + 0.25, maxX: P.frontX + 0.15, minZ: P.minZ + 0.2, maxZ: P.maxZ - 0.2, y: 0 },
+  // The gap the half-length north end wall leaves: from THE STEP's door
+  // south into the first pod and out to the hall.
+  { minX: P.northWallX + 0.2, maxX: WEST_X, minZ: WING_N, maxZ: P.minZ + 0.25, y: 0 },
   // Behind the bar, and the ways round both its ends.
   { minX: B.x + B.depth + 0.2, maxX: B.backX - 0.2, minZ: B.z0 + 0.15, maxZ: B.z1 + 0.9, y: 0 },
   { minX: EAST_X, maxX: B.backX - 0.2, minZ: B.z1 + 0.15, maxZ: HALL_S, y: 0 },
@@ -383,8 +388,10 @@ export const WALL_SEGMENTS: WallSegment[] = [
   ...roomWalls(Q),
   ...roomWalls(A),
   ...roomWalls(CLUB.step),
-  // The karaoke pods' dividers and end walls (their fronts stay open).
-  ...[P.minZ, ...P.dividers, P.maxZ].map((z): WallSegment => [P.minX, z, P.frontX + 0.3, z]),
+  // The karaoke pods' dividers and end walls (their fronts stay open; the
+  // north end wall stops short, clear of THE STEP's door).
+  [P.minX, P.minZ, P.northWallX, P.minZ],
+  ...[...P.dividers, P.maxZ].map((z): WallSegment => [P.minX, z, P.frontX + 0.3, z]),
   // The stage face (silled), the drum's flat back, and the LED wall.
   ...stageFaceChords(),
   [-CLUB.stage.r, CLUB.stage.z - 0.05, CLUB.stage.r, CLUB.stage.z - 0.05],

@@ -51,7 +51,7 @@ declare global {
       match: typeof match;
       arena: typeof arena;
       choreo: typeof choreoView;
-      /** Fire a glowstick sparkle burst (heat 0..1) for tuning. */
+      /** Fire a glowstick spark jet (heat 0..1) for tuning. */
       sparkle: (heat?: number) => void;
       /** What the controller models are doing (see grooveView.controllers). */
       pads: () => ReturnType<NonNullable<typeof grooveView.controllers>>;
