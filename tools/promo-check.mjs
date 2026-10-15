@@ -69,7 +69,7 @@ page.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`));
 
 await page.goto(base, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => page.goto(base));
 await page.waitForTimeout(1200);
-await page.click('#enter-vr');
+await page.click('#enter-vr', { timeout: 180_000 }); // it lights once the district has loaded
 await page.waitForFunction(() => document.body.classList.contains('app-entered'), { timeout: 20000 });
 await page.waitForTimeout(INTRO_MS);
 

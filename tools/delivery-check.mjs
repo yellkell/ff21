@@ -64,7 +64,7 @@ async function bout(browser, label, acts, boss, kinds) {
   });
   await page.goto(base, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => page.goto(base));
   await page.waitForTimeout(1000);
-  await page.click('#enter-vr');
+  await page.click('#enter-vr', { timeout: 180_000 }); // it lights once the district has loaded
   await page.waitForFunction(() => document.body.classList.contains('app-entered'), { timeout: 20000 });
   await page.waitForFunction(() => !!window.__ff2?.wrap, { timeout: 10000 });
   for (const a of acts) await page.evaluate((a) => window.__ff2.wrap.act(a), a);

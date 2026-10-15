@@ -1017,8 +1017,11 @@ export const PALETTE = {
  * VR now — the void environment IS the set's world, always, and the scene
  * carries an opaque backdrop everywhere. No halfway states.) */
 
-/** Laser fan hues cycled by the light rig. */
-export const LASER_HUES = [0.9, 0.55, 0.75, 0.33, 0.12];
+/** The void's hue wheel (arena/environment.ts). Disco half of the wheel
+ *  only — it used to carry a green (0.33) and an amber (0.12), the two
+ *  colours that mean danger. (The lasers wear the record's sleeve,
+ *  arena/spectrum/palettes.ts.) */
+export const LASER_HUES = [0.9, 0.55, 0.75, 0.62, 0.83];
 
 /** Seat accent hue: golden-angle walk around the wheel — 24 distinct neons. */
 export function seatHue(seat: number): number {

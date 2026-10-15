@@ -434,7 +434,7 @@ console.log('\n=== the room: hello → roster → bake-on-join ===');
   // Mid-visit repaint: PICASSO's LOOK event reaches RUBE and rebakes.
   // (Needs PICASSO's frame loop ticking — enter the scene first.)
   const before = rosterB.find((p) => p.name === 'PICASSO')?.lk ?? '';
-  await pageA.click('#enter-vr').catch(() => {});
+  await pageA.click('#enter-vr', { timeout: 180_000 }).catch(() => {}); // it lights once the district has loaded
   await pageA.waitForTimeout(1500);
   await pageA.evaluate(() => window.__ff2.club.repaint());
   const repaintSeen = await pageB
