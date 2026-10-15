@@ -8,7 +8,7 @@
       name="description"
       content="Every board in FIRE FIGHT 2 — the ladder, the speedruns, the raids, the rave charts, FFTV live from the arena, and the tape room."
     />
-    <meta name="theme-color" content="#05060d" />
+    <meta name="theme-color" content="#07061a" />
     <meta property="og:title" content="FIRE FIGHT 2 WORLDWIDE LEADERBOARD" />
     <meta property="og:description" content="Every board, the live channel, and the tape room." />
     <meta property="og:type" content="website" />
@@ -16,13 +16,12 @@
          its rollup inputs), so a rooted href 404s when served from a subpath. -->
     <link rel="icon" href="firefightfavicon.png" />
 
-    <!-- Rajdhani — the house face, the same one the headset menus wear —
-         with Orbitron for the signage and JetBrains Mono for the readouts.
+    <!-- Rajdhani — the house face, the same one the headset menus wear.
          The Arial Black fallback keeps a first paint from being blank. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@800;900&family=JetBrains+Mono:wght@500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
 
@@ -30,85 +29,80 @@
       /* ═══════════════════════════════════════════════════════════════════
          FIRE FIGHT 2 — THE WORLDWIDE LEADERBOARD, ON A SCREEN
 
-         NIGHT CITY HUD. A terminal hung over a neon street: blue-black
-         glass, cyan hairlines, chamfered corners where a rounded one used
-         to be, and ONE accent per face that only ever marks what matters.
-         Three faces of type, each with a single job —
+         The NEON DISTRICT at night, in the game's own hand. Two sources,
+         copied rather than eyeballed:
 
-             Orbitron        the wordmark and panel titles   (signage —
-                             never a grade: its S reads as a 5)
-             Rajdhani        names and prose                 (the house face)
-             JetBrains Mono  every number and every label    (the readout)
+           ui/kit/holo.ts + panel.ts   HOLO GLASS — a see-through blue-black
+                                       pane, a cool tint pooling at the top,
+                                       faint scanlines, a diagonal sheen, a
+                                       lit cyan edge tube with its inner
+                                       hairline, the "on" light bar across
+                                       the top, magenta corner brackets on
+                                       all four corners, readout ticks along
+                                       the foot. Skewed neon cells and bars.
+                                       GLITCH type for headlines. Rajdhani.
+           index.html (the landing)    the street behind the glass — a
+                                       magenta/cyan grid running at you,
+                                       rain, CRT scanlines, the corner HUD
+                                       readouts and the kanji blade sign.
 
-         The motion is still ported constant-for-constant from the panel
-         kit, not eyeballed —
+         The kit's colour law holds here too: NEON CYAN is the accent —
+         identity, selection, primacy, nothing else — and HOT MAGENTA is
+         decoration only (brackets, the terminal's prompt), never a
+         selection. Each face keeps its own wordmark tube and its own haze
+         on the floor; the glass, the rail and the accent never change.
+
+         The motion is ported constant-for-constant from the panel kit —
 
              hover in            0.10s   HOVER_IN_S
              hover out           0.18s   HOVER_OUT_S
              press flash         0.15s   FLASH_S,  easeOutCubic decay
              panel open          0.26s   OPEN_S,   easeOutQuint scale
              rail marker         τ 0.09s MenuSystem.update()
-
-         What changes per face is the ACCENT, the grid and the pools on the
-         floor. FIRE FIGHT burns hazard amber, RAVE RAID keeps its void
-         magenta, and THE CHANNEL runs on-air red; the cyan structure — the
-         hairlines, the grid, focus — stays put under all three.
          ═══════════════════════════════════════════════════════════════════ */
-
-      /* Registered so a hover can ease the frame's edge and fill: an
-         unregistered custom property would snap. */
-      @property --edge {
-        syntax: '<color>';
-        inherits: false;
-        initial-value: rgba(110, 225, 255, 0.16);
-      }
-      @property --fill {
-        syntax: '<color>';
-        inherits: false;
-        initial-value: rgba(9, 12, 24, 0.86);
-      }
 
       :root {
         color-scheme: dark;
 
-        /* Surfaces */
-        --panel: rgba(8, 11, 22, 0.84);
-        --well: rgba(2, 4, 12, 0.5);
-        --rail-well: rgba(4, 7, 16, 0.78);
-        --plate: rgba(110, 225, 255, 0.045);
-        --plate-hover: rgba(110, 225, 255, 0.1);
-        --tile: rgba(10, 14, 28, 0.78);
-        /* Hairlines — cyan-tinted, the city's wiring. */
-        --line: rgba(110, 225, 255, 0.2);
-        --line-hover: rgba(110, 225, 255, 0.5);
-        --line-faint: rgba(110, 225, 255, 0.11);
-        --row-line: rgba(110, 225, 255, 0.06);
-        /* Text — lifted from the old 0.52/0.74 so captions read at arm's
-           length on a laptop, not just up close. */
-        --text: #f3f7ff;
-        --dim: rgba(222, 233, 255, 0.82);
-        --faint: rgba(190, 210, 240, 0.64);
-        --disabled: rgba(190, 210, 240, 0.4);
-        /* The structural neon. Never a selection, never a score — it is the
-           frame, the grid, and the keyboard's focus. */
-        --neon: #19e6ff;
-        --neon-dim: rgba(25, 230, 255, 0.5);
-        --neon-faint: rgba(25, 230, 255, 0.08);
-        /* The accent — identity, selection, primacy. Nothing else.
-           FIRE FIGHT's hazard amber is the page default. */
-        --accent: #ffb02e;
-        --accent-dim: rgba(255, 176, 46, 0.55);
-        --accent-faint: rgba(255, 176, 46, 0.12);
-        --accent-edge: rgba(255, 176, 46, 0.9);
-        --accent-glow: rgba(255, 176, 46, 0.45);
-        --on-accent: #1a1003;
-        --cta-a: #ffc94f;
-        --cta-b: #ff9a0a;
+        /* The district's two tubes (ui/kit/holo.ts ACCENT_RGB, HOLO_HOT_RGB). */
+        --cyan: #3ff2ff;
+        --cyan-rgb: 63, 242, 255;
+        --hot: #ff3da6;
+        --hot-rgb: 255, 61, 166;
+
+        /* Surfaces — KIT.panel/well/plate, the glass a step more opaque than
+           the headset's: a page is read for minutes over a moving street,
+           a menu for seconds. */
+        --glass: rgba(6, 10, 22, 0.76);
+        --well: rgba(0, 8, 20, 0.42);
+        --rail-well: rgba(6, 10, 22, 0.7);
+        --plate: rgba(255, 255, 255, 0.045);
+        --plate-hover: rgba(255, 255, 255, 0.09);
+        /* Hairlines — lit tube, not paint (KIT.line*). */
+        --line: rgba(90, 230, 255, 0.3);
+        --line-hover: rgba(140, 245, 255, 0.75);
+        --line-faint: rgba(90, 230, 255, 0.14);
+        --row-line: rgba(90, 230, 255, 0.07);
+        --tube: rgba(var(--cyan-rgb), 0.55);
+        /* Text — KIT's tiers, faint lifted a touch for a page read at arm's
+           length. */
+        --text: #ffffff;
+        --dim: rgba(228, 246, 255, 0.84);
+        --faint: rgba(205, 236, 255, 0.64);
+        --disabled: rgba(205, 236, 255, 0.36);
+        /* A label: the HUD's SCORE / BEATS voice — tracked, cool, quiet. */
+        --label: rgba(150, 240, 255, 0.74);
+        /* The accent — neon cyan. Identity, selection, primacy. Nothing else. */
+        --accent: #3ff2ff;
+        --accent-dim: rgba(63, 242, 255, 0.6);
+        --accent-faint: rgba(63, 242, 255, 0.12);
+        --accent-edge: rgba(63, 242, 255, 0.9);
+        --accent-glow: rgba(63, 242, 255, 0.55);
         /* Semantic roles (text + dots, never chrome) */
-        --positive: #2bf09a;
+        --positive: #2be28a;
         --info: #6fc8ff;
         --warn: #ffb454;
-        --danger: #ff4d6a;
+        --danger: #ff5266;
         /* The fire palette (config.ts PALETTE) — your fire, their fire. */
         --ember: #ff7a18;
         --cool: #4fb7ff;
@@ -120,46 +114,23 @@
         --g-b: #4fb7ff;
         --g-c: #b06bff;
         --g-f: #ff5040;
-        /* The floor: pools and the grid, per face. */
-        --pool-1: rgba(255, 122, 24, 0.16);
-        --pool-2: rgba(25, 230, 255, 0.1);
-        --pool-3: rgba(176, 107, 255, 0.12);
-        --grid: rgba(25, 230, 255, 0.2);
+        /* The haze on the street, per face (the landing's own pair). */
+        --haze-1: rgba(var(--hot-rgb), 0.16);
+        --haze-2: rgba(var(--cyan-rgb), 0.08);
 
         --font: 'Rajdhani', 'Arial Black', system-ui, sans-serif;
-        --display: 'Orbitron', 'Rajdhani', 'Arial Black', sans-serif;
-        --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        --mono: ui-monospace, 'SFMono-Regular', Consolas, Menlo, monospace;
       }
 
-      /* RAVE RAID keeps its own neon — separate but equal, as the boards are. */
+      /* RAVE RAID's street is lit magenta and green, off its own board. */
       body[data-face='rr'] {
-        --accent: #ff2ad5;
-        --accent-dim: rgba(255, 42, 213, 0.55);
-        --accent-faint: rgba(255, 42, 213, 0.12);
-        --accent-edge: rgba(255, 42, 213, 0.9);
-        --accent-glow: rgba(255, 42, 213, 0.45);
-        --on-accent: #16040f;
-        --cta-a: #ff4fe0;
-        --cta-b: #d813ad;
-        --pool-1: rgba(255, 42, 213, 0.17);
-        --pool-2: rgba(54, 224, 90, 0.12);
-        --pool-3: rgba(79, 183, 255, 0.12);
-        --grid: rgba(255, 42, 213, 0.2);
+        --haze-1: rgba(var(--hot-rgb), 0.22);
+        --haze-2: rgba(54, 224, 90, 0.08);
       }
       /* THE CHANNEL burns on-air red for as long as you are watching it. */
       body[data-face='tv'] {
-        --accent: #ff4b3e;
-        --accent-dim: rgba(255, 75, 62, 0.55);
-        --accent-faint: rgba(255, 75, 62, 0.12);
-        --accent-edge: rgba(255, 75, 62, 0.9);
-        --accent-glow: rgba(255, 75, 62, 0.45);
-        --on-accent: #1a0503;
-        --cta-a: #ff6a5c;
-        --cta-b: #d6251a;
-        --pool-1: rgba(255, 75, 62, 0.18);
-        --pool-2: rgba(25, 230, 255, 0.08);
-        --pool-3: rgba(176, 107, 255, 0.1);
-        --grid: rgba(255, 75, 62, 0.18);
+        --haze-1: rgba(255, 75, 62, 0.18);
+        --haze-2: rgba(var(--hot-rgb), 0.08);
       }
 
       *,
@@ -178,175 +149,202 @@
         font-family: var(--font);
         font-weight: 500;
         color: var(--text);
-        background: #05060d;
+        background: #07061a;
         overflow-x: hidden;
         -webkit-font-smoothing: antialiased;
       }
       ::selection {
-        background: var(--accent);
-        color: var(--on-accent);
+        background: rgba(var(--cyan-rgb), 0.35);
+        color: #fff;
       }
 
-      /* The street behind the glass — pools sweeping the way the landing
-         floor does, in whichever neon the live face burns. */
-      .floor {
-        position: fixed;
-        inset: -20%;
-        z-index: -2;
-        pointer-events: none;
-        background:
-          radial-gradient(circle at 28% 18%, var(--pool-1), transparent 30rem),
-          radial-gradient(circle at 78% 64%, var(--pool-2), transparent 26rem),
-          radial-gradient(circle at 58% 92%, var(--pool-3), transparent 24rem);
-        filter: blur(10px);
-        animation: sweep 41s linear infinite;
-        transition: background 0.4s linear;
-      }
-      .floor::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background:
-          radial-gradient(circle at 70% 30%, rgba(176, 107, 255, 0.1), transparent 22rem),
-          radial-gradient(circle at 22% 78%, rgba(25, 230, 255, 0.07), transparent 20rem);
-        animation: sweep 67s linear infinite reverse;
-      }
-      @keyframes sweep {
-        from { transform: rotate(0deg) scale(1.05); }
-        to { transform: rotate(360deg) scale(1.05); }
-      }
-      /* The sky, with the screen's scanlines baked into it — behind the
-         glass only, so they texture the room and never cross a word. */
+      /* ── THE STREET ─────────────────────────────────────────────────────
+         The landing, laid behind the boards: the sky and its haze, the
+         grid running at you, two sheets of rain, the CRT. All of it sits
+         under the glass — the scanlines texture the room and never cross
+         a word. */
       body::before {
         content: '';
         position: fixed;
         inset: 0;
-        z-index: -3;
-        background:
-          repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
-          radial-gradient(ellipse 120% 60% at 50% 0%, rgba(40, 30, 90, 0.35), transparent 70%),
-          linear-gradient(180deg, #04050c 0%, #070818 55%, #0c0619 100%);
+        z-index: -4;
+        background: linear-gradient(180deg, #07061a 0%, #0b0716 55%, #120617 100%);
       }
-      /* THE GRID — a floor running away to the horizon, the one piece of
-         the room that moves on its own, ruled in the face's colour; the
-         lines fade before they reach the boards. */
-      body::after {
-        content: '';
+      .floor {
+        position: fixed;
+        inset: -20%;
+        z-index: -3;
+        pointer-events: none;
+        background:
+          radial-gradient(ellipse 50% 32% at 50% 22%, var(--haze-1), transparent 70%),
+          radial-gradient(ellipse 42% 30% at 26% 70%, var(--haze-2), transparent 70%),
+          radial-gradient(ellipse 36% 26% at 80% 58%, rgba(var(--cyan-rgb), 0.05), transparent 70%);
+        animation: haze-breathe 6.4s ease-in-out infinite;
+        transition: background 0.4s linear;
+      }
+      @keyframes haze-breathe {
+        0%, 100% { opacity: 0.75; }
+        50% { opacity: 1; }
+      }
+      /* The grid: magenta rows, cyan columns, sliding toward you. */
+      .street-grid {
         position: fixed;
         left: -50%;
         right: -50%;
-        bottom: -6vh;
-        height: 52vh;
-        z-index: -1;
+        bottom: -12vh;
+        height: 58vh;
+        z-index: -2;
         pointer-events: none;
         background-image:
-          linear-gradient(var(--grid) 1px, transparent 1px),
-          linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-        background-size: 72px 72px;
+          linear-gradient(rgba(var(--hot-rgb), 0.38) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(var(--cyan-rgb), 0.3) 1px, transparent 1px);
+        background-size: 64px 64px;
         transform: perspective(380px) rotateX(64deg);
-        transform-origin: 50% 100%;
-        -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.6) 40%, transparent 92%);
-        mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.6) 40%, transparent 92%);
-        animation: grid-run 4.8s linear infinite;
-        opacity: 0.7;
+        transform-origin: 50% 0;
+        -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
+        mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
+        opacity: 0.6;
+        animation: grid-run 1.6s linear infinite;
       }
       @keyframes grid-run {
-        to { background-position: 0 72px, 0 0; }
+        to { background-position: 0 64px, 0 0; }
       }
+      /* Rain: two sheets of thin streaks at different speeds. */
+      .street-rain,
+      .street-rain::after {
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        pointer-events: none;
+        background-image: repeating-linear-gradient(
+          100deg,
+          transparent 0 22px,
+          rgba(170, 220, 255, 0.06) 22px 23px,
+          transparent 23px 61px
+        );
+        background-size: 100% 240px;
+        animation: rain-fall 0.55s linear infinite;
+      }
+      .street-rain::after {
+        content: '';
+        background-size: 100% 180px;
+        opacity: 0.7;
+        animation-duration: 0.8s;
+        transform: translateX(31px);
+      }
+      @keyframes rain-fall {
+        to { background-position: -40px 240px; }
+      }
+      /* CRT: scanlines and a vignette, over the street only. */
+      .street-crt {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background:
+          repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
+          radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.65) 100%);
+      }
+      /* The blade sign down the right edge — only where the street shows
+         past the boards. 炎の喧嘩: the fire fight. */
+      .kanji {
+        position: fixed;
+        z-index: -1;
+        right: clamp(14px, 2vw, 30px);
+        top: 50%;
+        transform: translateY(-50%);
+        writing-mode: vertical-rl;
+        font: 900 clamp(24px, 2.4vw, 38px)/1 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+        letter-spacing: 0.25em;
+        color: rgba(var(--hot-rgb), 0.85);
+        text-shadow: 0 0 8px rgba(var(--hot-rgb), 0.9), 0 0 26px rgba(var(--hot-rgb), 0.5);
+        pointer-events: none;
+        animation: tube-buzz 7s infinite;
+      }
+      @keyframes tube-buzz {
+        0%, 61%, 63%, 65%, 100% { opacity: 1; }
+        62%, 64% { opacity: 0.35; }
+      }
+      @media (max-width: 1440px) {
+        .kanji { display: none; }
+      }
+
       .shell {
         max-width: 1280px;
         margin: 0 auto;
         padding-bottom: clamp(28px, 5vw, 56px);
       }
 
-      /* ── THE FRAME ──────────────────────────────────────────────────────
-         Every boxed thing on the page is cut the same way: the top-left and
-         bottom-right corners clipped off at 45°, a 1px cyan hairline round
-         the rest, and the two diagonals drawn back in so the edge never
-         breaks. --cut sizes the chamfer, --edge colours the line and --fill
-         the glass; each part below only sets those three. */
-      .panel,
-      .stat,
-      .rail,
-      .plate,
-      .chip,
-      .song,
-      .maps figure,
-      .tape-open,
-      .banner-wrap,
-      .note,
-      .lab-filter input[type='search'],
-      .lab-filter select,
-      .song-find {
-        --cut: 10px;
-        --edge: var(--line);
-        --fill: var(--panel);
-        border: 1px solid var(--edge);
-        border-radius: 0;
-        clip-path: polygon(
-          var(--cut) 0,
-          100% 0,
-          100% calc(100% - var(--cut)),
-          calc(100% - var(--cut)) 100%,
-          0 100%,
-          0 var(--cut)
-        );
-        background:
-          linear-gradient(135deg, transparent 50%, var(--edge) 50% calc(50% + 1.2px), transparent calc(50% + 1.2px))
-            top left / var(--cut) var(--cut) no-repeat border-box,
-          linear-gradient(315deg, transparent 50%, var(--edge) 50% calc(50% + 1.2px), transparent calc(50% + 1.2px))
-            bottom right / var(--cut) var(--cut) no-repeat border-box,
-          var(--fill);
-      }
-
-      /* ── THE PANEL ──────────────────────────────────────────────────────
-         Glass over the street, chamfered top-left and bottom-right, with the
-         corner brackets moved to the two corners still standing — top-right
-         and bottom-left — lit in the accent. The sheen is now the panel's
-         signal line: a short burn of accent across the top edge. */
+      /* ── HOLO GLASS ─────────────────────────────────────────────────────
+         holoGlass() as CSS: the fill, the cool tint pooling at the top and
+         a breath of magenta at the foot, scanlines every 4px, the diagonal
+         sheen over the upper half; then the lit edge (a 2px tube with its
+         bloom) and the inner hairline inset 8px. */
       .panel {
-        --cut: 22px;
         position: relative;
-        padding: clamp(16px, 2.4vw, 30px);
+        border-radius: 22px;
+        padding: clamp(22px, 2.6vw, 34px) clamp(18px, 2.4vw, 32px) clamp(30px, 3vw, 40px);
         overflow: hidden;
         isolation: isolate;
-        -webkit-backdrop-filter: blur(10px) saturate(1.2);
-        backdrop-filter: blur(10px) saturate(1.2);
+        background:
+          linear-gradient(118deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 32%) top / 100% 50% no-repeat,
+          repeating-linear-gradient(180deg, transparent 0 2px, rgba(150, 235, 255, 0.035) 2px 3px, transparent 3px 4px),
+          linear-gradient(180deg, rgba(var(--cyan-rgb), 0.1) 0%, rgba(var(--cyan-rgb), 0.03) 35%, rgba(var(--hot-rgb), 0.05) 100%),
+          var(--glass);
+        border: 2px solid var(--tube);
+        outline: 1px solid rgba(var(--cyan-rgb), 0.14);
+        outline-offset: -10px;
         box-shadow:
-          inset 0 1px 0 rgba(255, 255, 255, 0.05),
-          inset 0 0 60px rgba(25, 230, 255, 0.035);
+          0 0 16px rgba(var(--cyan-rgb), 0.4),
+          0 0 46px rgba(var(--cyan-rgb), 0.1),
+          inset 0 0 22px rgba(var(--cyan-rgb), 0.08);
+        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(12px);
       }
-      .panel::before,
+      /* Corner brackets — the magenta tube on all four corners, the holo
+         mark: 14px in, 26px arms, 3px. */
+      .panel::before {
+        content: '';
+        position: absolute;
+        inset: 12px;
+        pointer-events: none;
+        z-index: 3;
+        --arm: 26px;
+        background:
+          linear-gradient(var(--hot), var(--hot)) top left / var(--arm) 3px,
+          linear-gradient(var(--hot), var(--hot)) top left / 3px var(--arm),
+          linear-gradient(var(--hot), var(--hot)) top right / var(--arm) 3px,
+          linear-gradient(var(--hot), var(--hot)) top right / 3px var(--arm),
+          linear-gradient(var(--hot), var(--hot)) bottom left / var(--arm) 3px,
+          linear-gradient(var(--hot), var(--hot)) bottom left / 3px var(--arm),
+          linear-gradient(var(--hot), var(--hot)) bottom right / var(--arm) 3px,
+          linear-gradient(var(--hot), var(--hot)) bottom right / 3px var(--arm);
+        background-repeat: no-repeat;
+        opacity: 0.85;
+        filter: drop-shadow(0 0 5px rgba(var(--hot-rgb), 0.8));
+      }
+      /* The readout ticks along the foot, every fifth one long. */
       .panel::after {
         content: '';
         position: absolute;
-        width: 18px;
-        height: 18px;
-        border: 2px solid var(--accent);
+        left: 54px;
+        right: 54px;
+        bottom: 12px;
+        height: 8px;
         pointer-events: none;
-        z-index: 3;
-        filter: drop-shadow(0 0 4px var(--accent-glow));
+        z-index: 0;
+        background:
+          repeating-linear-gradient(90deg, rgba(var(--cyan-rgb), 0.16) 0 2px, transparent 2px 90px) 0 0 / 100% 8px no-repeat,
+          repeating-linear-gradient(90deg, rgba(var(--cyan-rgb), 0.16) 0 2px, transparent 2px 18px) 0 0 / 100% 4px no-repeat;
       }
-      .panel::before {
-        top: 8px;
-        right: 8px;
-        border-left-color: transparent;
-        border-bottom-color: transparent;
-      }
-      .panel::after {
-        left: 8px;
-        bottom: 8px;
-        border-right-color: transparent;
-        border-top-color: transparent;
-      }
+      /* The top light bar — the screen's "on" strip. */
       .panel > .sheen {
         position: absolute;
-        top: 0;
-        left: 22px;
-        width: min(42%, 340px);
-        height: 2px;
-        background: linear-gradient(90deg, var(--accent), transparent);
-        box-shadow: 0 0 12px var(--accent-glow);
+        top: 1px;
+        left: 20%;
+        width: 60%;
+        height: 3px;
+        background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0), rgba(var(--cyan-rgb), 0.9), rgba(var(--cyan-rgb), 0));
         pointer-events: none;
         z-index: 2;
       }
@@ -355,10 +353,9 @@
         z-index: 1;
       }
 
-      /* THE UNDER-HALO — the panel's presence in a dark room. It holds
-         still: on a flat silent screen the headset's beat envelope reads as
-         a strobe. Kept low so the glass stays dark and the words stay
-         sharp against it. */
+      /* THE UNDER-HALO — the panel kit's soft halo, a cool breath under the
+         glass. It holds still: on a flat silent screen the headset's beat
+         envelope reads as a strobe. */
       .halo {
         position: absolute;
         left: -21%;
@@ -366,9 +363,9 @@
         width: 142%;
         height: 156%;
         border-radius: 26%;
-        background: var(--accent);
+        background: var(--cyan);
         filter: blur(60px);
-        opacity: 0.05;
+        opacity: 0.04;
         mix-blend-mode: plus-lighter;
         pointer-events: none;
         z-index: -1;
@@ -391,17 +388,19 @@
         animation: panel-open 0.26s linear both;
       }
 
-      /* ── THE HEADER ───────────────────────────────────────────────────── */
+      /* ── THE HEADER ─────────────────────────────────────────────────────
+         The landing's corner readout over the sign, the sign in neon tube,
+         and the terminal line under it. */
       header.top {
         position: relative;
         display: flex;
         flex-wrap: wrap;
-        align-items: center;
-        gap: clamp(12px, 2vw, 24px);
-        padding: 4px 4px clamp(16px, 2.2vw, 24px);
-        margin-bottom: clamp(14px, 2vw, 20px);
+        align-items: flex-end;
+        gap: clamp(14px, 2vw, 24px);
+        padding: 0 4px clamp(18px, 2.4vw, 26px);
+        margin-bottom: clamp(16px, 2.2vw, 24px);
       }
-      /* The header's underline: accent into cyan into nothing. */
+      /* The landing's own divider: a cyan line that fades out both ways. */
       header.top::after {
         content: '';
         position: absolute;
@@ -409,139 +408,127 @@
         right: 0;
         bottom: 0;
         height: 1px;
-        background: linear-gradient(90deg, var(--accent) 0, var(--neon-dim) 38%, transparent 100%);
-        box-shadow: 0 0 10px var(--accent-glow);
+        background: linear-gradient(90deg, transparent, rgba(var(--cyan-rgb), 0.7) 18%, rgba(var(--cyan-rgb), 0.7) 82%, transparent);
+        box-shadow: 0 0 8px rgba(var(--cyan-rgb), 0.5);
       }
+      .hud-line {
+        margin: 0 0 14px;
+        font: 600 11px/1.6 var(--mono);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(var(--cyan-rgb), 0.55);
+        user-select: none;
+      }
+      .hud-line b {
+        color: var(--cyan);
+        font-weight: 700;
+      }
+      .hud-line .blink {
+        animation: blink 1.1s steps(1) infinite;
+      }
+
+      /* THE SIGN — the wordmark as a neon tube: a white-hot core stroke, a
+         barely-lit inside, and the bloom in the tube's colour. FIRE FIGHT
+         is the landing sign's cyan with its magenta 2; RAVE RAID is green
+         and magenta off its own board; FFTV is on-air red over cyan.
+         (`color` carries each tube's colour, so a face is told apart by its
+         ink.) */
       .wordmark {
         margin: 0;
-        line-height: 0.95;
-        font-family: var(--display);
-        font-weight: 900;
-        font-size: clamp(28px, 5vw, 50px);
-        letter-spacing: 0.08em;
-        text-indent: 0.08em;
+        line-height: 0.92;
+        font-family: var(--font);
+        font-weight: 700;
+        font-size: clamp(40px, 6.4vw, 72px);
+        letter-spacing: 0.06em;
         user-select: none;
         white-space: nowrap;
       }
       .wordmark span {
+        --tube-rgb: var(--cyan-rgb);
         display: inline-block;
-        animation: glitch 7s steps(1) infinite;
+        -webkit-text-fill-color: rgba(var(--tube-rgb), 0.1);
+        -webkit-text-stroke: 2px rgba(240, 255, 255, 0.92);
+        text-shadow:
+          0 0 4px rgba(var(--tube-rgb), 1),
+          0 0 14px rgba(var(--tube-rgb), 0.85),
+          0 0 34px rgba(var(--tube-rgb), 0.45);
+        animation: glitch 9s steps(1) infinite;
       }
-      .wordmark .b {
-        animation-delay: -3.1s;
+      .wordmark .a { color: #3ff2ff; }
+      .wordmark .b { color: #7ff6ff; animation: glitch 9s steps(1) -4.1s infinite, tube-buzz 9s 2s infinite; }
+      body[data-face='ff'] .wordmark::after {
+        content: '2';
+        display: inline-block;
+        margin-left: 0.28em;
+        -webkit-text-fill-color: rgba(var(--hot-rgb), 0.1);
+        -webkit-text-stroke: 2px rgba(255, 225, 240, 0.92);
+        text-shadow:
+          0 0 4px rgba(var(--hot-rgb), 1),
+          0 0 14px rgba(var(--hot-rgb), 0.85),
+          0 0 34px rgba(var(--hot-rgb), 0.45);
       }
-      /* The glitch — two frames out of every seven seconds, a slice jumps
-         sideways and the colour split doubles. Rare enough to be a neon
-         sign buzzing, not a flicker you have to look past. */
+      body[data-face='rr'] .wordmark .a { color: #b9ffc4; --tube-rgb: 54, 224, 90; }
+      body[data-face='rr'] .wordmark .b { color: #ff3da6; --tube-rgb: var(--hot-rgb); }
+      body[data-face='tv'] .wordmark .a { color: #ff6a5c; --tube-rgb: 255, 75, 62; }
+      body[data-face='tv'] .wordmark .b { color: #3ff2ff; }
+      /* The live glitch: a band of the sign kicked sideways on the district's
+         split for a few frames — the landing's move, at half its rate, since
+         this sign sits over boards people are reading. */
       @keyframes glitch {
-        0%, 91%, 100% { transform: none; clip-path: none; }
-        92% { transform: translate(-3px, 0) skewX(-6deg); clip-path: inset(18% 0 46% 0); }
-        93% { transform: translate(3px, 0); clip-path: inset(58% 0 8% 0); }
-        94% { transform: none; clip-path: none; }
-      }
-      /* The one glowing text on the board, in the landing page's
-         chromatic split. */
-      .wordmark .a {
-        color: #ffe9c4;
-        text-shadow:
-          -2px 0 0 rgba(232, 53, 42, 0.6),
-          2px 0 0 rgba(25, 230, 255, 0.55),
-          0 0 22px rgba(255, 122, 24, 0.75);
-      }
-      .wordmark .b {
-        color: #ffd9a8;
-        text-shadow:
-          -2px 0 0 rgba(255, 176, 46, 0.5),
-          2px 0 0 rgba(176, 107, 255, 0.55),
-          0 0 22px rgba(255, 176, 46, 0.85);
-      }
-      /* RAVE RAID's own wordmark — green and magenta, off its own board. */
-      body[data-face='rr'] .wordmark .a {
-        color: #b9ffc4;
-        text-shadow:
-          -2px 0 0 rgba(255, 42, 213, 0.6),
-          2px 0 0 rgba(25, 230, 255, 0.5),
-          0 0 22px rgba(54, 224, 90, 0.75);
-      }
-      body[data-face='rr'] .wordmark .b {
-        color: #ffd9f6;
-        text-shadow:
-          -2px 0 0 rgba(54, 224, 90, 0.5),
-          2px 0 0 rgba(176, 107, 255, 0.5),
-          0 0 22px rgba(255, 42, 213, 0.85);
-      }
-      /* …and FFTV's, on air. */
-      body[data-face='tv'] .wordmark .a {
-        color: #ffe3de;
-        text-shadow:
-          -2px 0 0 rgba(255, 75, 62, 0.6),
-          2px 0 0 rgba(25, 230, 255, 0.45),
-          0 0 22px rgba(255, 75, 62, 0.8);
-      }
-      body[data-face='tv'] .wordmark .b {
-        color: #ff8a7d;
-        text-shadow:
-          -2px 0 0 rgba(255, 122, 24, 0.5),
-          2px 0 0 rgba(176, 107, 255, 0.4),
-          0 0 24px rgba(255, 75, 62, 0.9);
+        0%, 95.5%, 98.5%, 100% { transform: none; clip-path: none; filter: none; }
+        96% { transform: translateX(-6px); clip-path: inset(31% 0 41% 0); filter: drop-shadow(-3px 0 0 rgba(255, 61, 166, 0.9)); }
+        97% { transform: translateX(5px); clip-path: inset(55% 0 18% 0); filter: drop-shadow(3px 0 0 rgba(63, 242, 255, 0.9)); }
+        98% { transform: translateX(-3px); clip-path: inset(12% 0 62% 0); filter: none; }
       }
 
-      /* The kicker reads as a terminal path with its cursor still blinking. */
+      /* The kicker: the landing's "// NEON DISTRICT ARENA II" voice. */
       .kicker {
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: clamp(11px, 1.2vw, 13px);
+        font: 700 clamp(11px, 1.2vw, 13px)/1.4 var(--mono);
         letter-spacing: 0.22em;
-        color: var(--dim);
-        margin: 10px 0 0;
+        text-transform: uppercase;
+        color: var(--cyan);
+        text-shadow: 0 0 8px rgba(var(--cyan-rgb), 0.55);
+        margin: 14px 0 0;
         white-space: nowrap;
       }
       .kicker::before {
         content: '// ';
-        color: var(--accent);
-      }
-      .kicker::after {
-        content: '';
-        display: inline-block;
-        width: 0.55em;
-        height: 1em;
-        margin-left: 6px;
-        vertical-align: -0.15em;
-        background: var(--accent);
-        box-shadow: 0 0 8px var(--accent-glow);
-        animation: blink 1.1s steps(2) infinite;
+        color: var(--hot);
+        text-shadow: 0 0 8px rgba(var(--hot-rgb), 0.6);
       }
       .top-right {
         margin-left: auto;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 14px;
         flex-wrap: wrap;
       }
 
-      /* The status chip: a readout, a hairline, a dot that glows only when
-         it has something to say. */
+      /* The status chip: a quiet readout pill with a dot that glows only
+         when it has something to say. */
       .chip {
-        --cut: 8px;
-        --fill: rgba(4, 7, 16, 0.72);
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        height: 42px;
-        padding: 0 18px;
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: 12px;
-        letter-spacing: 0.14em;
-        color: var(--dim);
+        height: 44px;
+        padding: 0 20px;
+        border-radius: 22px;
+        background: rgba(6, 10, 22, 0.6);
+        border: 2px solid var(--line-faint);
+        font: 600 12px/1 var(--mono);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(var(--cyan-rgb), 0.78);
         white-space: nowrap;
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
       }
       .chip .dot {
-        width: 8px;
-        height: 8px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
         background: var(--faint);
         flex: none;
-        transform: rotate(45deg);
       }
       .chip[data-tone='live'] .dot {
         background: var(--positive);
@@ -565,39 +552,41 @@
       }
 
       /* ── PLATES ─────────────────────────────────────────────────────────
-         The neutral button: fill and edge brighten on hover, and the edge
-         tick — the accent's whole job on a resting screen. */
+         The kit's neutral button: fill 0.045 → 0.09, border 0.10 → 0.30,
+         and the edge tick — the accent's whole job on a resting screen. */
       .plate {
-        --cut: 10px;
-        --fill: var(--plate);
         position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 8px;
-        min-height: 42px;
+        min-height: 44px;
         padding: 10px 22px 10px 26px;
+        border-radius: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        background: var(--plate);
         color: var(--text);
-        font-family: var(--mono);
-        font-weight: 700;
-        font-size: 13px;
-        letter-spacing: 0.14em;
+        font-family: var(--font);
+        font-weight: 600;
+        font-size: 16px;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         cursor: pointer;
         overflow: hidden;
         transition:
-          --fill 0.18s linear,
-          --edge 0.18s linear,
+          background-color 0.18s linear,
+          border-color 0.18s linear,
           box-shadow 0.18s linear,
           color 0.18s linear;
       }
       .plate::before {
         content: '';
         position: absolute;
-        left: 8px;
-        top: 11px;
-        bottom: 11px;
-        width: 3px;
+        left: 7px;
+        top: 12px;
+        bottom: 12px;
+        width: 5px;
+        border-radius: 2.5px;
         background: var(--accent);
         box-shadow: 0 0 8px var(--accent-glow);
         opacity: 0;
@@ -605,8 +594,8 @@
       }
       .plate:hover,
       .plate:focus-visible {
-        --fill: var(--plate-hover);
-        --edge: var(--line-hover);
+        background: var(--plate-hover);
+        border-color: rgba(255, 255, 255, 0.3);
         transition-duration: 0.1s;
       }
       .plate:hover::before,
@@ -615,57 +604,106 @@
         transition-duration: 0.1s;
       }
       .plate:focus-visible {
-        outline: none;
-        --edge: var(--neon);
-        box-shadow: inset 0 0 0 1px var(--neon);
+        outline: 2px solid var(--hot);
+        outline-offset: 3px;
       }
       .plate[aria-pressed='true'],
       .plate.selected {
-        --fill: var(--accent-faint);
-        --edge: var(--accent-edge);
+        background: var(--accent-faint);
+        border-color: var(--accent-edge);
       }
       .plate[aria-pressed='true']::before,
       .plate.selected::before {
         opacity: 1;
       }
       .plate[disabled] {
-        --fill: rgba(255, 255, 255, 0.02);
-        --edge: rgba(255, 255, 255, 0.06);
         cursor: default;
         color: var(--disabled);
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(255, 255, 255, 0.05);
       }
       .plate[disabled]::before {
         opacity: 0;
       }
+
+      /* THE CTA — the page's one primary, in the landing's ENTER VR glass:
+         translucent cyan with a lit rim, chamfered corners, the label lit
+         white-cyan, and the magenta brackets on the two corners left
+         standing (they ride a wrapper, because the chamfer clips anything
+         drawn on the button itself). */
+      .cta-wrap {
+        position: relative;
+        display: inline-flex;
+        filter: drop-shadow(0 0 12px rgba(var(--cyan-rgb), 0.45));
+      }
+      .cta-wrap::before,
+      .cta-wrap::after {
+        content: '';
+        position: absolute;
+        z-index: 1;
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+      }
+      .cta-wrap::before {
+        top: -5px;
+        right: -5px;
+        border-top: 2px solid var(--hot);
+        border-right: 2px solid var(--hot);
+      }
+      .cta-wrap::after {
+        bottom: -5px;
+        left: -5px;
+        border-bottom: 2px solid var(--hot);
+        border-left: 2px solid var(--hot);
+      }
       .plate.primary {
-        background: linear-gradient(100deg, var(--cta-a), var(--cta-b));
-        border-color: transparent;
-        color: var(--on-accent);
+        min-height: 44px;
+        padding: 0 28px;
+        border: 0;
+        border-radius: 0;
+        color: #eaffff;
+        background-color: rgba(6, 10, 22, 0.6);
+        background-image:
+          linear-gradient(180deg, rgba(var(--cyan-rgb), 0.24) 0%, rgba(var(--cyan-rgb), 0.08) 55%, rgba(var(--cyan-rgb), 0.16) 100%),
+          repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        box-shadow:
+          inset 0 0 0 1.5px rgba(var(--cyan-rgb), 0.9),
+          inset 0 0 20px rgba(var(--cyan-rgb), 0.25);
         font-weight: 700;
-        padding-left: 24px;
-        padding-right: 24px;
+        letter-spacing: 0.3em;
+        text-indent: 0.3em;
+        text-shadow:
+          0 0 10px rgba(var(--cyan-rgb), 0.95),
+          0 0 22px rgba(var(--cyan-rgb), 0.5);
       }
       .plate.primary::before {
         display: none;
       }
       .plate.primary:hover,
       .plate.primary:focus-visible {
-        background: linear-gradient(100deg, #fff 0%, var(--cta-a) 30%, var(--cta-b));
+        color: #fff;
+        background-color: rgba(26, 92, 120, 0.7);
+        border-color: transparent;
       }
       .plate.primary:focus-visible {
-        box-shadow: inset 0 0 0 2px var(--on-accent);
+        outline: none;
+        box-shadow:
+          inset 0 0 0 2px var(--hot),
+          inset 0 0 20px rgba(var(--cyan-rgb), 0.3);
       }
 
       /* THE PRESS FLASH — 150ms, holding bright then dropping off a cliff. */
       .flash-layer {
         position: absolute;
         inset: 0;
-        background: var(--accent-faint);
+        background: rgba(var(--cyan-rgb), 0.2);
         opacity: 0;
         pointer-events: none;
       }
       .primary .flash-layer {
-        background: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.25);
       }
       .flashing .flash-layer {
         animation: press-flash 0.15s linear;
@@ -679,53 +717,67 @@
       }
 
       /* ── THE STAT STRIP ─────────────────────────────────────────────────
-         Readouts: a mono caption with its prompt, the number big and lit,
-         and an accent bar down the left that says "this is data". */
+         Readouts in the raid HUD's wedge voice: the label tracked and cool,
+         the number white and lit, on a small pane of the same glass. */
       .strip {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: clamp(10px, 1.4vw, 14px);
-        margin-bottom: clamp(14px, 2vw, 20px);
+        gap: clamp(10px, 1.4vw, 16px);
+        margin-bottom: clamp(16px, 2vw, 22px);
       }
       .stat {
-        --cut: 12px;
-        --fill: var(--tile);
         position: relative;
-        padding: 15px 18px 15px 22px;
         min-width: 0;
-        box-shadow: inset 3px 0 0 var(--accent-dim);
-        -webkit-backdrop-filter: blur(8px);
-        backdrop-filter: blur(8px);
+        border-radius: 16px;
+        padding: 16px 20px 15px;
+        background:
+          repeating-linear-gradient(180deg, transparent 0 2px, rgba(150, 235, 255, 0.03) 2px 3px, transparent 3px 4px),
+          linear-gradient(180deg, rgba(var(--cyan-rgb), 0.08) 0%, rgba(var(--cyan-rgb), 0.02) 45%, rgba(var(--hot-rgb), 0.04) 100%),
+          var(--glass);
+        border: 2px solid var(--line);
+        box-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.16), inset 0 0 16px rgba(var(--cyan-rgb), 0.05);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+      }
+      /* A small pane's brackets: the top-left and bottom-right pair. */
+      .stat::before {
+        content: '';
+        position: absolute;
+        inset: 7px;
+        pointer-events: none;
+        background:
+          linear-gradient(var(--hot), var(--hot)) top left / 14px 2px,
+          linear-gradient(var(--hot), var(--hot)) top left / 2px 14px,
+          linear-gradient(var(--hot), var(--hot)) bottom right / 14px 2px,
+          linear-gradient(var(--hot), var(--hot)) bottom right / 2px 14px;
+        background-repeat: no-repeat;
+        opacity: 0.75;
+        filter: drop-shadow(0 0 3px rgba(var(--hot-rgb), 0.8));
       }
       .stat .cap {
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
-        color: var(--faint);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        color: var(--label);
         text-transform: uppercase;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .stat .cap::before {
-        content: '▸ ';
-        color: var(--accent);
-      }
       .stat .val {
         font-weight: 700;
-        font-size: clamp(26px, 3vw, 36px);
-        letter-spacing: 0.03em;
+        font-size: clamp(28px, 3.2vw, 38px);
+        letter-spacing: 0.04em;
         line-height: 1.12;
-        margin-top: 6px;
+        margin-top: 4px;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        text-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
+        text-shadow: 0 0 14px rgba(var(--cyan-rgb), 0.45);
       }
       .stat .sub {
-        font-size: 14.5px;
+        font-size: 15px;
         color: var(--dim);
         letter-spacing: 0.03em;
         margin-top: 2px;
@@ -738,20 +790,26 @@
       }
 
       /* ── THE RAIL ───────────────────────────────────────────────────────
-         A recessed well, tabs as text, and one eased marker. In the headset
-         it stands on the left of the board and slides vertically; here it
-         lies down under the header and the 5×66 tick becomes a 66×3 one,
-         lit like a tube. */
+         The panel kit's tab strip, laid in a well: labels on a shared faint
+         baseline, the active one white over a cyan underline that glows. In
+         the headset it stands on the left of the board; here it lies down
+         under the header. */
       .rail {
-        --cut: 14px;
-        --fill: var(--rail-well);
         position: relative;
         display: flex;
-        gap: 2px;
-        padding: 6px;
+        gap: 4px;
+        padding: 6px 8px;
+        border-radius: 20px;
+        background:
+          linear-gradient(180deg, rgba(var(--cyan-rgb), 0.06), rgba(var(--cyan-rgb), 0) 60%),
+          var(--rail-well);
+        border: 2px solid var(--line);
+        box-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.14);
         margin-bottom: clamp(14px, 2vw, 20px);
         overflow-x: auto;
         scrollbar-width: none;
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
       }
       .rail::-webkit-scrollbar { display: none; }
       /* A rail wider than the phone it is on already scrolled — but with the
@@ -780,45 +838,44 @@
         appearance: none;
         border: 0;
         background: transparent;
-        border-radius: 0;
-        padding: 15px 12px 22px;
+        border-radius: 12px;
+        padding: 15px 12px 24px;
         font-family: var(--font);
         font-weight: 700;
-        font-size: clamp(15px, 1.7vw, 19px);
+        font-size: clamp(16px, 1.8vw, 20px);
         letter-spacing: 0.14em;
-        color: var(--faint);
+        color: rgba(250, 246, 238, 0.6);
         cursor: pointer;
         text-transform: uppercase;
         white-space: nowrap;
         transition:
           background-color 0.18s linear,
-          color 0.18s linear,
-          text-shadow 0.18s linear;
+          color 0.18s linear;
       }
       .rail-tab:hover {
-        background: rgba(110, 225, 255, 0.05);
-        color: var(--text);
+        background: rgba(var(--cyan-rgb), 0.05);
+        color: rgba(250, 246, 238, 0.95);
         transition-duration: 0.1s;
       }
       .rail-tab:focus-visible {
-        outline: none;
-        background: rgba(110, 225, 255, 0.05);
-        box-shadow: inset 0 0 0 1px var(--neon);
-        color: var(--text);
+        outline: 2px solid var(--hot);
+        outline-offset: -2px;
+        color: #fff;
       }
       .rail-tab[aria-selected='true'] {
-        background: linear-gradient(to top, var(--accent-faint), transparent 85%);
-        color: var(--text);
-        text-shadow: 0 0 14px var(--accent-glow);
+        background: linear-gradient(180deg, rgba(var(--cyan-rgb), 0), rgba(var(--cyan-rgb), 0.1));
+        color: #fff;
+        text-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.6);
       }
       .rail-marker {
         position: absolute;
-        bottom: 10px;
+        bottom: 12px;
         left: 0;
         width: 66px;
-        height: 3px;
+        height: 5px;
+        border-radius: 2.5px;
         background: var(--accent);
-        box-shadow: 0 0 6px var(--accent), 0 0 16px var(--accent-glow);
+        box-shadow: 0 0 8px var(--accent), 0 0 18px var(--accent-glow);
         transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
         pointer-events: none;
       }
@@ -826,22 +883,23 @@
          the difficulty rail a step quieter again — three levels of "where am
          I" that never compete for the same weight. */
       .rail.sub {
-        --cut: 11px;
+        border-radius: 18px;
+        border-color: var(--line-faint);
+        box-shadow: none;
       }
       .rail.sub .rail-tab {
-        padding: 11px 10px 17px;
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: clamp(12px, 1.25vw, 13.5px);
+        padding: 11px 10px 19px;
+        font-weight: 600;
+        font-size: clamp(14px, 1.45vw, 16px);
         min-width: 88px;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.16em;
       }
       .rail.sub .rail-tab[aria-selected='true'] {
         font-weight: 700;
       }
       .rail.sub .rail-marker {
-        bottom: 8px;
-        height: 2px;
+        bottom: 9px;
+        height: 4px;
       }
       .rail.tier {
         /* NORMAL · HARD · BLAZING · and each of those HC */
@@ -854,7 +912,7 @@
       /* ── THE BOARD LAYOUT ─────────────────────────────────────────────── */
       .stage {
         display: grid;
-        gap: clamp(12px, 1.6vw, 18px);
+        gap: clamp(14px, 1.8vw, 20px);
         align-items: start;
       }
       .stage.split {
@@ -863,39 +921,32 @@
       .after {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr));
-        gap: clamp(12px, 1.6vw, 18px);
-        margin-top: clamp(12px, 1.6vw, 18px);
+        gap: clamp(14px, 1.8vw, 20px);
+        margin-top: clamp(14px, 1.8vw, 20px);
       }
       @media (max-width: 760px) {
         .stage.split { grid-template-columns: minmax(0, 1fr); }
       }
 
+      /* GLITCH TYPE — the district's headline voice: the word in white, lit
+         by a halo of its accent, sat on a cyan / magenta chromatic split. */
       .panel-title,
       .well-head h2 {
         margin: 0 0 2px;
-        font-family: var(--display);
-        font-weight: 800;
-        font-size: clamp(17px, 1.9vw, 22px);
-        letter-spacing: 0.1em;
+        font-weight: 700;
+        font-size: clamp(22px, 2.4vw, 28px);
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        text-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
-      }
-      .panel-title::before,
-      .well-head h2::before {
-        content: '';
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        margin-right: 12px;
-        vertical-align: 0.18em;
-        background: var(--accent);
-        box-shadow: 0 0 10px var(--accent-glow);
-        transform: rotate(45deg);
+        color: #fff;
+        text-shadow:
+          -2px 0 0 rgba(var(--cyan-rgb), 0.55),
+          2px 0 0 rgba(var(--hot-rgb), 0.55),
+          0 0 12px rgba(var(--cyan-rgb), 0.5);
       }
       .panel-note {
-        margin: 8px 0 0;
+        margin: 6px 0 0;
         max-width: 72ch;
-        font-size: 15.5px;
+        font-size: 16px;
         line-height: 1.45;
         color: var(--dim);
         letter-spacing: 0.02em;
@@ -905,18 +956,17 @@
         display: flex;
         gap: 10px;
         padding: 0 14px 9px;
-        border-bottom: 1px solid var(--line);
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
-        color: var(--faint);
+        border-bottom: 2px solid var(--line-faint);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        color: var(--label);
         text-transform: uppercase;
       }
 
-      /* THE WELL — the box a board lives in. The panel is the frame now, so
-         the well no longer draws a second one inside it: on a phone those
-         two nested borders were eating the width the names needed. */
+      /* THE WELL — the box a board lives in. The glass is the frame, so the
+         well does not draw a second one inside it: on a phone those two
+         nested borders ate the width the names needed. */
       .well {
         background: none;
         border: 0;
@@ -931,14 +981,13 @@
       }
       .well-head h2 {
         margin: 0;
-        font-size: clamp(19px, 2.3vw, 26px);
+        font-size: clamp(24px, 2.8vw, 32px);
       }
       .well-head .meta {
         margin-left: auto;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--faint);
-        letter-spacing: 0.1em;
+        font: 600 12px/1 var(--mono);
+        color: rgba(var(--cyan-rgb), 0.6);
+        letter-spacing: 0.16em;
         text-transform: uppercase;
         white-space: nowrap;
       }
@@ -958,35 +1007,35 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        min-height: 48px;
-        padding: 9px 14px 9px 16px;
+        min-height: 50px;
+        padding: 10px 14px 10px 16px;
         border-bottom: 1px solid var(--row-line);
         font-variant-numeric: tabular-nums;
         transition: background-color 0.18s linear;
       }
       .row:nth-child(even) {
-        background: rgba(110, 225, 255, 0.022);
+        background: rgba(var(--cyan-rgb), 0.025);
       }
       .row:hover {
-        background: rgba(110, 225, 255, 0.07);
+        background: rgba(var(--cyan-rgb), 0.07);
         transition-duration: 0.1s;
       }
       .row .rank {
         flex: none;
         width: 38px;
         text-align: right;
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: 14px;
+        font-weight: 600;
+        font-size: 16px;
         color: var(--faint);
       }
       .row.top1 .rank { color: var(--g-s); }
       .row.top3 .rank { color: var(--text); }
 
-      /* THE PODIUM — the first three wear their medal: a struck hex for the
-         rank, a lit edge down the row's left side, and the leader's row
-         washed in the board's accent. Everything below them stays quiet. */
-      .row.p1, .row.p2, .row.p3 { min-height: 56px; }
+      /* THE PODIUM — the first three wear their medal as the kit's lit
+         skewed cell (the round pip of the match HUD), a lit edge down the
+         row's left side, and the leader's row washed in cyan. Everything
+         below them stays quiet. */
+      .row.p1, .row.p2, .row.p3 { min-height: 58px; }
       .row.p1 { --medal: #ffd75e; --medal-ink: #2a1c00; }
       .row.p2 { --medal: #d9e0ea; --medal-ink: #151a22; }
       .row.p3 { --medal: #e0975a; --medal-ink: #2a1206; }
@@ -994,51 +1043,53 @@
         box-shadow: inset 3px 0 0 var(--medal);
       }
       .row.p1 {
-        background: linear-gradient(90deg, var(--accent-faint), transparent 72%);
+        background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.12), transparent 72%);
       }
       .row.p1 .rank, .row.p2 .rank, .row.p3 .rank {
         display: inline-grid;
         place-items: center;
-        width: 30px;
-        height: 30px;
-        margin-left: 8px;
-        font-size: 13px;
+        width: 38px;
+        height: 26px;
+        font-size: 15px;
         font-weight: 700;
         text-align: center;
         color: var(--medal-ink);
-        background: linear-gradient(160deg, #fff 0%, var(--medal) 38%, color-mix(in srgb, var(--medal) 62%, #000) 100%);
-        clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
+          var(--medal);
+        clip-path: polygon(11px 0, 100% 0, calc(100% - 11px) 100%, 0 100%);
+        filter: drop-shadow(0 0 6px var(--medal));
       }
-      .row.p1 .name { font-size: 20px; text-shadow: 0 0 14px var(--accent-glow); }
-      .row.p1 .score { font-size: 19px; color: var(--g-s); text-shadow: 0 0 12px rgba(255, 215, 94, 0.45); }
+      .row.p1 .name { font-size: 21px; text-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.45); }
+      .row.p1 .score { font-size: 22px; color: var(--g-s); text-shadow: 0 0 12px rgba(255, 215, 94, 0.5); }
 
-      /* THE GAUGE — how close each entry runs to the leader: a hairline
-         under the row, full for the leader and shorter the further back
-         you are (for a clock, the leader's time over yours). It fills the
-         dead air between the name and the number with the one thing that
-         space should say. */
+      /* THE GAUGE — how close each entry runs to the leader, drawn as the
+         kit's neon bar: a skewed cyan run with a white-hot leading edge,
+         full for the leader and shorter the further back you are (for a
+         clock, the leader's time over yours). */
       .row[style*='--w']::after {
         content: '';
         position: absolute;
         left: 66px;
         bottom: 4px;
-        height: 2px;
+        height: 4px;
         width: calc((100% - 82px) * var(--w));
-        background: linear-gradient(90deg, var(--accent-dim), var(--accent-faint));
-        opacity: 0.6;
+        background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.08), rgba(var(--cyan-rgb), 0.6) calc(100% - 4px), #fff calc(100% - 4px));
+        clip-path: polygon(2px 0, 100% 0, calc(100% - 2px) 100%, 0 100%);
+        opacity: 0.75;
         pointer-events: none;
       }
       .row.p1[style*='--w']::after,
       .row.p2[style*='--w']::after,
       .row.p3[style*='--w']::after {
-        background: linear-gradient(90deg, var(--medal), transparent);
-        opacity: 0.55;
+        background: linear-gradient(90deg, transparent, var(--medal) calc(100% - 4px), #fff calc(100% - 4px));
+        opacity: 0.7;
       }
       .row .name {
         flex: 1 1 auto;
         min-width: 0;
         font-weight: 600;
-        font-size: 18px;
+        font-size: 19px;
         letter-spacing: 0.05em;
         white-space: nowrap;
         overflow: hidden;
@@ -1046,8 +1097,7 @@
       }
       .row .when {
         flex: none;
-        font-family: var(--mono);
-        font-size: 11.5px;
+        font-size: 13.5px;
         color: var(--faint);
         letter-spacing: 0.04em;
         white-space: nowrap;
@@ -1056,17 +1106,16 @@
         flex: none;
         min-width: 92px;
         text-align: right;
-        font-family: var(--mono);
         font-weight: 700;
-        font-size: 16.5px;
-        letter-spacing: 0.02em;
+        font-size: 20px;
+        letter-spacing: 0.03em;
       }
       .row .grade {
         flex: none;
         width: 30px;
         text-align: center;
         font-weight: 700;
-        font-size: 20px;
+        font-size: 21px;
         text-shadow: 0 0 10px currentColor;
       }
       .board-caps .c-rank { flex: none; width: 38px; text-align: right; }
@@ -1085,42 +1134,41 @@
         display: block;
         width: 9px;
         height: 9px;
-        transform: rotate(45deg) scale(0.86);
+        border-radius: 50%;
         border: 1px solid rgba(255, 255, 255, 0.3);
       }
       /* Difficulty and HC chips: what a run was cleared on. */
       .diff-chip {
         display: inline-block;
-        padding: 1px 7px;
-        border: 1px solid var(--line);
-        font-family: var(--mono);
-        font-size: 10.5px;
+        padding: 1px 8px;
+        border-radius: 9px;
+        border: 1.5px solid var(--line-faint);
+        font-size: 12px;
         font-weight: 700;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
         color: var(--faint);
         margin-left: 8px;
         vertical-align: 2px;
       }
       .diff-chip.hard { color: var(--warn); border-color: rgba(255, 180, 84, 0.45); }
       .diff-chip.blazing { color: var(--ember); border-color: rgba(255, 122, 24, 0.5); }
-      .diff-chip.hc { color: #1a0406; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 10px rgba(255, 77, 106, 0.5); }
+      .diff-chip.hc { color: #1a0406; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 10px rgba(255, 82, 102, 0.5); }
       /* A hardcore run carries a faint red wash. */
-      .row.run-hc { background: linear-gradient(90deg, rgba(255, 77, 106, 0.14), transparent 75%); }
+      .row.run-hc { background: linear-gradient(90deg, rgba(255, 82, 102, 0.14), transparent 75%); }
 
-      /* What a board says instead of rows — in the terminal's voice. */
+      /* What a board says instead of rows — the landing's status line. */
       .status { padding: 26px 14px 30px; }
       .status .line {
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: 15px;
-        color: var(--dim);
-        letter-spacing: 0.08em;
+        font: 600 14px/1.4 var(--mono);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(var(--cyan-rgb), 0.8);
       }
       .status .line::before {
         content: '> ';
-        color: var(--accent);
+        color: var(--hot);
       }
-      .status .hint { margin-top: 10px; font-size: 15.5px; color: var(--faint); letter-spacing: 0.02em; }
+      .status .hint { margin-top: 10px; font-size: 16px; color: var(--faint); letter-spacing: 0.02em; }
       .status .line::after {
         content: '';
         animation: dots 1.29s steps(1) infinite;
@@ -1143,45 +1191,58 @@
         overflow-y: auto;
       }
       .song {
-        --cut: 8px;
-        --edge: transparent;
-        --fill: rgba(110, 225, 255, 0.035);
         position: relative;
         display: flex;
         align-items: center;
         gap: 10px;
         width: 100%;
-        min-height: 46px;
-        padding: 10px 14px 10px 20px;
-        margin-bottom: 4px;
+        min-height: 48px;
+        padding: 10px 14px 10px 24px;
+        margin-bottom: 5px;
+        border: 2px solid transparent;
+        border-radius: 14px;
+        background: var(--plate);
         color: var(--text);
         font-family: var(--font);
         text-align: left;
         cursor: pointer;
         overflow: hidden;
         transition:
-          --fill 0.18s linear,
-          --edge 0.18s linear;
+          background-color 0.18s linear,
+          border-color 0.18s linear;
       }
-      .song:hover { --fill: rgba(110, 225, 255, 0.09); --edge: var(--line); transition-duration: 0.1s; }
-      .song:focus-visible { outline: none; --edge: var(--neon); }
+      .song::before {
+        content: '';
+        position: absolute;
+        left: 7px;
+        top: 11px;
+        bottom: 11px;
+        width: 5px;
+        border-radius: 2.5px;
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent-glow);
+        opacity: 0;
+        transition: opacity 0.18s linear;
+      }
+      .song:hover { background: var(--plate-hover); border-color: rgba(255, 255, 255, 0.18); transition-duration: 0.1s; }
+      .song:hover::before { opacity: 0.6; transition-duration: 0.1s; }
+      .song:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
       .song[aria-current='true'] {
-        --fill: var(--accent-faint);
-        --edge: var(--accent-edge);
-        box-shadow: inset 3px 0 0 var(--accent);
+        background: var(--accent-faint);
+        border-color: var(--accent-edge);
       }
+      .song[aria-current='true']::before { opacity: 1; }
       .song .title {
         flex: 1 1 auto;
         font-weight: 600;
-        font-size: 16.5px;
+        font-size: 17px;
         letter-spacing: 0.06em;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
       .song .runs {
-        font-family: var(--mono);
-        font-size: 12px;
+        font-size: 14px;
         color: var(--faint);
         font-variant-numeric: tabular-nums;
         flex: none;
@@ -1193,7 +1254,7 @@
         width: 30px;
         text-align: center;
         font-weight: 700;
-        font-size: 19px;
+        font-size: 20px;
         text-shadow: 0 0 10px currentColor;
       }
       /* The shelf's filter: the list is past two dozen records and still
@@ -1202,13 +1263,12 @@
       .song-find {
         display: block;
         width: 100%;
-        margin: 12px 0 10px;
+        margin: 14px 0 10px;
       }
       .songs .none {
         padding: 14px 22px;
-        font-family: var(--mono);
-        font-size: 12px;
-        letter-spacing: 0.12em;
+        font-size: 14px;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--disabled);
       }
@@ -1225,13 +1285,12 @@
         margin-bottom: 14px;
       }
       .onair {
-        font-family: var(--mono);
-        font-weight: 700;
-        font-size: 12px;
-        letter-spacing: 0.18em;
-        padding: 6px 12px;
-        background: rgba(4, 7, 16, 0.7);
-        border: 1px solid var(--line);
+        font: 700 12px/1 var(--mono);
+        letter-spacing: 0.2em;
+        padding: 7px 12px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid var(--line-faint);
         color: var(--faint);
         flex: none;
       }
@@ -1239,15 +1298,18 @@
         background: var(--danger);
         border-color: transparent;
         color: #fff;
-        box-shadow: 0 0 18px rgba(255, 77, 106, 0.6);
+        box-shadow: 0 0 18px rgba(255, 82, 102, 0.6);
         animation: blink 1.6s steps(2) infinite;
       }
       #tv-title {
-        font-family: var(--display);
-        font-weight: 800;
-        font-size: clamp(15px, 1.8vw, 20px);
-        letter-spacing: 0.08em;
+        font-weight: 700;
+        font-size: clamp(18px, 2.1vw, 24px);
+        letter-spacing: 0.1em;
         text-transform: uppercase;
+        text-shadow:
+          -2px 0 0 rgba(var(--cyan-rgb), 0.5),
+          2px 0 0 rgba(var(--hot-rgb), 0.5),
+          0 0 12px rgba(var(--cyan-rgb), 0.45);
         flex: 1 1 auto;
         min-width: 0;
         overflow: hidden;
@@ -1255,12 +1317,11 @@
         white-space: nowrap;
       }
       #tv-clock {
-        font-family: var(--mono);
         font-weight: 700;
-        font-size: 16px;
-        letter-spacing: 0.08em;
-        color: var(--accent);
-        text-shadow: 0 0 10px var(--accent-glow);
+        font-size: 22px;
+        letter-spacing: 0.06em;
+        color: #fff;
+        text-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.7);
         font-variant-numeric: tabular-nums;
         flex: none;
       }
@@ -1268,9 +1329,10 @@
         display: block;
         width: 100%;
         aspect-ratio: 16 / 9;
+        border-radius: 16px;
         background: #05060c;
-        border: 1px solid var(--line);
-        clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+        border: 2px solid var(--line);
+        box-shadow: inset 0 0 30px rgba(var(--cyan-rgb), 0.06);
       }
       .tv-guide {
         display: flex;
@@ -1283,32 +1345,31 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        border: 1px solid var(--line-faint);
-        background: rgba(110, 225, 255, 0.035);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        background: var(--plate);
         color: var(--dim);
-        font-family: var(--mono);
-        font-size: 12px;
-        font-weight: 500;
+        font-family: var(--font);
+        font-size: 14px;
+        font-weight: 600;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        padding: 9px 14px;
-        border-radius: 0;
+        padding: 8px 14px;
+        border-radius: 14px;
         cursor: pointer;
         transition: background-color 0.18s linear, border-color 0.18s linear, color 0.18s linear;
       }
-      .tv-guide button:hover { background: var(--plate-hover); border-color: var(--line-hover); color: var(--text); transition-duration: 0.1s; }
-      .tv-guide button:focus-visible { outline: 1px solid var(--neon); outline-offset: 2px; }
+      .tv-guide button:hover { background: var(--plate-hover); border-color: rgba(255, 255, 255, 0.3); color: var(--text); transition-duration: 0.1s; }
+      .tv-guide button:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
       .tv-guide button[aria-pressed='true'] {
         background: var(--accent-faint);
         border-color: var(--accent-edge);
         color: var(--text);
-        box-shadow: inset 3px 0 0 var(--accent);
       }
       .tv-guide button[disabled] { cursor: default; color: var(--disabled); }
       .tv-guide .dot {
         width: 8px;
         height: 8px;
-        transform: rotate(45deg);
+        border-radius: 50%;
         background: var(--danger);
         box-shadow: 0 0 8px var(--danger);
         flex: none;
@@ -1320,63 +1381,63 @@
       .maps {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-        gap: clamp(10px, 1.4vw, 14px);
+        gap: clamp(10px, 1.4vw, 16px);
       }
       .maps figure {
-        --cut: 12px;
-        --fill: rgba(2, 4, 12, 0.55);
         margin: 0;
+        border-radius: 16px;
+        background: var(--well);
+        border: 2px solid var(--line-faint);
         padding: 12px;
       }
       .maps canvas { display: block; width: 100%; aspect-ratio: 16 / 15; }
       .maps figcaption {
         margin-top: 10px;
-        font-family: var(--mono);
-        font-size: 11.5px;
+        font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.18em;
         text-transform: uppercase;
         color: var(--accent);
+        text-shadow: 0 0 8px rgba(var(--cyan-rgb), 0.45);
       }
       .maps figcaption small {
         display: block;
         margin-top: 4px;
-        font-family: var(--font);
         font-weight: 500;
-        font-size: 14px;
+        font-size: 14.5px;
         line-height: 1.35;
         letter-spacing: 0.02em;
         text-transform: none;
         color: var(--faint);
+        text-shadow: none;
       }
       .hands { display: grid; gap: 16px; margin-top: 6px; }
       .bar-label {
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
         text-transform: uppercase;
-        color: var(--faint);
+        color: var(--label);
         margin-bottom: 7px;
       }
+      /* A split bar as the kit's neon bar: skewed ends, a glassy top light,
+         and dark tube showing through the gaps. */
       .bar {
         position: relative;
         height: 26px;
         overflow: hidden;
-        background: rgba(0, 0, 0, 0.4);
-        border: 1px solid var(--line-faint);
+        background: rgba(120, 230, 255, 0.06);
         display: flex;
-        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
       }
       .bar i { display: block; height: 100%; }
-      .bar i.l { background: linear-gradient(var(--ember), #c9530a); box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.6); }
-      .bar i.r { background: linear-gradient(var(--cool), #2780c4); }
-      /* A tick every tenth along the bar, so a share reads off it like a gauge. */
+      .bar i.l { background: linear-gradient(var(--ember), #d95f0c); box-shadow: inset -2px 0 0 #fff; }
+      .bar i.r { background: linear-gradient(var(--cool), #2b8fd6); }
       .bar::after {
         content: '';
         position: absolute;
         inset: 0;
-        background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(0, 0, 0, 0.35) calc(10% - 1px) 10%);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 50%);
         pointer-events: none;
       }
       .bar em {
@@ -1386,55 +1447,52 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0 12px;
+        padding: 0 20px;
         font-style: normal;
-        font-family: var(--mono);
         font-weight: 700;
-        font-size: 11.5px;
-        letter-spacing: 0.08em;
+        font-size: 14px;
+        letter-spacing: 0.12em;
         color: #fff;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
       }
       .tape-row {
         display: flex;
         align-items: center;
         gap: 12px;
-        min-height: 46px;
+        min-height: 48px;
         padding: 10px 14px;
         border-bottom: 1px solid var(--row-line);
         cursor: pointer;
         transition: background-color 0.18s linear;
       }
-      .tape-row:nth-of-type(even) { background: rgba(110, 225, 255, 0.022); }
-      .tape-row:hover { background: rgba(110, 225, 255, 0.07); transition-duration: 0.1s; }
-      .tape-row .when { flex: none; width: 96px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+      .tape-row:hover { background: rgba(var(--cyan-rgb), 0.07); transition-duration: 0.1s; }
+      .tape-row .when { flex: none; width: 96px; font-size: 14px; color: var(--faint); }
       .tape-row .kind {
         flex: none;
         width: 76px;
-        font-family: var(--mono);
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.14em;
         color: var(--accent);
       }
       .tape-row .who {
         flex: 1 1 auto;
         min-width: 0;
         font-weight: 600;
-        font-size: 16.5px;
+        font-size: 17px;
         letter-spacing: 0.04em;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .tape-row .verdict { flex: none; width: 96px; text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
-      .tape-row .verdict.w { color: var(--positive); text-shadow: 0 0 10px rgba(43, 240, 154, 0.35); }
+      .tape-row .verdict { flex: none; width: 96px; text-align: right; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; }
+      .tape-row .verdict.w { color: var(--positive); text-shadow: 0 0 10px rgba(43, 226, 138, 0.4); }
       .tape-row .verdict.l { color: var(--danger); }
-      .tape-row .clock { flex: none; width: 58px; text-align: right; font-family: var(--mono); font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .tape-row .clock { flex: none; width: 58px; text-align: right; font-size: 15px; color: var(--faint); font-variant-numeric: tabular-nums; }
       .tape-open {
-        --cut: 14px;
-        --fill: rgba(2, 4, 12, 0.6);
-        --edge: var(--accent-dim);
+        border-radius: 18px;
+        background: var(--well);
+        border: 2px solid var(--line);
         padding: 16px 18px 18px;
         margin: 4px 0 12px;
       }
@@ -1442,8 +1500,9 @@
         display: block;
         width: 100%;
         height: 224px;
+        border-radius: 10px;
         background: rgba(0, 0, 0, 0.4);
-        border: 1px solid var(--line-faint);
+        border: 2px solid var(--line-faint);
         margin: 10px 0;
       }
       .tl-key {
@@ -1451,10 +1510,9 @@
         flex-wrap: wrap;
         gap: 6px 16px;
         margin: 2px 0 12px;
-        font-family: var(--mono);
-        font-size: 10.5px;
-        font-weight: 500;
-        letter-spacing: 0.1em;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
         color: var(--faint);
       }
@@ -1464,16 +1522,16 @@
         gap: 6px;
       }
       .tl-key i {
-        width: 9px;
-        height: 9px;
-        transform: rotate(45deg);
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
         background: currentColor;
         flex: none;
       }
       .tl-key i.tick {
         width: 2px;
         height: 12px;
-        transform: none;
+        border-radius: 1px;
       }
       .att-row {
         display: flex;
@@ -1485,53 +1543,52 @@
       .att-row .cap {
         width: 78px;
         flex: none;
-        font-family: var(--mono);
-        font-size: 10.5px;
+        font-size: 12px;
         font-weight: 700;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: var(--faint);
+        color: var(--label);
       }
       .att-pip {
         display: inline-flex;
         align-items: center;
         gap: 7px;
         padding: 4px 12px 4px 5px;
-        border: 1px solid currentColor;
-        background: rgba(0, 0, 0, 0.35);
-        font-family: var(--mono);
-        font-size: 11px;
+        border-radius: 12px;
+        border: 1.5px solid currentColor;
+        background: rgba(0, 0, 0, 0.3);
+        font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
       }
       .att-pip b {
         width: 20px;
         height: 20px;
+        border-radius: 50%;
         background: currentColor;
         display: grid;
         place-items: center;
         font-size: 11px;
         font-weight: 700;
-        clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
       }
       .att-pip b span {
-        color: #05060d;
+        color: #07061a;
       }
       .att-row .none {
         color: var(--disabled);
         font-size: 14px;
-        letter-spacing: 0.03em;
+        letter-spacing: 0.04em;
       }
 
       .tape-open .pbp {
         max-height: 260px;
         overflow: auto;
-        font-size: 14.5px;
+        font-size: 15px;
         line-height: 1.75;
         color: var(--dim);
         letter-spacing: 0.02em;
       }
-      .tape-open .pbp b { color: var(--text); font-family: var(--mono); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .tape-open .pbp b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
       .tape-open .pbp .hit { color: var(--ember); font-weight: 600; }
       .tape-open .pbp .tk { color: var(--danger); font-weight: 600; }
       .tape-open .pbp .pa { color: var(--cool); font-weight: 600; }
@@ -1539,19 +1596,18 @@
       .tape-rounds {
         width: 100%;
         border-collapse: collapse;
-        font-family: var(--mono);
-        font-size: 12.5px;
+        font-size: 14px;
         font-variant-numeric: tabular-nums;
       }
       .tape-rounds th {
         text-align: left;
-        font-size: 10.5px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: var(--faint);
+        color: var(--label);
         padding: 4px 8px;
-        border-bottom: 1px solid var(--line);
+        border-bottom: 2px solid var(--line-faint);
       }
       .tape-rounds td { padding: 7px 8px; border-bottom: 1px solid var(--row-line); }
       .tape-rounds .w { color: var(--positive); font-weight: 700; }
@@ -1567,82 +1623,75 @@
         margin-bottom: clamp(14px, 2vw, 20px);
       }
       .lab-filter .cap {
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
         text-transform: uppercase;
-        color: var(--faint);
-      }
-      .lab-filter .cap::before {
-        content: '▸ ';
-        color: var(--accent);
+        color: var(--label);
       }
       .lab-filter input[type='search'],
       .lab-filter select,
       .song-find {
-        --cut: 10px;
-        --fill: rgba(2, 4, 12, 0.6);
         appearance: none;
         min-height: 44px;
         padding: 10px 18px;
+        border-radius: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        background-color: rgba(6, 10, 22, 0.6);
         color: var(--text);
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: 14px;
-        letter-spacing: 0.06em;
-        transition: --fill 0.18s linear, --edge 0.18s linear;
+        font-family: var(--font);
+        font-weight: 600;
+        font-size: 16px;
+        letter-spacing: 0.08em;
+        transition: background-color 0.18s linear, border-color 0.18s linear, box-shadow 0.18s linear;
       }
       .lab-filter input[type='search'],
       .song-find {
         min-width: 220px;
-        caret-color: var(--accent);
+        caret-color: var(--cyan);
       }
       .lab-filter input[type='search']::placeholder,
       .song-find::placeholder {
         color: var(--disabled);
-        letter-spacing: 0.12em;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
-        font-size: 12px;
+        font-size: 14px;
       }
       .lab-filter input[type='search']:hover,
       .lab-filter select:hover,
       .song-find:hover {
-        --fill: var(--plate-hover);
-        --edge: var(--line-hover);
+        background-color: rgba(20, 34, 52, 0.7);
+        border-color: rgba(255, 255, 255, 0.3);
         transition-duration: 0.1s;
       }
       .lab-filter input[type='search']:focus-visible,
       .lab-filter select:focus-visible,
       .song-find:focus-visible {
         outline: none;
-        --edge: var(--neon);
-        box-shadow: inset 0 0 0 1px var(--neon), inset 0 0 18px var(--neon-faint);
+        border-color: var(--accent-edge);
+        box-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.35), inset 0 0 12px rgba(var(--cyan-rgb), 0.1);
       }
       .lab-filter select {
-        padding-right: 40px;
+        padding-right: 44px;
         text-transform: uppercase;
         cursor: pointer;
         /* The caret, drawn in: appearance:none takes the native one. */
-        background:
-          linear-gradient(135deg, transparent 50%, var(--edge) 50% calc(50% + 1.2px), transparent calc(50% + 1.2px))
-            top left / var(--cut) var(--cut) no-repeat border-box,
-          linear-gradient(315deg, transparent 50%, var(--edge) 50% calc(50% + 1.2px), transparent calc(50% + 1.2px))
-            bottom right / var(--cut) var(--cut) no-repeat border-box,
-          linear-gradient(45deg, transparent 50%, var(--accent) 50%) right 20px center / 6px 6px no-repeat,
-          linear-gradient(-45deg, transparent 50%, var(--accent) 50%) right 14px center / 6px 6px no-repeat,
-          var(--fill);
+        background-image:
+          linear-gradient(45deg, transparent 50%, var(--cyan) 50%),
+          linear-gradient(-45deg, transparent 50%, var(--cyan) 50%);
+        background-size: 6px 6px, 6px 6px;
+        background-position: right 22px center, right 16px center;
+        background-repeat: no-repeat;
       }
       .lab-filter select option {
-        background: #0a0d1a;
+        background: #0b0d1c;
         color: var(--text);
       }
       .lab-filter .count {
         margin-left: auto;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--faint);
-        letter-spacing: 0.1em;
+        font: 600 12px/1 var(--mono);
+        color: rgba(var(--cyan-rgb), 0.6);
+        letter-spacing: 0.16em;
         text-transform: uppercase;
       }
 
@@ -1660,7 +1709,7 @@
         font: inherit;
         letter-spacing: inherit;
         cursor: pointer;
-        border-bottom: 1px solid transparent;
+        border-bottom: 1.5px solid transparent;
         transition: border-color 0.18s linear, color 0.18s linear, text-shadow 0.18s linear;
       }
       .who-link:hover,
@@ -1668,7 +1717,7 @@
         outline: none;
         color: #fff;
         border-bottom-color: var(--accent);
-        text-shadow: 0 0 12px var(--accent-glow);
+        text-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.6);
         transition-duration: 0.1s;
       }
       .profile-head {
@@ -1679,10 +1728,11 @@
         margin-bottom: clamp(14px, 2vw, 20px);
       }
       .banner-wrap {
-        --cut: 16px;
-        --fill: rgba(0, 0, 0, 0.4);
         position: relative;
+        border-radius: 16px;
         overflow: hidden;
+        border: 2px solid var(--line);
+        background: rgba(0, 0, 0, 0.4);
         min-height: 160px;
         display: flex;
         align-items: flex-end;
@@ -1696,15 +1746,15 @@
         object-fit: cover;
         opacity: 0.85;
       }
-      /* The painting under a scan: dark from the bottom so the callsign
-         reads, and the screen's lines run across it. */
+      /* The painting under the screen's lines, dark from the bottom so the
+         callsign reads. */
       .banner-wrap::after {
         content: '';
         position: absolute;
         inset: 0;
         background:
-          repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px),
-          linear-gradient(rgba(5, 6, 13, 0.05), rgba(5, 6, 13, 0.85));
+          repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0 1px, transparent 1px 3px),
+          linear-gradient(rgba(7, 6, 26, 0.05), rgba(7, 6, 26, 0.85));
         pointer-events: none;
       }
       .banner-wrap > .id {
@@ -1714,65 +1764,60 @@
       }
       .banner-wrap .callsign {
         margin: 0;
-        font-family: var(--display);
-        font-weight: 900;
-        font-size: clamp(24px, 3.8vw, 40px);
-        letter-spacing: 0.08em;
+        font-weight: 700;
+        font-size: clamp(30px, 4.4vw, 48px);
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         overflow-wrap: anywhere;
         text-shadow:
-          -2px 0 0 rgba(232, 53, 42, 0.45),
-          2px 0 0 rgba(25, 230, 255, 0.45),
+          -2px 0 0 rgba(var(--cyan-rgb), 0.55),
+          2px 0 0 rgba(var(--hot-rgb), 0.55),
+          0 0 14px rgba(var(--cyan-rgb), 0.5),
           0 2px 14px rgba(0, 0, 0, 0.8);
       }
       .banner-wrap .rank {
-        margin-top: 6px;
-        font-family: var(--mono);
+        margin-top: 4px;
         font-weight: 700;
-        font-size: 13px;
-        letter-spacing: 0.18em;
+        font-size: 16px;
+        letter-spacing: 0.22em;
         text-transform: uppercase;
         color: var(--accent);
         text-shadow: 0 0 10px var(--accent-glow);
       }
       .banner-wrap .rank small {
-        font-weight: 500;
-        letter-spacing: 0.08em;
+        font-weight: 600;
+        letter-spacing: 0.1em;
         color: var(--dim);
         text-transform: none;
         text-shadow: none;
         margin-left: 10px;
       }
-      /* The XP bar, segmented like a cell meter. */
+      /* The XP bar as the kit's neon bar: a skewed cyan run with a
+         white-hot leading edge over the dark tube. */
       .xpbar {
-        position: relative;
-        height: 10px;
-        background: rgba(110, 225, 255, 0.07);
-        border: 1px solid var(--line-faint);
+        height: 14px;
+        background: rgba(120, 230, 255, 0.06);
+        box-shadow: inset 0 0 0 1.5px rgba(90, 230, 255, 0.24);
+        clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
         overflow: hidden;
         margin: 14px 0 8px;
       }
       .xpbar i {
         display: block;
         height: 100%;
-        background: var(--accent);
-        box-shadow: 0 0 12px var(--accent-glow);
-      }
-      .xpbar::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: repeating-linear-gradient(90deg, transparent 0 10px, rgba(5, 6, 13, 0.9) 10px 12px);
-        pointer-events: none;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 50%),
+          linear-gradient(90deg, var(--accent) calc(100% - 3px), #fff calc(100% - 3px));
+        clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
       }
       .record-line {
         display: flex;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 4px 12px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        letter-spacing: 0.08em;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
         color: var(--faint);
         text-transform: uppercase;
       }
@@ -1786,51 +1831,48 @@
       .chips-row .cap {
         width: 130px;
         flex: none;
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
         text-transform: uppercase;
-        color: var(--faint);
-      }
-      .chips-row .cap::before {
-        content: '▸ ';
-        color: var(--accent);
+        color: var(--label);
       }
       .chips-row .none {
         color: var(--disabled);
-        font-size: 15px;
+        font-size: 16px;
         letter-spacing: 0.03em;
       }
       .honour {
         display: inline-flex;
         align-items: center;
         padding: 6px 14px;
-        border: 1px solid currentColor;
-        background: rgba(0, 0, 0, 0.4);
-        font-family: var(--mono);
+        border-radius: 12px;
+        border: 2px solid currentColor;
+        background: rgba(0, 0, 0, 0.35);
         font-weight: 700;
-        font-size: 12px;
-        letter-spacing: 0.12em;
-        box-shadow: inset 0 0 14px color-mix(in srgb, currentColor 18%, transparent);
+        font-size: 14px;
+        letter-spacing: 0.14em;
+        box-shadow: 0 0 10px color-mix(in srgb, currentColor 30%, transparent);
       }
       .feat {
         display: inline-flex;
         align-items: center;
         gap: 10px;
         padding: 6px 14px 6px 8px;
-        border: 1px solid currentColor;
-        background: rgba(0, 0, 0, 0.4);
-        box-shadow: inset 0 0 14px color-mix(in srgb, currentColor 14%, transparent);
+        border-radius: 12px;
+        border: 2px solid currentColor;
+        background: rgba(0, 0, 0, 0.35);
+        box-shadow: 0 0 10px color-mix(in srgb, currentColor 25%, transparent);
       }
       .feat .medal {
         width: 32px;
         height: 32px;
-        background: color-mix(in srgb, currentColor 22%, #000);
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1.5px solid currentColor;
         display: grid;
         place-items: center;
         flex: none;
-        clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
       }
       .feat .medal svg {
         width: 18px;
@@ -1842,47 +1884,32 @@
         color: var(--text);
         font-weight: 700;
         font-size: 15px;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
       }
       .feat small {
         display: block;
-        font-family: var(--mono);
-        font-weight: 500;
-        font-size: 10.5px;
-        letter-spacing: 0.12em;
+        font-weight: 600;
+        font-size: 12px;
+        letter-spacing: 0.18em;
       }
       .note {
-        --cut: 10px;
-        --fill: var(--well);
         margin-top: 16px;
+        border-radius: 14px;
+        background: var(--well);
+        border: 2px solid var(--line-faint);
         padding: 13px 18px;
         text-align: center;
-        font-size: 17px;
+        font-size: 18px;
         letter-spacing: 0.03em;
         color: var(--text);
-      }
-      .note::before {
-        content: '“';
-        color: var(--accent);
-        margin-right: 2px;
-      }
-      .note::after {
-        content: '”';
-        color: var(--accent);
-        margin-left: 2px;
       }
       .note.empty {
         color: var(--disabled);
       }
-      .note.empty::before,
-      .note.empty::after {
-        content: none;
-      }
       .kit-line {
         margin-top: 12px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        letter-spacing: 0.08em;
+        font-size: 14px;
+        letter-spacing: 0.1em;
         color: var(--faint);
         text-transform: uppercase;
       }
@@ -1900,28 +1927,32 @@
       .hidden { display: none !important; }
 
       ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: rgba(110, 225, 255, 0.03); }
-      ::-webkit-scrollbar-thumb { background: rgba(110, 225, 255, 0.2); }
+      ::-webkit-scrollbar-track { background: rgba(var(--cyan-rgb), 0.03); }
+      ::-webkit-scrollbar-thumb { background: rgba(var(--cyan-rgb), 0.22); border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
-      * { scrollbar-color: rgba(110, 225, 255, 0.25) transparent; scrollbar-width: thin; }
+      * { scrollbar-color: rgba(var(--cyan-rgb), 0.28) transparent; scrollbar-width: thin; }
 
       /* ── THE PHONE ──────────────────────────────────────────────────────
-         Every pixel of width goes to the names: tighter frames, the chip
-         and the refresh sharing one line under the wordmark, a smaller
-         gauge inset. */
+         Every pixel of width goes to the names: tighter glass, the chip
+         and the CTA sharing one line under the sign, a shorter gauge
+         inset, and the heatmaps two-up. */
       @media (max-width: 560px) {
-        .panel { --cut: 16px; padding: 16px 12px 18px; }
-        .panel > .sheen { left: 16px; }
+        .panel { padding: 22px 12px 30px; border-radius: 18px; }
+        .panel::before { inset: 8px; --arm: 18px; }
+        .panel::after { left: 32px; right: 32px; bottom: 9px; }
+        .hud-line { letter-spacing: 0.16em; font-size: 10px; }
+        .hud-more { display: none; }
         .top-right { margin-left: 0; width: 100%; }
-        .top-right .chip { flex: 1 1 auto; justify-content: flex-start; }
+        .top-right .chip { flex: 1 1 auto; }
         .row { gap: 8px; padding: 8px 8px 8px 10px; }
         .row .rank { width: 28px; }
-        .row.p1 .rank, .row.p2 .rank, .row.p3 .rank { margin-left: 0; }
-        .row .name { font-size: 16.5px; }
-        .row.p1 .name { font-size: 18px; }
-        .row .score { min-width: 64px; font-size: 15px; }
+        .row.p1 .rank, .row.p2 .rank, .row.p3 .rank { width: 34px; }
+        .row .name { font-size: 17.5px; }
+        .row.p1 .name { font-size: 19px; }
+        .row .score { min-width: 64px; font-size: 18px; }
+        .row.p1 .score { font-size: 19px; }
         .row .when { display: none; }
-        .row[style*='--w']::after { left: 46px; width: calc((100% - 56px) * var(--w)); }
+        .row[style*='--w']::after { left: 52px; width: calc((100% - 62px) * var(--w)); }
         .board-caps .c-rank { width: 28px; }
         .board-caps .c-score { min-width: 64px; }
         .col-caps { padding: 0 8px 8px 10px; gap: 8px; }
@@ -1935,17 +1966,19 @@
         .lab-filter input[type='search'] { min-width: 0; flex: 1 1 160px; }
         .lab-filter .count { margin-left: 0; width: 100%; }
         .maps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-        .maps figure { --cut: 8px; padding: 8px; }
-        .maps figcaption small { font-size: 12.5px; }
+        .maps figure { padding: 8px; border-radius: 12px; }
+        .maps figcaption small { font-size: 13px; }
       }
 
       /* VR comfort discipline, kept on the flat screen. */
       @media (prefers-reduced-motion: reduce) {
         .floor,
-        .floor::after,
-        body::after,
+        .street-grid,
+        .street-rain,
+        .street-rain::after,
+        .kanji,
+        .hud-line .blink,
         .wordmark span,
-        .kicker::after,
         .status .line::after,
         .onair.live,
         .chip[data-tone='onair'] .dot {
@@ -1958,11 +1991,17 @@
   </head>
 
   <body data-face="ff">
-    <div class="floor"></div>
+    <!-- THE STREET: the landing's night, behind the boards. -->
+    <div class="floor" aria-hidden="true"></div>
+    <div class="street-grid" aria-hidden="true"></div>
+    <div class="street-rain" aria-hidden="true"></div>
+    <div class="street-crt" aria-hidden="true"></div>
+    <div class="kanji" aria-hidden="true">&#28814;&#12398;&#21927;&#22041;</div>
 
     <div class="shell">
       <header class="top">
         <div>
+          <div class="hud-line" aria-hidden="true">Neon District Arena II<span class="hud-more"> &middot; Sector 07</span> // <b>World Board</b> <span class="blink">&#9608;</span></div>
           <h1 class="wordmark" id="wordmark"><span class="a">FIRE</span> <span class="b">FIGHT</span></h1>
           <p class="kicker" id="kicker">WORLDWIDE LEADERBOARD</p>
         </div>
@@ -1970,9 +2009,9 @@
           <span class="chip" id="status-chip" data-tone="warn">
             <span class="dot"></span><span id="status-text">READING THE BOARD</span>
           </span>
-          <button class="plate primary" id="refresh" type="button">
+          <span class="cta-wrap"><button class="plate primary" id="refresh" type="button">
             <span class="flash-layer"></span>REFRESH
-          </button>
+          </button></span>
         </div>
       </header>
 
@@ -2932,7 +2971,7 @@
         }
         g.restore();
         path();
-        g.strokeStyle = 'rgba(255,176,46,0.75)';
+        g.strokeStyle = 'rgba(63,242,255,0.7)';
         g.lineWidth = 2;
         g.stroke();
         g.font = '700 11px Rajdhani, system-ui, sans-serif';
@@ -3087,7 +3126,7 @@
         // Round divisions, floor to ceiling.
         for (const t of ends) {
           if (t <= 0 || t >= T) continue;
-          g.strokeStyle = 'rgba(255,176,46,0.28)';
+          g.strokeStyle = 'rgba(63,242,255,0.28)';
           g.lineWidth = 1;
           g.beginPath();
           g.moveTo(x(t), bandY);

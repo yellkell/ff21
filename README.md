@@ -390,12 +390,13 @@ carried over verbatim: everything in it still applies to this code.
   renders the three sites, the far raider's spot from the origin, and
   close-ups of a cactus, a boulder and a mesa (`env-preview.html` takes
   `?focus=`, `?cam=`/`?look=` and `?seat=` now).
-- `public/stats.html` — **THE WORLDWIDE LEADERBOARD**, in a night-city
-  HUD skin (blue-black glass, cyan hairlines, chamfered frames with lit
-  corner brackets, a neon grid floor, the rail with its eased marker;
-  Orbitron signage, Rajdhani names, JetBrains Mono readouts) with FIRE
-  FIGHT's hazard amber as the accent. Three faces on one rail, each
-  swapping the accent, the grid and the pools on the floor:
+- `public/stats.html` — **THE WORLDWIDE LEADERBOARD**, painted in the
+  neon district's own hand: the holo kit's glass (`ui/kit/holo.ts` — lit
+  cyan edge tube, magenta corner brackets, scanlines, the top light bar,
+  readout ticks), GLITCH type for headings, skewed neon bars, Rajdhani,
+  over the landing page's street (grid, rain, CRT, the HUD readout, the
+  kanji blade). Neon cyan is the one accent on every face. Three faces on
+  one rail, each with its own wordmark tube and haze on the floor:
   - **FIRE FIGHT** — RANKED · XP · AIM · 2V2 · FFA read off `players`
     docs; **SPEEDRUN** (what GAUNTLET is called now) · RAID · GOOPLIATH
     read off `boards/{board}/rows`. SPEEDRUN carries a difficulty

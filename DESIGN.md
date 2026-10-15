@@ -709,15 +709,19 @@ hosting targets.
   relay's public club floor, then to a dark test card. The relay ranks
   people over raids over solo bouts and expires a silent channel in six
   seconds. The Discord bot announces LIVE / FINAL for online matches.
-- **THE LOOK**: a night-city HUD — blue-black glass, cyan hairlines,
-  frames chamfered top-left and bottom-right with the accent's corner
-  brackets on the other two, a neon grid floor and scanlines behind the
-  glass (never across a word), and the rail with its eased marker. Type
-  splits by job: Orbitron for signage, Rajdhani for names and prose,
-  JetBrains Mono for every number and label. FIRE FIGHT's hazard amber is
-  the accent; each face swaps the accent, the grid and the floor's pools
-  rather than the layout. Motion keeps the panel kit's constants, and
-  reduced-motion stills the grid, the glitch and the cursor.
+- **THE LOOK**: the neon district, in the game's own hand. The panels
+  are the holo kit's glass (`ui/kit/holo.ts`: see-through blue-black,
+  cool tint at the top, scanlines, diagonal sheen, a lit cyan edge tube
+  with its inner hairline, the top light bar, magenta brackets on all four
+  corners, readout ticks along the foot); headings are GLITCH type, the
+  gauges and the XP bar are the kit's skewed neon bar, the medals its lit
+  cells, Rajdhani throughout. Behind the glass runs the landing page's
+  street — the magenta/cyan grid, rain, CRT, the corner HUD readout and the
+  kanji blade — and the one primary (REFRESH) is the landing's ENTER VR
+  plate. The kit's colour law holds: neon cyan is the only accent, on every
+  face; magenta is decoration. Each face keeps its own wordmark tube
+  (FIRE FIGHT cyan with the sign's magenta 2, RAVE RAID green and magenta,
+  FFTV on-air red) and its own haze. Reduced motion stills the street.
 - **SPEEDRUN** is what the GAUNTLET board is called now, and it is three
   boards rather than one — `ff2-speedrun-{normal,hard,blazing}-time` —
   because a board is a per-uid ratchet and one board would keep only your
