@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- DEV-ONLY harness: the MC with THE TRIDENT (src/rave/arena/trident.ts),
+     posed by the game's own tridentPose (McSystem.ts), in four panels as a
+     dancer sees him from their deck: ?form=0|1|2 (SWING cyan · THRUST
+     magenta · SLASH lime), ?hit=<quarter mask> for the blow (default the
+     form's first pair). Panels: conjuring (reveal half way), cocked, the
+     blow landing (flash), and the next blow cocked on the other pair.
+     Not part of the game; never ship or link this page. -->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>trident preview</title>
+    <style>html, body { margin: 0; background: #05040a; overflow: hidden; }</style>
+  </head>
+  <body>
+    <script type="module">
+      import { Color, HemisphereLight, PerspectiveCamera, PointLight, Scene, WebGLRenderer, SRGBColorSpace, Vector3, Vector4 } from 'three';
+      import { ACCENT_REST, accentHex, buildDancer } from '/src/rave/game/avatars.ts';
+      import { dressMc } from '/src/rave/game/mcCostume.ts';
+      import { hueToColor, MC, TRIDENT } from '/src/rave/config.ts';
+      import { CyberTrident } from '/src/rave/arena/trident.ts';
+      import { tridentPose } from '/src/rave/systems/McSystem.ts';
+
+      const q = new URLSearchParams(location.search);
+      const form = Number(q.get('form') ?? 0);
+      const [pa, pb] = TRIDENT.forms[form].pairs;
+      const hit = Number(q.get('hit') ?? pa);
+      const other = hit === pa ? pb : pa;
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = SRGBColorSpace;
+      renderer.setScissorTest(true);
+      document.body.appendChild(renderer.domElement);
+
+      // [label, hit, strike, conj, reveal, flash]
+      const PANELS = [
+        ['conjure', hit, 0, 0.5, 0.5, 0],
+        ['cocked', hit, 0, 1, 1, 0],
+        ['blow', hit, 1, 1, 1, 0.9],
+        ['next', other, 0.15, 1, 1, 0],
+      ];
+      const scenes = PANELS.map(([, h, strike, conj, reveal, flash]) => {
+        const scene = new Scene();
+        scene.background = new Color(0x07060d);
+        scene.add(new HemisphereLight(0xbfd4ff, 0x0c0a14, 0.75));
+        const key = new PointLight(0xd3e5ff, 4.5 * 2.1 * 2.1, 26 * 2.1, 1.6);
+        key.position.set(0, 3.8, -1.4);
+        scene.add(key);
+        const rig = buildDancer(MC.hue);
+        dressMc(rig);
+        rig.root.scale.setScalar(MC.scale);
+        // He faces the crowd (+Z toward the camera here, as in the game).
+        rig.root.rotation.y = Math.PI;
+        const pose = { hx: 0, hy: 1.56, hz: 0, yaw: 0, pitch: -0.24 + strike * 0.4, roll: 0, lx: -0.3, ly: 1, lz: -0.1, rx: 0.3, ry: 1, rz: -0.1, slump: 0 };
+        const aim = tridentPose(pose, h, strike, conj, 0);
+        rig.pose(pose);
+        const t = new CyberTrident();
+        t.setColor(TRIDENT.forms[form].color);
+        t.update(0.016, reveal, flash);
+        // As McSystem holds it: at the fist, aimed by the pose.
+        rig.root.add(t.root);
+        t.root.position.copy(rig.mount.handR.position);
+        t.root.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), new Vector3(...aim));
+        for (const n of ['stick-blade', 'stick-glow']) {
+          const o = rig.mount.handR.getObjectByName(n);
+          if (o) o.visible = false;
+        }
+        scene.add(rig.root);
+        const cam = new PerspectiveCamera(40, 1, 0.1, 100);
+        cam.position.set(0, 2.6, 9.5);
+        cam.lookAt(0, 2.3, 0);
+        return { scene, rig, cam };
+      });
+
+      const paint = () => {
+        for (const { rig } of scenes) {
+          for (const acc of rig.accents) {
+            const c = accentHex(acc, acc.neon ? MC.warnColor : hueToColor(MC.hue, 0.6));
+            if (acc.mat.emissive) {
+              acc.mat.emissive.setHex(c);
+              acc.mat.emissiveIntensity = (acc.neon ? 2.6 : ACCENT_REST) * acc.gain;
+            } else acc.mat.color.setHex(c);
+          }
+        }
+        const W = innerWidth / scenes.length;
+        scenes.forEach(({ scene, cam }, i) => {
+          cam.aspect = W / innerHeight;
+          cam.updateProjectionMatrix();
+          renderer.setViewport(new Vector4(i * W, 0, W, innerHeight));
+          renderer.setScissor(new Vector4(i * W, 0, W, innerHeight));
+          renderer.render(scene, cam);
+        });
+      };
+      const wait = () => (scenes.every((s) => s.rig.root.getObjectByName('mc-suit')) ? (paint(), (window.__ready = true)) : setTimeout(wait, 100));
+      wait();
+      setInterval(paint, 500);
+    </script>
+  </body>
+</html>

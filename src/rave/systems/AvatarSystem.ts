@@ -343,13 +343,20 @@ export class AvatarSystem extends createSystem({}) {
         return { x: Math.sin(local) * r, z: Math.cos(local) * r };
       }
       case 'quad': {
-        // The whole ring performing the same routine in unison is the best
-        // picture this game makes — and the ones who forgot are visibly in
-        // the wrong corner a beat before the blocks find them.
-        const c = dodge ? zone.corner : (zone.corner + 2) % 4;
-        const sx = c & 1 ? 1 : -1;
-        const sz = c & 2 ? 1 : -1;
-        return { x: sx * 0.46, z: sz * 0.4 };
+        // THE TRIDENT: the whole ring hopping pair to pair in unison — the
+        // dodgers into the nearest living quarter, the ones who misread him
+        // into the nearest burning one.
+        let best = 0;
+        let bestD = Infinity;
+        for (let c = 0; c < 4; c++) {
+          if ((((zone.hit >> c) & 1) === 1) === dodge) continue;
+          const d2 = Math.hypot((c & 1 ? 0.46 : -0.46) - p.tx, (c & 2 ? 0.4 : -0.4) - p.tz);
+          if (d2 < bestD) {
+            bestD = d2;
+            best = c;
+          }
+        }
+        return { x: (best & 1 ? 1 : -1) * 0.46, z: (best & 2 ? 1 : -1) * 0.4 };
       }
       case 'donut': {
         // Everyone piles into the middle — with a little seeded scatter so

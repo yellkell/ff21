@@ -57,7 +57,7 @@ export interface GestureCue {
   kind: MoveKind;
   chargeBeats: number;
   /** A follow-up strike inside a multi-landing move (seesaw halves,
-   *  routine steps) — a quick jab/hook, not the full wind-up. */
+   *  trident blows) — a quick jab/hook, not the full wind-up. */
   step?: boolean;
   /** Directional payload so the MC's body can ACT the move out: sweep entry
    *  side / seesaw-surge doomed side (platform-local sign). */
@@ -68,9 +68,10 @@ export interface GestureCue {
   gapX?: number;
   /** beam only: THE X — the arms are thrown crossed. */
   crossed?: boolean;
-  /** routine only: the whole corner sequence, so the boss can TEACH it —
-   *  he points each one out in turn while the marks are still lit. */
-  routine?: readonly number[];
+  /** trident only: the form (TRIDENT.forms index — the weapon's colour)
+   *  and THIS blow's quarter bitmask, so he swings at the right ground. */
+  form?: number;
+  hit?: number;
   /** The landing this cue charges toward (song beats) — lets the MC time
    *  its strike snap without re-deriving the set-list. */
   dueBeat?: number;

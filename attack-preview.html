@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>rave attack preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #040309; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <!-- DEV-ONLY harness: every RAVE RAID attack on a real dancer deck inside the SPECTRUM set,
+         for screenshots. Not part of the game; never ship or link this page.
+         ?a=beam|split|x|sweep|seesaw|gate|row|rail|nova|donut|trident picks the attack (&form=0|1|2);
+         ?f=0.7 freezes its charge; ?strike=0.12 fires the landing and freezes that many seconds
+         after it (the trident's blow is dark until it lands — its floor is the quarter lines);
+         ?view=eye (the dancer's own eyes) | top (three-quarter, default) | side;
+         ?track=<id> dresses the set in that record's sleeve.
+         window.__ready flips true once the frame is final. -->
+    <script type="module">
+      import { Color, FogExp2, NoToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+      import { SpectrumSet } from '/src/rave/arena/spectrum/set.ts';
+      import { paletteFor } from '/src/rave/arena/spectrum/palettes.ts';
+      import { buildArena } from '/src/rave/arena/arena.ts';
+      import { VOID_BG } from '/src/rave/arena/voidkit.ts';
+      import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, TRIDENT } from '/src/rave/config.ts';
+      import {
+        beamTelegraph, donutTelegraph, gateTelegraph, halfTelegraph, novaTelegraph, quadTelegraph,
+        railTelegraph, sweepTelegraph, xTelegraph,
+        AFTERBURN_SEC,
+      } from '/src/rave/choreo/telegraphs.ts';
+      import { StrikeFx } from '/src/rave/choreo/strikes.ts';
+
+      const q = new URLSearchParams(location.search);
+      const kind = q.get('a') ?? 'beam';
+      const fill = Number(q.get('f') ?? 0.7);
+      const strikeAt = q.has('strike') ? Number(q.get('strike')) : null;
+      const view = q.get('view') ?? 'top';
+
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = NoToneMapping;
+      document.body.appendChild(renderer.domElement);
+      const scene = new Scene();
+      scene.background = new Color(VOID_BG);
+      scene.fog = new FogExp2(VOID_BG, 0.022);
+      const a = buildArena(scene, 8, 0, (s) => (s === 0 ? 'YOU' : `RAVER-${100 + s}`));
+      const env = new SpectrumSet(scene);
+      const track = q.get('track') ?? 'combat';
+      env.setPalette(paletteFor(track), track.toUpperCase(), true);
+      env.root.position.copy(a.stage.position);
+      env.root.visible = true;
+      const deck = a.platforms[0].root;
+
+      // The attacks, placed exactly as ChoreoSystem.buildTelegraph places them.
+      const D = OCTAGON_HALF_DEPTH, W = OCTAGON_HALF_WIDTH;
+      const tgs = [];
+      const strikes = [];
+      const put = (tg, x = 0, y = 0.05, z = 0, yaw = 0) => {
+        tg.group.position.set(x, y, z);
+        tg.group.rotation.y = yaw;
+        deck.add(tg.group);
+        tgs.push(tg);
+      };
+      const lane = (x, halfW = CHOREO.beamHalfWidth) => {
+        put(beamTelegraph(halfW, D * 2 + 0.8), x, 0.05, D + 0.4);
+        strikes.push((fx) => fx.beam(deck, x, 0, halfW));
+      };
+      switch (kind) {
+        case 'beam': lane(0.42); break;
+        case 'split': lane(-0.5); lane(0.5); break;
+        case 'x': {
+          const hw = CHOREO.beamXHalfW;
+          put(xTelegraph(hw));
+          strikes.push((fx) => { fx.beam(deck, 0, Math.PI / 4, hw); fx.beam(deck, 0, -Math.PI / 4, hw); });
+          break;
+        }
+        case 'sweep':
+          put(sweepTelegraph(W * 2 + 0.5, D * 2 + 0.3, CHOREO.sweepY, CHOREO.sweepThickness, 1, view === 'eye'), 0, 0, 0);
+          strikes.push((fx) => fx.sweep(deck, 1));
+          break;
+        case 'seesaw':
+          put(halfTelegraph(1, W + 0.35, D * 2 + 0.3));
+          strikes.push((fx) => fx.halfFlood(deck, 1, 0));
+          break;
+        case 'gate':
+          put(gateTelegraph(W, D, -0.3, CHOREO.gateHalfW, 0));
+          strikes.push((fx) => fx.gate(deck, -0.3, CHOREO.gateHalfW, 0));
+          break;
+        case 'row':
+          put(gateTelegraph(W, D, 0.2, CHOREO.gateHalfW, 1));
+          strikes.push((fx) => fx.gate(deck, 0.2, CHOREO.gateHalfW, 1));
+          break;
+        case 'rail':
+          put(railTelegraph(CHOREO.railHalfDepth, W * 2 + 0.8, 1), 0, 0.05, -0.3);
+          strikes.push((fx) => fx.rail(deck, -0.3, CHOREO.railHalfDepth, 1));
+          break;
+        case 'nova':
+          put(novaTelegraph(CHOREO.novaRadius, 0.6, 0.55));
+          strikes.push((fx) => fx.nova(deck, 0.6, 0.55));
+          break;
+        case 'donut':
+          put(donutTelegraph(CHOREO.donutRadius, CHOREO.donutInnerR));
+          strikes.push((fx) => fx.donut(deck, CHOREO.donutInnerR));
+          break;
+        case 'trident': {
+          const form = Number(q.get('form') ?? 0);
+          const hit = TRIDENT.forms[form].pairs[0];
+          put(quadTelegraph(W, D, hit, true), 0, 0.048);
+          strikes.push((fx) => fx.trident(deck, hit, form));
+          break;
+        }
+      }
+
+      const camera = new PerspectiveCamera(view === 'eye' ? 90 : 55, innerWidth / innerHeight, 0.05, 400);
+      camera.rotation.order = 'YXZ';
+      if (view === 'eye') {
+        camera.position.set(0.05, 1.65, 0.15);
+        camera.rotation.x = -0.55;
+      } else if (view === 'side') {
+        camera.position.set(3.2, 1.6, 1.4);
+        camera.lookAt(0, 0.7, -0.1);
+      } else {
+        camera.position.set(0.0, 2.9, 2.6);
+        camera.lookAt(0, 0.25, -0.25);
+      }
+
+      const fx = new StrikeFx();
+      const dt = 1 / 60;
+      let time = 3.2;
+      const frame = (d) => {
+        time += d;
+        const beat = time * (128 / 60);
+        env.update(d, beat, 1, 0.8);
+        fx.update(d);
+        renderer.render(scene, camera);
+      };
+      // Charge: run a few frames on the frozen fill (blocks fall to `fill` of their drop).
+      for (let i = 0; i < 20; i++) {
+        for (const t of tgs) t.update(fill, time);
+        frame(dt);
+      }
+      if (strikeAt !== null) {
+        for (const s of strikes) s(fx);
+        const n = Math.round(strikeAt / dt);
+        for (let i = 0; i < n; i++) {
+          // The marks burn out on the landing, as ChoreoSystem drives them.
+          for (const t of tgs) t.update(1 + Math.min(1, ((i + 1) * dt) / AFTERBURN_SEC), time);
+          frame(dt);
+        }
+      }
+      window.__ready = true;
+    </script>
+  </body>
+</html>

@@ -584,9 +584,7 @@ export function hitTaken(): void {
  *  that). So: a quick rising fifth with a sparkle climbing off the top —
  *  the kit's reward vocabulary (the recall's rise), pitched over the mix
  *  and gone in a third of a second. Rising = good; falling and banging =
- *  hit. (It used to be described as an octave over the routine's ticks;
- *  those are wooden knocks now, and this is the last pitched cue in the
- *  set — deliberately, because a payoff is allowed to sing where a
+ *  hit. (This is the last pitched cue in the set — deliberately, because a payoff is allowed to sing where a
  *  metronome is not.) */
 export function perfectChime(): void {
   // ~+3 dB over its first mix: the chime has to cut through a full record.
@@ -983,24 +981,14 @@ export function railZap(): void {
   tone({ freq: 120, to: 52, type: 'sine', dur: 0.26, gain: 0.24, delay: 0.02 });
 }
 
-/* THE ROUTINE MAKES NO CUE SOUND AT ALL. Three passes tried to give it
- * one — a C-major arpeggio pitched by step number, then a dry wooden
- * count through the lesson, then a single knock a beat ahead of each
- * landing — and each pass was less wrong than the last without ever
- * being right. The move already tells you everything, twice: the taught
- * marks carry their step numbers in dots, and from there the blocks are
- * VISIBLY falling for two beats before they crush. A cue on top of a
- * danger you can watch descend is a metronome for a clock you can see.
- *
- * What stays is quadCrash below — the blocks actually landing. That is
- * not a cue, it is the event. */
-
-/** The blocks landing on the three quarters you didn't learn. */
-export function quadCrash(): void {
-  noiseHit(0.22, 0.34, 1100, 130, 1.4); // slabs meeting deck
-  tone({ freq: 96, to: 34, type: 'sine', dur: 0.4, gain: 0.36 });
-  clank(180, 0.12, 0.22, 0.02);
-  squelch(0.5);
+/** THE TRIDENT's blow: the bolt cracking down out of the weapon (a hot
+ *  falling zap) and the quarters taking it (a hard deck hit and a sub).
+ *  One per blow, however many decks it lands on. */
+export function tridentStrike(): void {
+  tone({ freq: 2400, to: 260, type: 'sawtooth', dur: 0.14, gain: 0.09 }); // the bolt
+  noiseHit(0.18, 0.32, 2600, 220, 2.2, 0.03); // the deck taking it
+  tone({ freq: 110, to: 38, type: 'sine', dur: 0.34, gain: 0.32, delay: 0.03 });
+  clank(220, 0.08, 0.18, 0.04);
 }
 
 /** THE DONUT closing — the mirror of the pie: the rim rushing INWARD and

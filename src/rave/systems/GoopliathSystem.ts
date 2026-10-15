@@ -50,7 +50,7 @@ const GESTURE: Record<MoveKind, AttackName> = {
   cross: 'backfist', // thrown sideways, across the body — the side laser
   donut: 'clap', // both arms hauling the rim in on the middle
   duckdonut: 'clap', // rim hauled in while the blade swings
-  routine: 'overhand', // the slabs coming down on three quarters
+  trident: 'overhand', // never charted on goop nights; kept so the map is total
   wave: 'backfist', // the first swat of the march
 };
 
@@ -65,7 +65,7 @@ const STEP_GESTURE: Record<MoveKind, AttackName> = {
   cross: 'backfist',
   donut: 'hook', // the wide arm sweeping the rim inward
   duckdonut: 'hook',
-  routine: 'overhand', // one drop per step of the routine
+  trident: 'overhand',
   wave: 'jab', // one jab per lane of the march
 };
 

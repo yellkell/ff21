@@ -17,11 +17,10 @@
  */
 
 import { createSystem } from '@iwsdk/core';
-import { BOTS, CHOREO, GRADE, MOVES, SCORE, countInBeatsFor, type MoveKind } from '../config.js';
+import { BOTS, CHOREO, GRADE, MOVES, SCORE, TRIDENT, countInBeatsFor, type MoveKind } from '../config.js';
 import * as sfx from '../audio/sfx.js';
 import { breakBeats, trackById } from '../audio/tracks.js';
 import { platformRoot } from '../arena/arena.js';
-import { RoutineBlockfall } from '../choreo/blockfall.js';
 import { StrikeFx } from '../choreo/strikes.js';
 import {
   beamTelegraph,
@@ -30,13 +29,13 @@ import {
   gateTelegraph,
   halfTelegraph,
   novaTelegraph,
-  quarterTelegraph,
+  quadTelegraph,
   railTelegraph,
-  routineMarksTelegraph,
   sweepTelegraph,
+  AFTERBURN_SEC,
   type Telegraph,
 } from '../choreo/telegraphs.js';
-import { chartChargeBeats, generateSetlist, type SetMove, type Zone } from '../choreo/setlist.js';
+import { generateSetlist, type SetMove, type Zone } from '../choreo/setlist.js';
 import { grooveView } from './PlayerSystem.js';
 import { finishRaid } from '../game/flow.js';
 import { roll } from '../game/rng.js';
@@ -69,17 +68,15 @@ export interface LiveZone {
   probed: boolean;
   wasInside: boolean;
   resolved: boolean;
-  /** THE ROUTINE's falling blocks (per seat, per step) — the DOWN-style
-   *  descent that made the move readable. Lives past resolve for its crush. */
-  blocks?: RoutineBlockfall;
 }
 
 /** Read-only window for other systems (bot movement mirrors the judging) —
- *  plus a dev hook: `__gdr.choreo.dropRoutine()` injects a routine NOW so the
- *  blockfall can be seen without waiting for the set-list to roll one. */
+ *  plus dev hooks: `__gdr.choreo.dropTrident(form)` throws THE TRIDENT NOW
+ *  so it can be seen without waiting for the set-list to roll one. */
 export const choreoView: {
   zones: readonly LiveZone[];
-  dropRoutine?: () => void;
+  /** Dev: throw THE TRIDENT now in form `form` (TRIDENT.forms index). */
+  dropTrident?: (form?: number) => void;
   /** Dev: throw THE TRAP now — both side rails on one beat. */
   dropTrap?: () => void;
   /** Dev: throw THE TWIN AND ITS RETURN now — a shoulder-to-shoulder pair
@@ -136,9 +133,9 @@ function cueDirection(kind: MoveKind, zone: Zone, moveIdx: number, landingIdx: n
     case 'gate':
       return { gapX: zone.at, axis: zone.axis };
     case 'quad':
-      // The whole routine travels with the cue: the boss teaches it by
-      // pointing each corner out while the marks are still lit.
-      return { routine: zone.routine };
+      // The form (the trident's colour) and THIS blow's quarters, so the
+      // DJ conjures the right weapon and swings each strike at its ground.
+      return { form: zone.form, hit: zone.hit };
     case 'rail':
       // Which rail threw it (so the MC shoots from that side), and whether
       // the near or far ground is the doomed one (so his body says which
@@ -156,8 +153,9 @@ export class ChoreoSystem extends createSystem({}) {
   /** Dev drops only: a unique move index per injected move. */
   private devDrops = 0;
   private zones: LiveZone[] = [];
-  /** Blockfalls playing out their landing crush after their zone resolved. */
-  private crushing: RoutineBlockfall[] = [];
+  /** Landed telegraphs burning out (the danger kit's afterburn): the mark
+   *  ignites white-hot on its landing and fades, instead of vanishing. */
+  private burning: { tg: Telegraph; age: number }[] = [];
   private strikes = new StrikeFx();
   private lastBar = -1;
   private landedSfx = new Set<string>();
@@ -170,22 +168,24 @@ export class ChoreoSystem extends createSystem({}) {
 
   init(): void {
     this.strikesRoot();
-    // Dev: drop a routine RIGHT NOW (blockfall inspection without waiting
-    // for the set-list to roll one). Harmless outside a live set.
-    choreoView.dropRoutine = () => {
+    // Dev: throw THE TRIDENT right now in one form. Harmless outside a
+    // live set.
+    choreoView.dropTrident = (form = 0) => {
       if (!match.playing || !Number.isFinite(match.beat)) return;
       const tele = match.beat + 0.25;
-      const land = tele + MOVES.routine.chargeBeats;
-      const routine = [0, 3, 1] as const;
+      const land = tele + MOVES.trident.chargeBeats;
+      const f = Math.max(0, Math.min(TRIDENT.forms.length - 1, form));
+      const [a, b] = TRIDENT.forms[f].pairs;
+      const steps = 4;
       this.begin({
-        index: 9000 + this.nextMove,
-        kind: 'routine',
+        index: 9000 + this.devDrops++,
+        kind: 'trident',
         telegraphBeat: tele,
         landBeat: land,
         act: 2,
-        landings: routine.map((corner, step) => ({
-          beat: land + step * CHOREO.routineStepBeats,
-          zone: { kind: 'quad', corner, step, routine },
+        landings: Array.from({ length: steps }, (_, step) => ({
+          beat: land + step * CHOREO.tridentStepBeats,
+          zone: { kind: 'quad' as const, hit: step % 2 ? b : a, form: f, step, steps },
         })),
       });
     };
@@ -333,12 +333,8 @@ export class ChoreoSystem extends createSystem({}) {
 
   private rebuild(): void {
     this.generation = match.generation;
-    for (const z of this.zones) {
-      z.tg?.dispose();
-      z.blocks?.dispose();
-    }
-    for (const b of this.crushing) b.dispose();
-    this.crushing = [];
+    for (const z of this.zones) z.tg?.dispose();
+    this.endBurns();
     this.zones = [];
     this.nextMove = 0;
     this.lastBar = -1;
@@ -348,7 +344,10 @@ export class ChoreoSystem extends createSystem({}) {
     // A record's bans: the ones it always carries, plus the ones that only
     // hold on an authored campaign night.
     const record = trackById(match.trackId);
-    const banned = [...(record?.banned ?? []), ...(match.tour ? (record?.tourBanned ?? []) : [])];
+    const banned: MoveKind[] = [...(record?.banned ?? []), ...(match.tour ? (record?.tourBanned ?? []) : [])];
+    // THE TRIDENT is the DJ's own weapon: on the nights the goop runs the
+    // set there is no hand to conjure it in, so the chart never calls it.
+    if (match.bossKind === 'goop') banned.push('trident');
     // mountTrack settled the chart's clock (and match.doubleTime with it)
     // from the same shared inputs every client holds, so a room's charts
     // agree on the pace as surely as they agree on the seed.
@@ -358,22 +357,35 @@ export class ChoreoSystem extends createSystem({}) {
     this.setlist = generateSetlist(match.seed, match.phrases, banned, match.difficulty, this.doubleTime, breaks);
   }
 
+  private endBurns(): void {
+    for (const b of this.burning) b.tg.dispose();
+    this.burning = [];
+  }
+
   update(delta: number): void {
     this.strikes.update(delta);
+
+    // The afterburn runs on real time, like the strikes it sits under.
+    if (this.burning.length) {
+      const now = performance.now() / 1000;
+      this.burning = this.burning.filter((b) => {
+        b.age += delta;
+        if (b.age >= AFTERBURN_SEC) {
+          b.tg.dispose();
+          return false;
+        }
+        b.tg.update(1 + b.age / AFTERBURN_SEC, now);
+        return true;
+      });
+    }
 
     const inSet = match.screen === 'countdown' || match.screen === 'raid';
     if (!inSet) {
       if (this.zones.length) {
-        for (const z of this.zones) {
-          z.tg?.dispose();
-          z.blocks?.dispose();
-        }
+        for (const z of this.zones) z.tg?.dispose();
         this.zones = [];
       }
-      if (this.crushing.length) {
-        for (const b of this.crushing) b.dispose();
-        this.crushing = [];
-      }
+      this.endBurns();
       return;
     }
     if (this.generation !== match.generation) this.rebuild();
@@ -420,13 +432,6 @@ export class ChoreoSystem extends createSystem({}) {
       match.gestures.push({ kind: z.kind, chargeBeats: lead, step: true, ...cueDirection(z.kind, z.zone, z.moveIdx, z.landingIdx), dueBeat: z.dueBeat });
     }
 
-    // THE ROUTINE CALLS NOTHING. It used to knock a beat ahead of every
-    // step; it doesn't now, because the move is already telling you —
-    // the taught marks carry their step numbers, and the blocks are
-    // visibly falling for two beats before they land. The only sound it
-    // makes is those blocks arriving (sfx.quadCrash, with the strikes
-    // below), which is the event rather than a cue for it.
-
     // Advance live zones.
     for (const z of this.zones) {
       if (z.resolved) continue;
@@ -452,20 +457,10 @@ export class ChoreoSystem extends createSystem({}) {
         z.probed = true;
         z.wasInside = this.touchesLocal(z);
       }
-      // THE ROUTINE's blocks ride the same clock as everything else.
-      z.blocks?.update(beat, delta);
       if (beat >= z.dueBeat) this.resolve(z);
     }
     this.zones = this.zones.filter((z) => !z.resolved);
     choreoView.zones = this.zones;
-
-    // Landed blockfalls finish their crush, then go.
-    for (const b of this.crushing) b.update(beat, delta);
-    this.crushing = this.crushing.filter((b) => {
-      if (!b.spent) return true;
-      b.dispose();
-      return false;
-    });
 
     // End of the set.
     if (match.screen === 'raid' && !this.ended) {
@@ -522,15 +517,10 @@ export class ChoreoSystem extends createSystem({}) {
     for (const dancer of match.players) {
       if (!dancer.alive) continue;
       // Remote platforms still get the show — judgement stays theirs.
+      // (The FINE show — strike volumes and sparks — is resolve()'s call,
+      // near decks only.)
       const parent = platformRoot(dancer.seat);
       if (!parent) continue;
-      // ...but not the FINE show. A deck past seatIsNear() stands ten-plus
-      // metres off, where the strike's props are a few pixels and its
-      // sparks are sub-pixel; the telegraph pane still marks it, so the
-      // ring still reads as one arena under one attack. Nothing here is
-      // load-bearing: remote clients judge themselves and bots are judged
-      // from positions, so what a far deck DRAWS changes no outcome.
-      const near = seatIsNear(match.mySeat, dancer.seat, match.seats);
       move.landings.forEach((landing, landingIdx) => {
         let tg: Telegraph | null;
         const variant = landing.zone.kind === 'sweep' && dancer.seat === match.mySeat ? 'local' : 'ring';
@@ -562,8 +552,8 @@ export class ChoreoSystem extends createSystem({}) {
         const tgStartBeat =
           move.kind === 'wave'
             ? landing.beat - chargeBeats // each stop runs the wave's own fuse, staggered
-            : move.kind === 'routine' && landing.zone.kind === 'sweep'
-              ? landing.beat - chartChargeBeats('sweep', this.doubleTime) // the swept routine: one blade per tick, staggered
+            : landing.zone.kind === 'quad' && landing.zone.step < landing.zone.steps - 1
+              ? landing.beat // THE TRIDENT: a blow's quarters show only as it lands — read the DJ
               : landing.zone.kind === 'nova' && landingIdx > 0
                 ? prevFire(landing.beat)
                 : landing.zone.kind === 'donut' && landingIdx > 0
@@ -575,22 +565,6 @@ export class ChoreoSystem extends createSystem({}) {
                     (move.kind === 'beam' || move.kind === 'cross') && landing.beat > move.landBeat
                     ? prevFire(landing.beat)
                     : move.telegraphBeat;
-        // THE ROUTINE's danger is DOWN blocks descending from above — one
-        // per doomed quarter, beat-locked so the landing is the downbeat.
-        // Fifteen drawables a deck, the priciest thing an attack builds, so
-        // the far ring reads its quarter marks and skips the masonry.
-        const blocks =
-          landing.zone.kind === 'quad' && near
-            ? new RoutineBlockfall(
-                parent,
-                landing.zone.corner,
-                landing.beat,
-                match.seed,
-                move.index,
-                landing.zone.step,
-                this.doubleTime ? CHOREO.doubleTimePace.routineDropBeats : CHOREO.routineDropBeats,
-              )
-            : undefined;
         this.zones.push({
           moveIdx: move.index,
           landingIdx,
@@ -604,7 +578,6 @@ export class ChoreoSystem extends createSystem({}) {
           probed: false,
           wasInside: false,
           resolved: false,
-          blocks,
         });
       });
     }
@@ -689,22 +662,14 @@ export class ChoreoSystem extends createSystem({}) {
         return tg;
       }
       case 'quad': {
-        // Two shapes across the whole move, and neither belongs to a single
-        // step: the LESSON (hung on step one, so its fade rides that step's
-        // charge and it is gone before the first block) and the QUARTER
-        // LINES (hung on the last step, so they outlive every landing).
-        // The steps in between draw nothing — that's the memory test.
-        if (zone.step === 0) {
-          const tg = routineMarksTelegraph(zone.routine, OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
-          tg.group.position.y = 0.05;
-          return tg;
-        }
-        if (zone.step === zone.routine.length - 1) {
-          const tg = quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
-          tg.group.position.y = 0.048;
-          return tg;
-        }
-        return null;
+        // THE TRIDENT keeps the floor dark: every blow's pane is invisible
+        // until it lands, then burns its quarters in the afterburn. The
+        // LAST blow's pane also carries the chalk quarter lines and opens
+        // with the move, so the split is lit the whole way through — the
+        // floor says where the lines are, never which side is coming.
+        const tg = quadTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, zone.hit, zone.step === zone.steps - 1);
+        tg.group.position.y = 0.048;
+        return tg;
       }
     }
   }
@@ -738,11 +703,14 @@ export class ChoreoSystem extends createSystem({}) {
         // the dodge, heels or no heels.
         return Math.hypot(x, z) > zone.innerR + HEAD_R * 0.5;
       case 'quad': {
-        // You have to be COMMITTED into the learned quarter — hovering on
-        // the lines would otherwise satisfy every corner at once.
-        const sx = zone.corner & 1 ? 1 : -1;
-        const sz = zone.corner & 2 ? 1 : -1;
-        return !(x * sx >= CHOREO.routineMargin && z * sz >= CHOREO.routineMargin);
+        // The head's quarter burns — unless it is within a lip of a line
+        // whose far side lives (the head reaching safe ground is the dodge).
+        const q = (x >= 0 ? 1 : 0) | (z >= 0 ? 2 : 0);
+        if (!((zone.hit >> q) & 1)) return false;
+        const lip = CHOREO.tridentLip;
+        if (Math.abs(x) < lip && !((zone.hit >> (q ^ 1)) & 1)) return false;
+        if (Math.abs(z) < lip && !((zone.hit >> (q ^ 2)) & 1)) return false;
+        return true;
       }
       case 'nova': {
         // Judged on the head alone, forgiving by design (reached the wedge =
@@ -757,14 +725,9 @@ export class ChoreoSystem extends createSystem({}) {
 
   private resolve(z: LiveZone): void {
     z.resolved = true;
-    z.tg?.dispose();
+    // The mark doesn't vanish on the landing — it ignites and burns out.
+    if (z.tg) this.burning.push({ tg: z.tg, age: 0 });
     z.tg = null;
-    if (z.blocks) {
-      // The crush plays out past the zone's death, then disposes itself.
-      z.blocks.land();
-      this.crushing.push(z.blocks);
-      z.blocks = undefined;
-    }
 
     const parent = platformRoot(z.seat);
     const dancer = dancerAtSeat(z.seat);
@@ -804,7 +767,7 @@ export class ChoreoSystem extends createSystem({}) {
           sfx.donutSlam();
           break;
         case 'quad':
-          sfx.quadCrash();
+          sfx.tridentStrike();
           break;
       }
     }
@@ -840,7 +803,7 @@ export class ChoreoSystem extends createSystem({}) {
         this.strikes.donut(parent, z.zone.innerR);
         break;
       case 'quad':
-        // The blockfall IS the strike — its crush was armed in resolve().
+        this.strikes.trident(parent, z.zone.hit, z.zone.form);
         break;
       case 'nova': {
         const local = z.zone.bearing - seatBearing(z.seat, match.seats);
@@ -936,8 +899,6 @@ export class ChoreoSystem extends createSystem({}) {
           other.resolved = true;
           other.tg?.dispose();
           other.tg = null;
-          other.blocks?.dispose();
-          other.blocks = undefined;
         }
       }
       if (d.kind === 'bot') sfx.koSplat();

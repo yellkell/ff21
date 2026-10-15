@@ -890,8 +890,13 @@ export function buildDancer(hue: number): DancerRig {
     hand.add(hilt);
     const blade = M(bladeGeo(), neonFlat);
     blade.position.y = 0.012;
+    // Named so a prop held in this fist (the MC's trident) can stand the
+    // glowstick down while it's out.
+    blade.name = 'stick-blade';
     hand.add(blade);
-    hand.add(glow(0.3, 0.55));
+    const stickGlow = glow(0.3, 0.55);
+    stickGlow.name = 'stick-glow';
+    hand.add(stickGlow);
     root.add(hand);
     return hand;
   };
