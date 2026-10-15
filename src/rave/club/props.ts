@@ -239,8 +239,9 @@ export const PROP_WALLS: Array<{ ax: number; az: number; bx: number; bz: number;
       { ax: r.doorX1, az: z, bx: r.maxX, bz: z, h: CLUB.roomCeilH },
     ];
   }),
-  // The karaoke pods' dividers.
-  ...[CLUB.pods.minZ, ...CLUB.pods.dividers, CLUB.pods.maxZ].map((z) => ({ ax: CLUB.pods.minX, az: z, bx: CLUB.pods.frontX, bz: z, h: 2.4 })),
+  // The karaoke pods' dividers (the north end wall cut back, clear of THE STEP's door).
+  { ax: CLUB.pods.minX, az: CLUB.pods.minZ, bx: CLUB.pods.northWallX, bz: CLUB.pods.minZ, h: 2.4 },
+  ...[...CLUB.pods.dividers, CLUB.pods.maxZ].map((z) => ({ ax: CLUB.pods.minX, az: z, bx: CLUB.pods.frontX, bz: z, h: 2.4 })),
   // The LED wall behind the stage.
   { ax: -CLUB.stage.ledWall.halfW, az: CLUB.stage.ledWall.z, bx: CLUB.stage.ledWall.halfW, bz: CLUB.stage.ledWall.z, h: CLUB.stage.ledWall.top },
   // The bar counter's front line — knee-to-top height only.

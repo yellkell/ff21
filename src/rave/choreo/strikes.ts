@@ -27,15 +27,11 @@
 import {
   AdditiveBlending,
   BoxGeometry,
-  BufferAttribute,
-  BufferGeometry,
   CylinderGeometry,
   DoubleSide,
   Group,
   Mesh,
   PlaneGeometry,
-  Points,
-  PointsMaterial,
   ShaderMaterial,
   Color,
   Matrix4,
@@ -44,7 +40,8 @@ import {
   type SpriteMaterial,
 } from 'three';
 import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, OCTAGON_VERTICES, TRIDENT } from '../config.js';
-import { glintTexture, glowSprite } from '../materials/glow.js';
+import { glowSprite } from '../materials/glow.js';
+import { TracerField } from '../materials/tracers.js';
 import { HEAT, HEAT_GLSL, OCT_GLSL } from './telegraphs.js';
 
 interface Strike {
@@ -176,80 +173,34 @@ function burn(m: Object3D, k: number): void {
   mat.uniforms.uK.value = Math.min(1, k);
 }
 
-/** A tiny per-strike spark pool: N additive points with gravity, emitted in
- *  puffs along the strike (the fire-fight ember trick). */
+/** A tiny per-strike spark pool, thrown in puffs along the strike: hot
+ *  metal tracers (materials/tracers.ts), not lens glints — chips that leave
+ *  the hit low and fast, streak white-hot into the ember colour, and skid
+ *  once off the deck before they die. */
 class Sparks {
-  readonly points: Points;
-  private pos: Float32Array;
-  private vel: Float32Array;
-  private life: Float32Array;
-  private cursor = 0;
+  readonly field: TracerField;
 
-  constructor(private n: number, color: number) {
-    this.pos = new Float32Array(n * 3);
-    this.vel = new Float32Array(n * 3);
-    this.life = new Float32Array(n);
-    for (let i = 0; i < n; i++) this.pos[i * 3 + 1] = -99; // parked
-    const geo = new BufferGeometry();
-    geo.setAttribute('position', new BufferAttribute(this.pos, 3));
-    this.points = new Points(
-      geo,
-      new PointsMaterial({
-        color,
-        size: 0.055,
-        map: glintTexture(),
-        transparent: true,
-        opacity: 0.95,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    this.points.frustumCulled = false;
+  constructor(n: number, private color: number) {
+    this.field = new TracerField(n, { width: 0.007, streak: 0.03, maxLen: 0.17, gravity: 7.5, drag: 0.9, floorY: 0.02 });
   }
 
+  get mesh(): Mesh {
+    return this.field.mesh;
+  }
+
+  /** `count` chips out of (x, y, z): a low, wide spray — a grinder's
+   *  fan, not a fountain — at about `speed` m/s. */
   emit(x: number, y: number, z: number, count: number, speed = 1.4): void {
     for (let c = 0; c < count; c++) {
-      const i = this.cursor;
-      this.cursor = (this.cursor + 1) % this.n;
-      this.pos[i * 3] = x;
-      this.pos[i * 3 + 1] = y;
-      this.pos[i * 3 + 2] = z;
       const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * speed;
-      this.vel[i * 3] = Math.sin(a) * r * 0.6;
-      this.vel[i * 3 + 1] = 0.6 + Math.random() * speed;
-      this.vel[i * 3 + 2] = Math.cos(a) * r * 0.6;
-      this.life[i] = 0.4 + Math.random() * 0.25;
+      const out = (0.55 + Math.random() * 0.75) * speed * 1.25;
+      const up = (0.35 + Math.random() * 0.75) * speed;
+      this.field.emit(x, y, z, Math.sin(a) * out, up, Math.cos(a) * out, 0.32 + Math.random() * 0.26, this.color);
     }
   }
 
   step(dt: number): void {
-    for (let i = 0; i < this.n; i++) {
-      if (this.life[i] <= 0) continue;
-      this.life[i] -= dt;
-      if (this.life[i] <= 0) {
-        this.pos[i * 3 + 1] = -99;
-        continue;
-      }
-      this.vel[i * 3 + 1] -= dt * 5.2;
-      this.pos[i * 3] += this.vel[i * 3] * dt;
-      const ny = this.pos[i * 3 + 1] + this.vel[i * 3 + 1] * dt;
-      // An ember that reaches the deck winks out — nothing ever lies on
-      // the floor as litter.
-      if (ny <= 0.04) {
-        this.life[i] = 0;
-        this.pos[i * 3 + 1] = -99;
-        continue;
-      }
-      this.pos[i * 3 + 1] = ny;
-      this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
-    }
-    (this.points.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
-  }
-
-  dispose(): void {
-    this.points.geometry.dispose();
-    (this.points.material as PointsMaterial).dispose();
+    this.field.step(dt);
   }
 }
 
@@ -274,7 +225,10 @@ export class StrikeFx {
     parent.add(group);
     const walls: Mesh[] = [];
     group.traverse((o) => {
-      if ((o as Mesh).material instanceof ShaderMaterial) walls.push(o as Mesh);
+      // The walls are the sheets that clip to the deck (uPlace); a spark
+      // field is a ShaderMaterial too, and owns no such uniform.
+      const mat = (o as Mesh).material;
+      if (mat instanceof ShaderMaterial && mat.uniforms.uPlace) walls.push(o as Mesh);
     });
     const strike = { group, age: 0, life, tick, step, walls };
     this.live.push(strike);
@@ -321,7 +275,7 @@ export class StrikeFx {
         lip.rotation.y = Math.PI / 2;
         lip.position.set(fromSide * span, CHOREO.sweepY + 0.03, 0);
         g.add(lip);
-        g.add(sparks.points);
+        g.add(sparks.mesh);
       },
       (dt) => sparks.step(dt),
     );
@@ -381,7 +335,7 @@ export class StrikeFx {
       0.45,
       (k, g) => {
         g.children.forEach((m, i) => {
-          if (m === sparks.points) return;
+          if (m === sparks.mesh) return;
           if (i % 2 === 0) {
             // The bolt: a blink of the weapon's colour.
             burn(m, Math.min(1, k * 2.4));
@@ -405,7 +359,7 @@ export class StrikeFx {
           slab.position.set(x, 0.4, z);
           g.add(slab);
         }
-        g.add(sparks.points);
+        g.add(sparks.mesh);
       },
       (dt) => sparks.step(dt),
     );
@@ -452,7 +406,7 @@ export class StrikeFx {
         ring.renderOrder = 21;
         ring.position.y = h / 2;
         g.add(ring);
-        g.add(sparks.points);
+        g.add(sparks.mesh);
       },
       (dt) => sparks.step(dt),
     );
@@ -495,7 +449,7 @@ export class StrikeFx {
         const flare = glowSprite(HEAT.hot, 0.5, 0.9);
         flare.position.set(from * (OCTAGON_HALF_WIDTH + 0.1), 0.5, z);
         g.add(flare);
-        g.add(sparks.points);
+        g.add(sparks.mesh);
       },
       (dt) => sparks.step(dt),
     );
@@ -603,7 +557,7 @@ export class StrikeFx {
         ring.renderOrder = 21;
         ring.position.y = h / 2;
         g.add(ring);
-        g.add(sparks.points);
+        g.add(sparks.mesh);
       },
       (dt) => sparks.step(dt),
     );
@@ -643,7 +597,7 @@ export class StrikeFx {
           slab.position.set((side * halfW) / 2, 0.35, 0);
         }
         g.add(slab);
-        g.add(sparks.points);
+        g.add(sparks.mesh);
       },
       (dt) => sparks.step(dt),
     );

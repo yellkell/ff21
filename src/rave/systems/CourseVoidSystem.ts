@@ -24,8 +24,16 @@ import { course, G } from '../course/state.js';
 import { courseRoot } from '../course/world.js';
 import { font } from '../ui/fonts.js';
 
-/** The black glass the whole world doubles in. */
+/** The floor's height under the circuit. */
 export const FLOOR_Y = -0.06;
+
+/** Does VOIDSTEP's floor reflect? The raid and the foyer stand on black
+ *  glass that doubles the world; out here it doubled every deck too, and a
+ *  floor full of upside-down machinery under a route you have to read at a
+ *  glance is noise. So VOIDSTEP's floor is matte: no deck reflections, no
+ *  wall in the glass, no horizon glow under the rim. (The raid keeps its
+ *  glass — this is SpectrumSet's `reflective` option, set per world.) */
+export const FLOOR_REFLECTS = false;
 
 /** Where the scenery starts — comfortably outside the circuit's widest reach. */
 const INNER = 13;
@@ -107,7 +115,7 @@ export class CourseVoidSystem extends createSystem({}) {
 
     // ── the world: SPECTRUM, the raid's own, hung round the circuit — the
     // course's live kit IS its music, so the EQ wall plays what you step to.
-    this.spectrum = new SpectrumSet(root, { floorIn: INNER });
+    this.spectrum = new SpectrumSet(root, { floorIn: INNER, reflective: FLOOR_REFLECTS });
     this.spectrum.root.name = 'course-spectrum';
     this.spectrum.root.position.y = FLOOR_Y;
     this.spectrum.setActive(true);
