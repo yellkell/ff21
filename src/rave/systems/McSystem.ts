@@ -49,6 +49,7 @@ import { arena } from '../arena/arena.js';
 import { CyberTrident } from '../arena/trident.js';
 import { CLUB as CLUB_LAYOUT } from '../club/config.js';
 import { ACCENT_REST, accentHex, buildDancer, type DancerPose, type DancerRig } from '../game/avatars.js';
+import { clearBody } from '../game/bodyClear.js';
 import { dressMc, type McSuit } from '../game/mcCostume.js';
 import { course } from '../course/state.js';
 import { PoseMotion } from '../game/poseMotion.js';
@@ -68,6 +69,7 @@ const DUCK = 0.98;
 
 const _up = new Vector3(0, 1, 0);
 const _q = new Quaternion();
+const _shaft = new Vector3();
 
 /** THE TRIDENT: beats the weapon takes to climb out of his fist, how long
  *  a blow's white-hot flash lasts, and how fast it dissolves after the
@@ -216,6 +218,9 @@ export class McSystem extends createSystem({}) {
    *  follow-through instead of decelerating politely into the hit. */
   private pose: DancerPose = freshPose();
   private tgt: DancerPose = freshPose();
+  /** What is actually DRAWN: `pose` with his arms cleared of his own body
+   *  (game/bodyClear.ts). Kept apart so the springs never feel it. */
+  private shown: DancerPose = freshPose();
   private motion = new PoseMotion();
   private scale = MC.scale;
   private menuClock = 0;
@@ -339,7 +344,7 @@ export class McSystem extends createSystem({}) {
       this.warn += (0 - this.warn) * Math.min(1, delta * 6);
       this.applyAccents(this.warn);
       this.motion.step(this.pose, this.tgt, delta, { headRate: 5, handHz: 2.6, zeta: 0.7 });
-      rig.pose(this.pose);
+      this.present();
       return;
     }
 
@@ -376,7 +381,7 @@ export class McSystem extends createSystem({}) {
         this.applyAccents(1); // full alarm
         // Stiff, springy panic — the tremble rings through his hands.
         this.motion.step(this.pose, this.tgt, delta, { headRate: 14, handHz: 6, zeta: 0.65 });
-        rig.pose(this.pose);
+        this.present();
         return;
       }
     }
@@ -421,7 +426,7 @@ export class McSystem extends createSystem({}) {
       handHz: striking ? 5.5 : 3.2,
       zeta: 0.62,
     });
-    rig.pose(this.pose);
+    this.present();
   }
 
   private drainGestures(beat: number): void {
@@ -460,18 +465,28 @@ export class McSystem extends createSystem({}) {
     const flash = Math.max(0, 1 - (beat - this.flashAt) / FLASH_BEATS);
     t.update(delta, this.tridentReveal, flash);
     const out = t.root.visible;
-    const hand = this.rig?.mount?.handR;
-    if (out && hand) {
+    if (out) {
       // Aim eases on its own spring — quick, so a blow still snaps.
       _q.setFromUnitVectors(_up, this.tridentAim);
       this.tridentQuat.slerp(_q, Math.min(1, delta * 14));
       t.root.quaternion.copy(this.tridentQuat);
-      t.root.position.copy(hand.position);
     }
     for (const name of ['stick-blade', 'stick-glow']) {
       const o = this.rig?.mount?.handR.getObjectByName(name);
       if (o) o.visible = !out;
     }
+  }
+
+  /** Draw the frame: the eased pose, solved with his arms — and the
+   *  trident's shaft while it's out — kept clear of his own body, then the
+   *  weapon set in the fist where that solve actually put it. */
+  private present(): void {
+    const rig = this.rig!;
+    const t = this.trident;
+    const out = Boolean(t?.root.visible);
+    clearBody(rig, this.pose, this.shown, out ? _shaft.set(0, 1, 0).applyQuaternion(this.tridentQuat) : null);
+    const hand = rig.mount?.handR;
+    if (out && hand) t!.root.position.copy(hand.position);
   }
 
   /** Platform-local x-sign → HIS side of the stage (he faces the crowd). */
