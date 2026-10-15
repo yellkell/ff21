@@ -57,7 +57,7 @@ import { reportTutorial } from '../net/leaderboard.js';
 import { playCash } from '../audio/cash.js';
 import { startTutorialMusic, stopTutorialMusic } from '../audio/tutorialMusic.js';
 import { CAMPAIGN, FIREBALL, MATCH, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
-import { font } from '../ui/kit/fonts.js';
+import { font, fontsReady } from '../ui/kit/fonts.js';
 import { ctaPlate, holoGlass, neonCell, rgbOf } from '../ui/kit/holo.js';
 import { KIT } from '../ui/kit/panel.js';
 import { glowSprite } from '../materials/glow.js';
@@ -192,6 +192,8 @@ interface Panel {
   tex: CanvasTexture;
   /** Its one big button's hover state — lives and dies with the panel. */
   hot: boolean;
+  /** Last painted with the real face (not the load-gap fallback). */
+  fonts: boolean;
 }
 
 interface Rect {
@@ -250,6 +252,10 @@ export class TutorialSystem extends createSystem({
 
   // --- speech + captions ---
   private caption: Panel | null = null;
+  /** The plate's frame (glass, name tag, rule), painted once per height —
+   *  see captionChrome. */
+  private capChrome: HTMLCanvasElement | null = null;
+  private capChromeKey = '';
   private captionText = '';
   private captionUntil = 0;
   private speakUntil = 0;
@@ -259,6 +265,14 @@ export class TutorialSystem extends createSystem({
   // --- console panels + laser pointers ---
   private console: Panel | null = null;
   private loadout: Panel | null = null;
+  /** The lobby BALL LOADOUT canvas last blitted onto the loadout console:
+   *  a READY hover re-blits it rather than repainting the whole panel. */
+  private ballsCanvas: HTMLCanvasElement | null = null;
+  /** Warm-up jobs, one per frame while she idles at her spawn point: every
+   *  plate she'll pop up is built, painted, uploaded and its shader compiled
+   *  BEFORE it's needed, so no line or panel lands on a frame that also has
+   *  to build it (playtest: the boxes hitched as they popped up). */
+  private warm: (() => void)[] = [];
   /** True while a trigger that closed on the loadout's BEND slider is still
    *  held — the knob follows the ray until it opens. */
   private bendGrabbed = false;
@@ -1017,6 +1031,13 @@ export class TutorialSystem extends createSystem({
   // --- per-frame upkeep: orb, captions, panels, nudges ------------------------
 
   private upkeep(delta: number): void {
+    // Warm-up: one plate per frame, only while nothing has been asked of
+    // the player yet (a straggler after that would be the very hitch).
+    if (this.warm.length) {
+      if (this.beat === 'attention') this.warm.shift()!();
+      else this.warm.length = 0;
+    }
+
     // Speech queue.
     if (this.queue.length && this.time >= this.speakUntil) this.sayNow(this.queue.shift()!);
 
@@ -1063,10 +1084,9 @@ export class TutorialSystem extends createSystem({
 
     // Caption plate rides under the orb, facing the player.
     if (this.caption) {
-      if (this.captionText && this.time > this.captionUntil) {
-        this.captionText = '';
-        this.drawCaption();
-      }
+      // Hiding is just hiding: the next line repaints the plate anyway, so
+      // clearing and re-uploading it here was a wasted frame of work.
+      if (this.captionText && this.time > this.captionUntil) this.captionText = '';
       this.caption.mesh.visible = this.captionText !== '';
       if (this.caption.mesh.visible && this.orb) {
         this.caption.mesh.position.copy(this.orb.position);
@@ -1142,6 +1162,7 @@ export class TutorialSystem extends createSystem({
     this.makeOrb();
     this.makeCaption();
     void preloadTutorVoice();
+    this.warm = [() => this.warmCaption(), () => this.buildConsole(), () => this.buildLoadout()];
 
     // She spawns dim, small and OFF-STAGE: ~10 o'clock, edge of the eye.
     this.beat = 'attention';
@@ -1177,6 +1198,8 @@ export class TutorialSystem extends createSystem({
     this.removeCaption();
     this.removePointers();
     this.removeZone();
+    this.warm.length = 0;
+    this.ballsCanvas = null;
     this.queue.length = 0;
     this.captionText = '';
     this.speakUntil = 0;
@@ -1290,57 +1313,93 @@ export class TutorialSystem extends createSystem({
   }
 
   private drawCaption(): void {
-    if (!this.caption) return;
+    if (!this.caption || !this.captionText) return;
     const ctx = this.caption.ctx;
     // MEASURE FIRST, in the font the words will actually be drawn in, then
     // give the plate the height that many rows need. Only ever taller than
     // CAP_H, never shorter: every other line she speaks keeps the plate it
     // has always had, and only the one that overflows gets a bigger one.
     ctx.font = CAP_FONT;
-    const rows = this.captionText ? wrapLines(ctx, this.captionText, CAP_W - 68).length : 1;
+    const rows = wrapLines(ctx, this.captionText, CAP_W - 68).length;
     const capH = Math.max(CAP_H, CAP_TEXT_Y + (rows - 1) * CAP_LINE_H + CAP_TAIL);
     this.sizeCaption(capH);
     ctx.clearRect(0, 0, CAP_W, capH);
-    if (this.captionText) {
-      // The menu's holo glass, its tube burning in her neon — a touch
-      // more opaque than a menu pane: she talks over a lit, moving arena.
-      holoGlass(ctx, 6, 6, CAP_W - 12, capH - 12, {
-        r: 16,
-        edge: rgbOf(EMBER_NEON_CSS),
-        fill: 'rgba(6,10,22,0.7)',
-        arm: 22,
-        bloom: 0.8,
-        ticks: false,
-      });
-      // Her name tag: a lit neon cell, her name in her colour, a quiet
-      // GUIDE tag, and a rule that fades out to the right.
-      neonCell(ctx, 34, 31, 24, 22, true, EMBER_NEON_CSS);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-      ctx.save();
-      ctx.font = font(700, 28);
-      ctx.letterSpacing = '6px';
-      ctx.fillStyle = EMBER_NEON_CSS;
-      ctx.shadowColor = EMBER_NEON_CSS;
-      ctx.shadowBlur = 12;
-      ctx.fillText('EMBER', 68, 52);
-      const nameW = ctx.measureText('EMBER').width;
-      ctx.restore();
-      ctx.font = font(600, 17);
-      ctx.letterSpacing = '4px';
-      ctx.fillStyle = KIT.faint;
-      ctx.fillText('// GUIDE', 68 + nameW + 14, 51);
-      ctx.letterSpacing = '0px';
-      const rule = ctx.createLinearGradient(34, 0, CAP_W - 40, 0);
-      rule.addColorStop(0, `rgba(${rgbOf(EMBER_NEON_CSS)},0.75)`);
-      rule.addColorStop(1, `rgba(${rgbOf(EMBER_NEON_CSS)},0)`);
-      ctx.fillStyle = rule;
-      ctx.fillRect(34, 64, CAP_W - 74, 2);
-      ctx.font = CAP_FONT;
-      ctx.fillStyle = KIT.text;
-      wrapText(ctx, this.captionText, 34, CAP_TEXT_Y, CAP_W - 68, CAP_LINE_H);
-    }
+    // The frame is the same for every line — blit it, then just the words.
+    ctx.drawImage(this.captionChrome(capH), 0, 0);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.letterSpacing = '0px';
+    ctx.font = CAP_FONT;
+    ctx.fillStyle = KIT.text;
+    wrapText(ctx, this.captionText, 34, CAP_TEXT_Y, CAP_W - 68, CAP_LINE_H);
     this.caption.tex.needsUpdate = true;
+  }
+
+  /**
+   * The plate behind her words: the menu's holo glass, its tube burning in
+   * her neon, and her name tag. Its blurred bloom and glows are most of a
+   * caption's paint cost and never change between lines, so it's painted
+   * once per plate height (and again if the real face lands after) and
+   * every line just blits it.
+   */
+  private captionChrome(capH: number): HTMLCanvasElement {
+    const key = `${capH}|${fontsReady()}`;
+    if (this.capChrome && this.capChromeKey === key) return this.capChrome;
+    const canvas = this.capChrome ?? document.createElement('canvas');
+    canvas.width = CAP_W;
+    canvas.height = capH; // (re)sizing also wipes it
+    this.capChrome = canvas;
+    this.capChromeKey = key;
+    const ctx = canvas.getContext('2d')!;
+    // A touch more opaque than a menu pane: she talks over a lit, moving arena.
+    holoGlass(ctx, 6, 6, CAP_W - 12, capH - 12, {
+      r: 16,
+      edge: rgbOf(EMBER_NEON_CSS),
+      fill: 'rgba(6,10,22,0.7)',
+      arm: 22,
+      bloom: 0.8,
+      ticks: false,
+    });
+    // Her name tag: a lit neon cell, her name in her colour, a quiet
+    // GUIDE tag, and a rule that fades out to the right.
+    neonCell(ctx, 34, 31, 24, 22, true, EMBER_NEON_CSS);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.save();
+    ctx.font = font(700, 28);
+    ctx.letterSpacing = '6px';
+    ctx.fillStyle = EMBER_NEON_CSS;
+    ctx.shadowColor = EMBER_NEON_CSS;
+    ctx.shadowBlur = 12;
+    ctx.fillText('EMBER', 68, 52);
+    const nameW = ctx.measureText('EMBER').width;
+    ctx.restore();
+    ctx.font = font(600, 17);
+    ctx.letterSpacing = '4px';
+    ctx.fillStyle = KIT.faint;
+    ctx.fillText('// GUIDE', 68 + nameW + 14, 51);
+    ctx.letterSpacing = '0px';
+    const rule = ctx.createLinearGradient(34, 0, CAP_W - 40, 0);
+    rule.addColorStop(0, `rgba(${rgbOf(EMBER_NEON_CSS)},0.75)`);
+    rule.addColorStop(1, `rgba(${rgbOf(EMBER_NEON_CSS)},0)`);
+    ctx.fillStyle = rule;
+    ctx.fillRect(34, 64, CAP_W - 74, 2);
+    return canvas;
+  }
+
+  /** Warm-up: paint the plate's frame, allocate its texture on the GPU and
+   *  compile the plates' shader (all three plates share it) — her first
+   *  line otherwise paid for all of that on the frame it appeared. */
+  private warmCaption(): void {
+    if (!this.caption) return;
+    this.captionChrome(CAP_H);
+    this.gpuWarm(this.caption);
+  }
+
+  /** Upload `p`'s texture and compile its program while it's still hidden. */
+  private gpuWarm(p: Panel): void {
+    this.renderer.initTexture(p.tex);
+    this.renderer.compile(p.mesh, this.camera, this.scene);
   }
 
   /**
@@ -1385,7 +1444,7 @@ export class TutorialSystem extends createSystem({
     mesh.name = name;
     mesh.renderOrder = 20;
     this.scene.add(mesh);
-    return { mesh, ctx, tex, hot: false };
+    return { mesh, ctx, tex, hot: false, fonts: false };
   }
 
   private disposePanel(p: Panel): void {
@@ -1395,11 +1454,22 @@ export class TutorialSystem extends createSystem({
     p.mesh.geometry.dispose();
   }
 
+  /** Show the BEGIN console — normally already built by the warm-up. */
   private makeConsole(): void {
+    this.buildConsole();
+    if (!this.console) return;
+    if (!this.console.fonts && fontsReady()) this.drawConsole();
+    this.console.mesh.visible = true;
+  }
+
+  /** Build and paint the console, hidden (the warm-up calls this early). */
+  private buildConsole(): void {
     if (this.console) return;
     this.console = this.makePanel(CON_W, CON_H, 0.44, 'tutorial-console');
     this.console.mesh.position.copy(CONSOLE_POS);
+    this.console.mesh.visible = false;
     this.drawConsole();
+    this.gpuWarm(this.console);
   }
 
   private drawConsole(): void {
@@ -1429,25 +1499,43 @@ export class TutorialSystem extends createSystem({
     ctx.fillStyle = KIT.dim;
     ctx.fillText('Graduate and the house pays fifty.', 40, 190);
     ctaPlate(ctx, BEGIN_BTN.x, BEGIN_BTN.y, BEGIN_BTN.w, BEGIN_BTN.h, 'BEGIN', { hover: this.console.hot ? 1 : 0, px: 34, r: 16 });
+    this.console.fonts = fontsReady();
     this.console.tex.needsUpdate = true;
   }
 
+  /** Show the loadout console — normally already built by the warm-up.
+   *  Nothing in the tutorial touches the loadout before this, so the
+   *  warm-up's paint is still current. */
   private makeLoadout(): void {
+    this.buildLoadout();
+    if (!this.loadout) return;
+    if (!this.loadout.fonts && fontsReady()) this.drawLoadout();
+    this.loadout.mesh.visible = true;
+  }
+
+  /** Build and paint the loadout console, hidden (the warm-up calls this). */
+  private buildLoadout(): void {
     if (this.loadout) return;
     this.loadout = this.makePanel(LOAD_W, LOAD_H, 0.62, 'tutorial-loadout');
     this.loadout.mesh.position.copy(CONSOLE_POS);
     this.loadout.mesh.position.y += 0.06;
+    this.loadout.mesh.visible = false;
     this.drawLoadout();
+    this.gpuWarm(this.loadout);
   }
 
-  private drawLoadout(): void {
+  /** Repaint the loadout console. `repaintBalls` false (a READY hover) re-blits
+   *  the last BALL LOADOUT paint instead of painting the whole panel again. */
+  private drawLoadout(repaintBalls = true): void {
     if (!this.loadout) return;
     const ctx = this.loadout.ctx;
     ctx.clearRect(0, 0, LOAD_W, LOAD_H);
     // The lobby's exact BALL LOADOUT panel, re-hosted: one implementation,
     // painted off screen by the kit and blitted here (menu/ballsFace.ts).
-    ctx.drawImage(renderBallsPanel(null), 0, 0, BALLS_W, BALLS_H);
+    if (repaintBalls || !this.ballsCanvas) this.ballsCanvas = renderBallsPanel(null);
+    ctx.drawImage(this.ballsCanvas, 0, 0, BALLS_W, BALLS_H);
     ctaPlate(ctx, READY_BTN.x, READY_BTN.y, READY_BTN.w, READY_BTN.h, 'READY', { hover: this.loadout.hot ? 1 : 0, px: 36 });
+    this.loadout.fonts = fontsReady();
     this.loadout.tex.needsUpdate = true;
   }
 
@@ -1458,7 +1546,7 @@ export class TutorialSystem extends createSystem({
     const overReady = this.overRect(hit, READY_BTN);
     if (overReady !== this.loadout.hot) {
       this.loadout.hot = overReady;
-      this.drawLoadout();
+      this.drawLoadout(false);
     }
     if (!hit?.held) this.bendGrabbed = false;
     // The BEND slider: a press on its track grabs it, and the knob rides the

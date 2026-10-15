@@ -1,99 +1,97 @@
 /**
- * ArcadeSystem — SUPER OCTAGON, the cabinet in the club's arcade room.
+ * ArcadeSystem — the club's arcade room: four cabinets along the back wall,
+ * every one of them playable. SUPER OCTAGON (the light-gun wave shooter)
+ * and PEBBLES (the swap-to-match puzzle) stand two of each, alternating;
+ * the games themselves live in club/games/, this system runs the room.
  *
- * A light-gun wave shooter on a CRT, ported whole from FIRE FIGHT's pub
- * cabinet (OCTA HUNT) and re-dressed in house neon: octagons drift across
- * the glass, you shoot them with the controller laser, streaks build a
- * multiplier, three get past you and the night's over.
+ *  - AIM: each hand's ray, raycast onto the cabinet screens; the hit UV
+ *    becomes that hand's point in the screen's canvas pixels.
+ *  - START: step up, aim at a machine's glass, pull the trigger. One run at
+ *    a time per headset — the machine you're playing is the only one that
+ *    runs a game loop.
+ *  - LEAVE: wander off mid-run and you've walked away from the machine; the
+ *    run ends and posts what it earned.
  *
- *  - AIM: each hand's ray, raycast onto the screen plane; the hit UV is
- *    the crosshair (right hand wins when both are on the glass).
- *  - FIRE: trigger. The nearest octagon within its radius + a little
- *    forgiveness dies; a clean miss breaks the streak.
- *  - SCORE: kind points × streak multiplier (×1..×4, stepping every 4).
- *  - RAMP: speed climbs and the spawn interval tightens with score.
+ * COST, on purpose: only the machine you're playing repaints every frame
+ * (one 384×300 texture upload, the same budget the single cabinet always
+ * had). The others idle on attract screens at 2 Hz each, round-robin so at
+ * most ONE screen uploads on any frame, and only while you're in the room
+ * — outside it the arcade does no raycasts and no painting at all.
  *
- * The wall board rides both ledgers: local top-8 in this headset, and the
- * world board as pseudo-chart 'superoctagon' (same Firestore collection,
- * same fail-soft rules as the songs — offline it just shows the house
- * list). One player at a time, gated by standing at the cabinet; other
- * dancers see the attract screen (a spectator stream needs relay verbs the
+ * The wall board rides both ledgers for each game: local top-8 in this
+ * headset, and the world board as a pseudo-chart ('superoctagon',
+ * 'pebbles'; same Firestore collection, same fail-soft rules as the songs —
+ * offline it just shows the house list). It cycles between the two games
+ * while you're in the room, and turns to the one you just played. Other
+ * dancers see the attract screens (a spectator stream needs relay verbs the
  * wire doesn't carry yet — honest limitation, not an accident).
  */
 
 import { createSystem, InputComponent } from '@iwsdk/core';
-import { Raycaster, Vector3 } from 'three';
-import * as sfx from '../audio/sfx.js';
+import { Raycaster, Vector3, type Object3D } from 'three';
 import {
+  ARCADE_TITLES,
+  arcadeBook,
   arcadeRefs,
-  octagonBook,
-  octagonGrade,
-  OCTAGON_TRACK,
-  recordOctagonRun,
+  recordArcadeRun,
+  SCREEN_H,
+  SCREEN_W,
+  type ArcadeGameId,
+  type ArcadeRefs,
 } from '../club/arcade.js';
+import { CLUB } from '../club/config.js';
+import { HANDS, type CabinetGame, type Pointers } from '../club/games/game.js';
+import { OctagonGame } from '../club/games/octagon.js';
+import { PebblesGame } from '../club/games/pebbles.js';
 import { profileName } from '../game/profile.js';
 import { match } from '../game/state.js';
 import { course } from '../course/state.js';
 import { refreshWorldBoard, scores, submitWorldScore, worldBoard } from '../net/scores.js';
 import { inRoom } from '../net/session.js';
-import { font } from '../ui/fonts.js';
+import { font, onFontsReady } from '../ui/fonts.js';
 import { UI } from '../ui/panel.js';
 
-const W = 384;
-const H = 300;
-const HANDS = ['left', 'right'] as const;
-
-/** Aim forgiveness (px) — arcade guns are generous or they're miserable. */
-const FORGIVE = 5;
-const START_LIVES = 3;
 /** GAME OVER lingers this long, then the cabinet frees itself. */
 const DEAD_HOLD = 3.6;
-/** Stand-close gate: the cabinet is yours while you're at it. */
-const REACH = 1.7;
+/** Stand-close gate: a cabinet starts for you within this of its foot. */
+const REACH = 2.7;
 /** Wander this far mid-game and you've walked away from the machine. */
 const ABANDON = 2.6;
+/** Each idle cabinet's attract repaint period. */
+const ATTRACT_PERIOD = 0.5;
+/** The wall board turns to the other game this often. */
+const BOARD_CYCLE = 8;
+/** "In the arcade": inside the room's walls, plus this much (the doorway). */
+const ROOM_MARGIN = 0.6;
 
-/** The octagons. Points follow FIRE FIGHT's tuning; the palette is ours. */
-const KINDS = [
-  { r: 19, speed: 66, points: 10, color: '#ff2ad5', spin: 0.9 }, // OCTA
-  { r: 12, speed: 124, points: 25, color: '#4fb7ff', spin: 1.7 }, // PIP
-  { r: 27, speed: 40, points: 5, color: '#ffd24a', spin: 0.5 }, // TANK
-] as const;
-const SPAWN_BAG = [0, 0, 0, 0, 1, 1, 2];
-
-interface Target {
-  kind: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  rot: number;
-  /** True once it has fully entered the glass — leaving after that costs. */
-  entered: boolean;
-}
-
-type Phase = 'attract' | 'playing' | 'dead';
+const BOARD_GAMES: readonly ArcadeGameId[] = ['octagon', 'pebbles'];
 
 export class ArcadeSystem extends createSystem({}) {
   private ray = new Raycaster();
-  private phase: Phase = 'attract';
-  private targets: Target[] = [];
-  private score = 0;
-  private combo = 0;
-  private lives = START_LIVES;
-  private spawnT = 0;
+  private games: CabinetGame[] = [];
+  private screens: Object3D[] = [];
+  /** Per hand: which cabinet's glass the laser is on, and where. */
+  private hits: Record<'left' | 'right', { cab: number; at: [number, number] } | null> = { left: null, right: null };
+  private pointers: Pointers = {
+    left: { at: null, down: false, up: false },
+    right: { at: null, down: false, up: false },
+  };
+  /** The cabinet this headset is playing (or holding GAME OVER on), or -1. */
+  private active = -1;
   private deadT = 0;
-  private muzzle = 0;
   private clock = 0;
   private attractT = 0;
-  private aim: Partial<Record<'left' | 'right', [number, number]>> = {};
-  private cross: [number, number] | null = null;
+  private attractNext = 0;
+  private boardT = 0;
+  private boardGame: ArcadeGameId = 'octagon';
   private lastBoardKey = '';
   private lastScoresDirty = -1;
 
   update(delta: number): void {
     const refs = arcadeRefs();
     if (!refs) return;
+    if (!this.games.length) this.adopt(refs);
+
     const inClub =
       (match.screen === 'lobby' || match.screen === 'tour') &&
       inRoom() &&
@@ -101,346 +99,184 @@ export class ArcadeSystem extends createSystem({}) {
     if (!inClub) {
       // The club packed away mid-game (a set booked the floor): the run
       // ends quietly and the score still counts — you danced, it happened.
-      if (this.phase === 'playing') this.finishRun(false);
-      this.phase = 'attract';
+      if (this.active >= 0) {
+        const game = this.games[this.active];
+        if (game.phase === 'playing') this.post(game);
+        game.phase = 'attract';
+        this.active = -1;
+      }
       return;
     }
 
     this.clock += delta;
-    this.readAim(refs.screen);
+    this.camera.getWorldPosition(_head);
+    const here = this.inArcade(_head);
+    // Out of the room with nothing running: the arcade costs nothing.
+    if (!here && this.active < 0) return;
 
-    const head = this.camera;
-    head.getWorldPosition(_head);
-    const near = _head.distanceTo(refs.cabinetPos) <= REACH + 1.0; // cabinetPos is at the floor
+    this.readAim();
 
-    if (this.phase === 'attract') {
-      // Step up, aim at the glass, pull the trigger.
-      if (near && this.cross) {
-        for (const hand of HANDS) {
-          if (this.aim[hand] && this.input.xr.gamepads[hand]?.getButtonDown(InputComponent.Trigger)) {
-            this.startRun();
-            break;
-          }
-        }
-      }
-      this.attractT += delta;
-      if (this.attractT >= 0.5) {
-        this.attractT = 0;
-        this.paintScreen();
-      }
-    } else if (this.phase === 'playing') {
-      if (_head.distanceTo(refs.cabinetPos) > ABANDON) {
-        // Walked away mid-wave — the run ends and posts what it earned.
-        this.finishRun(true);
-      } else {
-        this.stepGame(delta);
-        this.fire();
-        this.paintScreen();
-      }
+    if (this.active < 0) {
+      this.tryStart();
     } else {
-      // dead: hold the score card, then free the machine.
-      this.deadT += delta;
-      if (this.deadT >= DEAD_HOLD) {
-        this.phase = 'attract';
-        this.paintScreen();
-      } else if (Math.floor(this.deadT * 8) !== Math.floor((this.deadT - delta) * 8)) {
-        this.paintScreen(); // blink cadence
-      }
-    }
-
-    this.paintBoardIfChanged();
-  }
-
-  /* ── the run ──────────────────────────────────────────────────────────── */
-
-  private startRun(): void {
-    this.phase = 'playing';
-    this.targets = [];
-    this.score = 0;
-    this.combo = 0;
-    this.lives = START_LIVES;
-    this.spawnT = 0.4;
-    sfx.uiClick();
-  }
-
-  private finishRun(over: boolean): void {
-    const score = this.score;
-    if (score > 0) {
-      recordOctagonRun(score, profileName());
-      void submitWorldScore(OCTAGON_TRACK, 0, score, octagonGrade(score), profileName());
-      refreshWorldBoard(OCTAGON_TRACK, 0);
-      this.lastBoardKey = ''; // repaint the wall
-    }
-    if (over) {
-      this.phase = 'dead';
-      this.deadT = 0;
-      sfx.huntOver();
-      this.paintScreen();
-    }
-  }
-
-  private stepGame(delta: number): void {
-    // Difficulty rides the score, exactly the pub cabinet's curve.
-    const speedK = 1 + Math.min(1.1, this.score / 4000);
-    const interval = Math.max(0.45, 1.35 - this.score / 1800);
-
-    this.spawnT -= delta;
-    if (this.spawnT <= 0) {
-      this.spawnT = interval;
-      this.spawn();
-    }
-
-    this.muzzle = Math.max(0, this.muzzle - delta);
-
-    for (let i = this.targets.length - 1; i >= 0; i--) {
-      const t = this.targets[i];
-      t.x += t.vx * speedK * delta;
-      t.y += t.vy * speedK * delta;
-      t.rot += KINDS[t.kind].spin * delta;
-      const r = KINDS[t.kind].r;
-      const inside = t.x > -r && t.x < W + r && t.y > -r && t.y < H + r;
-      if (!t.entered && t.x > r * 0.5 && t.x < W - r * 0.5 && t.y > r * 0.5 && t.y < H - r * 0.5) {
-        t.entered = true;
-      }
-      if (!inside && t.entered) {
-        // Fully through the glass — a life gone, the streak with it.
-        this.targets.splice(i, 1);
-        this.lives -= 1;
-        this.combo = 0;
-        sfx.huntEscape();
-        if (this.lives <= 0) {
-          this.finishRun(true);
-          return;
+      const game = this.games[this.active];
+      if (game.phase === 'playing') {
+        if (_head.distanceTo(game.cab.pos) > ABANDON) {
+          // Walked away mid-run — it ends and posts what it earned.
+          this.finish(game);
+        } else {
+          this.fillPointers(this.active);
+          if (game.step(delta, this.pointers)) this.finish(game);
+          game.paint(this.clock);
         }
-      } else if (!inside && (t.vx === 0 || (t.x < -r * 3 || t.x > W + r * 3 || t.y < -r * 3 || t.y > H + r * 3))) {
-        this.targets.splice(i, 1); // never made it on — cull quietly
+      } else {
+        // dead: hold the score card, then free the machine.
+        this.deadT += delta;
+        if (this.deadT >= DEAD_HOLD) {
+          game.phase = 'attract';
+          this.active = -1;
+          game.paint(this.clock);
+        } else if (Math.floor(this.deadT * 8) !== Math.floor((this.deadT - delta) * 8)) {
+          game.paint(this.clock); // blink cadence
+        }
       }
     }
+
+    if (here) {
+      this.idleScreens(delta);
+      this.boardT += delta;
+      if (this.boardT >= BOARD_CYCLE) {
+        this.boardT = 0;
+        this.boardGame = BOARD_GAMES[(BOARD_GAMES.indexOf(this.boardGame) + 1) % BOARD_GAMES.length];
+      }
+    }
+    this.paintBoardIfChanged(refs);
   }
 
-  private spawn(): void {
-    const kind = SPAWN_BAG[Math.floor(Math.random() * SPAWN_BAG.length)];
-    const r = KINDS[kind].r;
-    // Off a random edge, aimed at a random interior point.
-    const edge = Math.floor(Math.random() * 4);
-    const x = edge === 0 ? -r : edge === 1 ? W + r : Math.random() * W;
-    const y = edge === 2 ? -r : edge === 3 ? H + r : Math.random() * H;
-    const tx = W * (0.2 + Math.random() * 0.6);
-    const ty = H * (0.2 + Math.random() * 0.6);
-    const len = Math.hypot(tx - x, ty - y) || 1;
-    const s = KINDS[kind].speed;
-    this.targets.push({
-      kind,
-      x,
-      y,
-      vx: ((tx - x) / len) * s,
-      vy: ((ty - y) / len) * s,
-      rot: Math.random() * Math.PI,
-      entered: false,
-    });
+  /** Build a game for every cabinet the club registered, and light them. */
+  private adopt(refs: ArcadeRefs): void {
+    this.games = refs.cabinets.map((cab) => (cab.game === 'pebbles' ? new PebblesGame(cab) : new OctagonGame(cab)));
+    this.screens = refs.cabinets.map((c) => c.screen);
+    const paintIdle = () => {
+      for (const g of this.games) if (g.phase === 'attract') g.paint(this.clock);
+    };
+    paintIdle();
+    onFontsReady(paintIdle);
   }
 
-  /* ── aim + fire (the pub cabinet's exact mechanism) ───────────────────── */
+  private inArcade(p: Vector3): boolean {
+    const A = CLUB.arcade;
+    return (
+      p.x >= A.minX - ROOM_MARGIN && p.x <= A.maxX + ROOM_MARGIN && p.z >= A.minZ - ROOM_MARGIN && p.z <= A.maxZ + ROOM_MARGIN
+    );
+  }
 
-  private readAim(screen: import('three').Mesh): void {
-    this.aim = {};
-    let cross: [number, number] | null = null;
+  /* ── aim ──────────────────────────────────────────────────────────────── */
+
+  private readAim(): void {
     for (const hand of HANDS) {
+      this.hits[hand] = null;
       const rayObj = this.world.playerSpaceEntities?.raySpaces?.[hand]?.object3D;
       if (!rayObj) continue;
       rayObj.getWorldPosition(_o);
       rayObj.getWorldDirection(_d).negate();
       this.ray.set(_o, _d);
       this.ray.far = 6;
-      const hit = this.ray.intersectObject(screen, false)[0];
+      const hit = this.ray.intersectObjects(this.screens, false)[0];
       if (!hit || !hit.uv) continue;
-      const sx = hit.uv.x * W;
-      const sy = (1 - hit.uv.y) * H;
-      this.aim[hand] = [sx, sy];
-      // Right hand wins the crosshair if both are on the glass.
-      if (!cross || hand === 'right') cross = [sx, sy];
+      this.hits[hand] = {
+        cab: this.screens.indexOf(hit.object),
+        at: [hit.uv.x * SCREEN_W, (1 - hit.uv.y) * SCREEN_H],
+      };
     }
-    this.cross = cross;
   }
 
-  private fire(): void {
+  /** This frame's lasers + trigger edges, as seen by cabinet `cab`. */
+  private fillPointers(cab: number): void {
     for (const hand of HANDS) {
+      const hit = this.hits[hand];
       const gp = this.input.xr.gamepads[hand];
-      const at = this.aim[hand];
-      if (!at || !gp?.getButtonDown(InputComponent.Trigger)) continue;
-      sfx.huntShot();
-      this.muzzle = 0.06;
-      // Kill the nearest octagon whose body is under the shot.
-      let best = -1;
-      let bestD = Infinity;
-      for (let i = 0; i < this.targets.length; i++) {
-        const t = this.targets[i];
-        const dd = (t.x - at[0]) ** 2 + (t.y - at[1]) ** 2;
-        const reach = KINDS[t.kind].r + FORGIVE;
-        if (dd <= reach * reach && dd < bestD) {
-          bestD = dd;
-          best = i;
-        }
-      }
-      if (best >= 0) {
-        const t = this.targets.splice(best, 1)[0];
-        this.combo += 1;
-        const mult = Math.min(4, 1 + Math.floor((this.combo - 1) / 4));
-        this.score += KINDS[t.kind].points * mult;
-        sfx.huntHit();
-      } else {
-        this.combo = 0; // a clean miss breaks the streak
-      }
+      const p = this.pointers[hand];
+      p.at = hit && hit.cab === cab ? hit.at : null;
+      p.down = !!gp?.getButtonDown(InputComponent.Trigger);
+      p.up = !!gp?.getButtonUp(InputComponent.Trigger);
     }
   }
 
-  /* ── the CRT ──────────────────────────────────────────────────────────── */
+  /* ── the run ──────────────────────────────────────────────────────────── */
 
-  private paintScreen(): void {
-    const refs = arcadeRefs();
-    if (!refs) return;
-    const g = refs.screenCanvas.getContext('2d')!;
-
-    // Shell: near-black glass, a faint grid, scanlines.
-    g.fillStyle = '#08060e';
-    g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(255,42,213,0.07)';
-    g.lineWidth = 1;
-    for (let x = 0; x <= W; x += 32) {
-      g.beginPath();
-      g.moveTo(x, 0);
-      g.lineTo(x, H);
-      g.stroke();
-    }
-    for (let y = 0; y <= H; y += 32) {
-      g.beginPath();
-      g.moveTo(0, y);
-      g.lineTo(W, y);
-      g.stroke();
-    }
-
-    if (this.phase === 'attract') {
-      const pulse = 0.7 + Math.sin(this.clock * 2.2) * 0.3;
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      g.fillStyle = '#ffd9f6';
-      g.shadowColor = '#ff2ad5';
-      g.shadowBlur = 14;
-      g.font = font(700, 38);
-      g.fillText('SUPER', W / 2, 92);
-      g.fillText('OCTAGON', W / 2, 136);
-      g.shadowBlur = 0;
-      g.font = font(600, 17);
-      g.fillStyle = `rgba(233,236,244,${(0.35 + 0.35 * pulse).toFixed(2)})`;
-      g.fillText('STEP UP · PULL THE TRIGGER', W / 2, 190);
-      const top = octagonBook()[0];
-      g.font = font(600, 15);
-      g.fillStyle = 'rgba(233,236,244,0.4)';
-      g.fillText(top ? `HOUSE BEST ${top.s.toLocaleString('en-US')} · ${top.n}` : 'NO SCORES YET — BE FIRST', W / 2, 218);
-      refs.screenTex.needsUpdate = true;
+  /** Step up, aim at a machine's glass, pull the trigger. */
+  private tryStart(): void {
+    for (const hand of HANDS) {
+      const hit = this.hits[hand];
+      if (!hit || !this.input.xr.gamepads[hand]?.getButtonDown(InputComponent.Trigger)) continue;
+      const game = this.games[hit.cab];
+      if (_head.distanceTo(game.cab.pos) > REACH) continue;
+      this.active = hit.cab;
+      game.phase = 'playing';
+      game.start();
+      game.paint(this.clock);
       return;
     }
-
-    // Targets.
-    for (const t of this.targets) {
-      const k = KINDS[t.kind];
-      this.octagon(g, t.x, t.y, k.r, t.rot, k.color);
-    }
-
-    // HUD strip.
-    g.textBaseline = 'middle';
-    g.textAlign = 'left';
-    g.font = font(700, 20);
-    g.fillStyle = '#f2f3f7';
-    g.fillText(this.score.toLocaleString('en-US'), 10, 16);
-    const mult = Math.min(4, 1 + Math.floor(Math.max(0, this.combo - 1) / 4));
-    if (mult > 1) {
-      g.font = font(600, 15);
-      g.fillStyle = '#ffb454';
-      g.fillText(`×${mult}`, 10, 38);
-    }
-    g.textAlign = 'right';
-    g.font = font(700, 18);
-    g.fillStyle = '#ff5266';
-    g.fillText('♥'.repeat(Math.max(0, this.lives)), W - 10, 16);
-
-    // Crosshair + muzzle flash.
-    if (this.cross) {
-      const [cx, cy] = this.cross;
-      g.strokeStyle = this.muzzle > 0 ? '#ffffff' : 'rgba(255,42,213,0.9)';
-      g.lineWidth = this.muzzle > 0 ? 3 : 2;
-      g.beginPath();
-      g.arc(cx, cy, this.muzzle > 0 ? 10 : 7, 0, Math.PI * 2);
-      g.stroke();
-      g.beginPath();
-      g.moveTo(cx - 14, cy);
-      g.lineTo(cx - 4, cy);
-      g.moveTo(cx + 4, cy);
-      g.lineTo(cx + 14, cy);
-      g.moveTo(cx, cy - 14);
-      g.lineTo(cx, cy - 4);
-      g.moveTo(cx, cy + 4);
-      g.lineTo(cx, cy + 14);
-      g.stroke();
-    }
-
-    if (this.phase === 'dead') {
-      g.fillStyle = 'rgba(6,4,10,0.72)';
-      g.fillRect(0, 0, W, H);
-      g.textAlign = 'center';
-      g.font = font(700, 34);
-      g.fillStyle = '#ff5266';
-      g.fillText('GAME OVER', W / 2, 116);
-      g.font = font(700, 24);
-      g.fillStyle = '#f2f3f7';
-      g.fillText(this.score.toLocaleString('en-US'), W / 2, 156);
-      g.font = font(600, 15);
-      g.fillStyle = 'rgba(233,236,244,0.6)';
-      g.fillText(`GRADE ${octagonGrade(this.score)}`, W / 2, 186);
-    }
-
-    refs.screenTex.needsUpdate = true;
   }
 
-  private octagon(g: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number, color: string): void {
-    g.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = rot + (i / 8) * Math.PI * 2;
-      const px = x + Math.cos(a) * r;
-      const py = y + Math.sin(a) * r;
-      if (i === 0) g.moveTo(px, py);
-      else g.lineTo(px, py);
+  /** The run is over: post it, hold the card. */
+  private finish(game: CabinetGame): void {
+    this.post(game);
+    game.phase = 'dead';
+    this.deadT = 0;
+    game.ended();
+    game.paint(this.clock);
+  }
+
+  private post(game: CabinetGame): void {
+    const score = game.score;
+    if (score <= 0) return;
+    const t = ARCADE_TITLES[game.id];
+    recordArcadeRun(game.id, score, profileName());
+    void submitWorldScore(t.track, 0, score, t.grade(score), profileName());
+    refreshWorldBoard(t.track, 0);
+    // Turn the wall to the game just played, and repaint it.
+    this.boardGame = game.id;
+    this.boardT = 0;
+    this.lastBoardKey = '';
+  }
+
+  /** The idle machines' attract loops: one repaint per tick, round-robin,
+   *  so each screen refreshes every ATTRACT_PERIOD and no frame ever pays
+   *  for more than one idle upload. */
+  private idleScreens(delta: number): void {
+    const n = this.games.length;
+    this.attractT += delta;
+    const tick = ATTRACT_PERIOD / n;
+    if (this.attractT < tick) return;
+    this.attractT = Math.min(this.attractT - tick, tick);
+    for (let k = 0; k < n; k++) {
+      const i = (this.attractNext + k) % n;
+      if (this.games[i].phase !== 'attract') continue;
+      this.games[i].paint(this.clock);
+      this.attractNext = (i + 1) % n;
+      return;
     }
-    g.closePath();
-    g.fillStyle = 'rgba(10,8,18,0.85)';
-    g.fill();
-    g.strokeStyle = color;
-    g.lineWidth = 2.5;
-    g.stroke();
-    // The core pip.
-    g.beginPath();
-    g.arc(x, y, Math.max(2, r * 0.22), 0, Math.PI * 2);
-    g.fillStyle = color;
-    g.fill();
   }
 
   /* ── the wall board ───────────────────────────────────────────────────── */
 
-  private paintBoardIfChanged(): void {
-    const refs = arcadeRefs();
-    if (!refs) return;
+  private paintBoardIfChanged(refs: ArcadeRefs): void {
     if (scores.dirty !== this.lastScoresDirty) {
       this.lastScoresDirty = scores.dirty;
       this.lastBoardKey = '';
     }
-    const world = worldBoard(OCTAGON_TRACK, 0);
-    const local = octagonBook();
+    const id = this.boardGame;
+    const title = ARCADE_TITLES[id];
+    const world = worldBoard(title.track, 0);
+    const local = arcadeBook(id);
     const rows =
       world.state === 'ready' && world.rows.length
         ? world.rows.map((r) => ({ s: r.score, n: r.name, me: r.isMe }))
         : local.map((r) => ({ s: r.s, n: r.n, me: false }));
     const source = world.state === 'ready' && world.rows.length ? 'worldwide' : 'this headset';
-    const key = `${source}|${rows.map((r) => `${r.n}:${r.s}${r.me ? '*' : ''}`).join(',')}`;
+    const key = `${id}|${source}|${rows.map((r) => `${r.n}:${r.s}${r.me ? '*' : ''}`).join(',')}`;
     if (key === this.lastBoardKey) return;
     this.lastBoardKey = key;
 
@@ -453,16 +289,16 @@ export class ArcadeSystem extends createSystem({}) {
     g.roundRect(4, 4, BW - 8, BH - 8, 18);
     g.fill();
     g.lineWidth = 2.5;
-    g.strokeStyle = 'rgba(255,42,213,0.45)';
+    g.strokeStyle = `${title.glow}73`;
     g.stroke();
 
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillStyle = '#ffd9f6';
-    g.shadowColor = '#ff2ad5';
+    g.fillStyle = title.ink;
+    g.shadowColor = title.glow;
     g.shadowBlur = 10;
     g.font = font(700, 44);
-    g.fillText('SUPER OCTAGON', BW / 2, 58, BW - 48);
+    g.fillText(title.name, BW / 2, 58, BW - 48);
     g.shadowBlur = 0;
     g.font = font(600, 20);
     g.letterSpacing = '3px';
@@ -483,7 +319,7 @@ export class ArcadeSystem extends createSystem({}) {
       rows.slice(0, 8).forEach((row, i) => {
         const y = 170 + i * 62;
         if (row.me) {
-          g.fillStyle = 'rgba(255,42,213,0.12)';
+          g.fillStyle = `${title.glow}1f`;
           g.beginPath();
           g.roundRect(24, y - 24, BW - 48, 50, 10);
           g.fill();
@@ -506,7 +342,7 @@ export class ArcadeSystem extends createSystem({}) {
     g.textAlign = 'left';
     g.font = font(500, 17);
     g.fillStyle = 'rgba(233,236,244,0.35)';
-    g.fillText(`solo runs · ${source}`, 36, BH - 34);
+    g.fillText(`${title.unit} · ${source}`, 36, BH - 34);
 
     refs.boardTex.needsUpdate = true;
   }

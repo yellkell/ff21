@@ -14,7 +14,7 @@
  * beat, or hand refs to a system: the floor
  * inlay (ClubSystem), the DJ's working surface, the bottle wall's breath,
  * the still room's andon, the MIRROR's pane and figures (ClubMirrorSystem),
- * SUPER OCTAGON's screen and board (ArcadeSystem), THE STEP's void and
+ * the arcade's four cabinet screens and board (ArcadeSystem), THE STEP's void and
  * threshold (CourseSystem) — plus a few real lights for the people in it.
  */
 
@@ -55,7 +55,7 @@ import { VOID_BG } from '../arena/voidkit.js';
 import { buildLedFloor, type LedFloor } from './ledFloor.js';
 import { CLUB, DECOR } from './config.js';
 import { collapseStatic } from './merge.js';
-import { registerArcade } from './arcade.js';
+import { ARCADE_TITLES, registerArcade, SCREEN_H, SCREEN_W, type ArcadeCabinet, type ArcadeGameId } from './arcade.js';
 import { registerStep } from './step.js';
 import { adoptLedWall, loadDjGear } from './stageShow.js';
 import { font, onFontsReady } from '../ui/fonts.js';
@@ -353,46 +353,63 @@ function mirrorTwin(venue: Object3D): void {
   haze.add(twin);
 }
 
-/* ── THE ARCADE: SUPER OCTAGON's live screen + marquee on the baked cabinet,
- *    and the wall board. Cabinet-local frame: +z is the playing side. ──── */
+/* ── THE ARCADE: a live screen + marquee on each of the four baked
+ *    cabinets (SUPER OCTAGON's anchor and the three in its row, all one
+ *    model), and the wall board. Cabinet-local frame: +z is the playing
+ *    side. ─────────────────────────────────────────────────────────────── */
 function liveArcade(root: Group): void {
   const A = CLUB.arcade;
-  const cab = new Group();
-  cab.position.set(A.octagon.x, 0, A.octagon.z);
-  cab.rotation.y = A.octagon.yaw;
-  const marquee = signPlane(0.56, 0.2, 512, (g, sw, sh) => {
-    g.fillStyle = '#0d0a14';
-    g.fillRect(0, 0, sw, sh);
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillStyle = '#ffd9f6';
-    g.shadowColor = css(PALETTE.magenta);
-    g.shadowBlur = 16;
-    g.font = font(700, 64);
-    g.letterSpacing = '4px';
-    g.fillText('SUPER OCTAGON', sw / 2, sh / 2 + 2, sw - 24);
-    g.letterSpacing = '0px';
-    g.shadowBlur = 0;
+  const rows: { x: number; game: ArcadeGameId }[] = [
+    { x: A.octagon.x, game: 'octagon' },
+    ...A.decor.map((d) => ({ x: d.x, game: d.game })),
+  ];
+  // The baked glass (measured off the venue): 0.52 × 0.41, bottom edge at
+  // y 1.303 / z 0.225, top at y 1.708 / z 0.156. The live screen lies ON
+  // that plane, 2 mm proud and ~8 mm larger every way, so the baked attract
+  // art can't peek round its edges from an angle.
+  const tilt = Math.atan2(0.225 - 0.156, 1.708 - 1.303);
+  // Every screen is the same quad: share it.
+  const screenGeo = new PlaneGeometry(0.536, 0.426);
+  const cabinets: ArcadeCabinet[] = rows.map((row, i) => {
+    const title = ARCADE_TITLES[row.game];
+    const cab = new Group();
+    cab.position.set(row.x, 0, A.octagon.z);
+    cab.rotation.y = A.octagon.yaw;
+    const marquee = signPlane(0.56, 0.2, 512, (g, sw, sh) => {
+      g.fillStyle = '#0d0a14';
+      g.fillRect(0, 0, sw, sh);
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillStyle = title.ink;
+      g.shadowColor = title.glow;
+      g.shadowBlur = 16;
+      g.font = font(700, 64);
+      g.letterSpacing = '4px';
+      g.fillText(title.name, sw / 2, sh / 2 + 2, sw - 24);
+      g.letterSpacing = '0px';
+      g.shadowBlur = 0;
+    });
+    marquee.name = `live-arcade-marquee-${i}`;
+    marquee.position.set(0, 1.985, 0.279);
+    cab.add(marquee);
+    const screenCanvas = document.createElement('canvas');
+    screenCanvas.width = SCREEN_W;
+    screenCanvas.height = SCREEN_H;
+    const sg = screenCanvas.getContext('2d')!;
+    sg.fillStyle = '#08060e';
+    sg.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    const screenTex = new CanvasTexture(screenCanvas);
+    screenTex.colorSpace = SRGBColorSpace;
+    screenTex.minFilter = LinearFilter;
+    screenTex.generateMipmaps = false;
+    const screen = new Mesh(screenGeo, new MeshBasicMaterial({ map: screenTex }));
+    screen.name = `live-arcade-screen-${i}`;
+    screen.position.set(0, 1.5055, 0.1925);
+    screen.rotation.x = -tilt;
+    cab.add(screen);
+    root.add(cab);
+    return { game: row.game, screen, screenCanvas, screenTex, pos: new Vector3(row.x, 0, A.octagon.z) };
   });
-  marquee.name = 'live-octagon-marquee';
-  marquee.position.set(0, 1.985, 0.279);
-  cab.add(marquee);
-  const tilt = Math.atan2(0.215 - 0.115, 1.78 - 1.2);
-  const screenCanvas = document.createElement('canvas');
-  screenCanvas.width = 384;
-  screenCanvas.height = 300;
-  const sg = screenCanvas.getContext('2d')!;
-  sg.fillStyle = '#08060e';
-  sg.fillRect(0, 0, 384, 300);
-  const screenTex = new CanvasTexture(screenCanvas);
-  screenTex.colorSpace = SRGBColorSpace;
-  screenTex.minFilter = LinearFilter;
-  const screen = new Mesh(new PlaneGeometry(0.52, 0.41), new MeshBasicMaterial({ map: screenTex }));
-  screen.name = 'live-octagon-screen';
-  screen.position.set(0, 1.505, 0.195);
-  screen.rotation.x = -tilt;
-  cab.add(screen);
-  root.add(cab);
 
   const boardCanvas = document.createElement('canvas');
   boardCanvas.width = 512;
@@ -404,7 +421,7 @@ function liveArcade(root: Group): void {
   boardTex.colorSpace = SRGBColorSpace;
   boardTex.minFilter = LinearFilter;
   const board = new Mesh(new PlaneGeometry(0.82, 1.18), new MeshBasicMaterial({ map: boardTex, transparent: true }));
-  board.name = 'live-octagon-board';
+  board.name = 'live-arcade-board';
   board.position.set(A.board.x - 0.03, A.board.y, A.board.z);
   board.rotation.y = A.board.yaw;
   root.add(board);
@@ -413,14 +430,7 @@ function liveArcade(root: Group): void {
   glow.position.set((A.minX + A.maxX) / 2, 2.1, (A.minZ + A.maxZ) / 2);
   root.add(glow);
 
-  registerArcade({
-    screen,
-    screenCanvas,
-    screenTex,
-    boardCanvas,
-    boardTex,
-    cabinetPos: new Vector3(A.octagon.x, 0, A.octagon.z),
-  });
+  registerArcade({ cabinets, boardCanvas, boardTex });
 }
 
 /* ── THE STEP's live layer: the void in the frame, its shimmer, the lit

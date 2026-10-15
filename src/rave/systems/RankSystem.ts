@@ -165,9 +165,7 @@ export class RankSystem extends createSystem({}) {
     for (const d of top) rows.push(this.row(d, podium));
     if (me && !top.includes(me)) rows.push(this.row(me, podium));
 
-    // No header at all — no "🏆 FINAL", no subtitle. The winner is already
-    // rank 1 in gold wearing the night's letter, and the title strip sat
-    // right where the mirror ball hangs.
+    // The board titles itself (STANDINGS live, FINAL on the podium).
     this.board.redraw(rows);
   }
 
