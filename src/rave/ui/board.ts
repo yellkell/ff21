@@ -20,6 +20,12 @@ import { font } from './fonts.js';
 const W = 768;
 const H = 1024;
 
+/** The board's centre over the stage (m) — RankSystem hangs it here. Its
+ *  rows run from the top of the plane down, so they start ~7.1 m up (two
+ *  thirds of a metre higher than when the mirror ball owned the top band)
+ *  and a full 8-dancer board ends ~5.7 m: clear over the giant's head. */
+export const BOARD_Y = 5.9;
+
 /** Heavy club lettering: thick near-black casing, then the colour. */
 function ink(
   g: CanvasRenderingContext2D,
@@ -83,11 +89,10 @@ export class HoloBoard {
     g.textBaseline = 'middle';
 
     // The board carries NO header, live or podium — the rows are
-    // self-evident (rank 1 in gold with a letter grade IS the finale) and
-    // the title strip sat exactly where the mirror ball hangs, so anything
-    // written there was half-eclipsed anyway. The canvas top stays empty
-    // on purpose: that zone belongs to the ball.
-    const top = 176;
+    // self-evident (rank 1 in gold with a letter grade IS the finale). The
+    // rows start at the top now: the band that used to stay empty for the
+    // mirror ball went with the ball.
+    const top = 40;
     const rowH = Math.min(68, (H - top - 30) / Math.max(rows.length, 1));
     rows.forEach((row, i) => {
       const y = top + i * rowH + rowH / 2;

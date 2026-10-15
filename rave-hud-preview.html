@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- DEV-ONLY harness: paints the RAVE RAID in-match HUD (src/rave/ui/hud.ts)
+     flat, in a few states, for screenshots. The groove pips are real points
+     in the game; here they're stand-in dots on the same layout.
+     Not part of the game; never ship or link this page. -->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>rave hud preview</title>
+    <style>
+      html, body { margin: 0; background: radial-gradient(circle at 30% 20%, #3a1250, #07060d 60%); color: #8ab; font: 12px system-ui; }
+      .grid { display: grid; grid-template-columns: repeat(3, 512px); gap: 18px; padding: 18px; }
+      .cell { display: flex; flex-direction: column; gap: 6px; }
+      canvas { width: 512px; height: auto; background: repeating-linear-gradient(115deg, #1a0d2e 0 40px, #241040 40px 80px); }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script type="module">
+      import { paintWedge, paintPop, paintCount, paintGrade, WEDGE_W, WEDGE_H, POP_W, POP_H, CARD_W, CARD_H, WEDGE_PIPS } from '/src/rave/ui/hud.ts';
+      import { onFontsReady } from '/src/ui/kit/fonts.ts';
+      const grid = document.getElementById('grid');
+      const cell = (label, w, h, paint) => {
+        const d = document.createElement('div');
+        d.className = 'cell';
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        d.append(label, c);
+        grid.append(d);
+        paint(c.getContext('2d'));
+      };
+      const pips = (g, streak) => {
+        for (let i = 0; i < WEDGE_PIPS.count; i++) {
+          const on = streak > WEDGE_PIPS.count || i < streak;
+          g.beginPath();
+          g.arc(WEDGE_PIPS.x0 + i * WEDGE_PIPS.gap, WEDGE_PIPS.y, 10, 0, Math.PI * 2);
+          g.fillStyle = on ? '#1cf5c9' : '#424b59';
+          g.shadowColor = on ? '#1cf5c9' : 'transparent';
+          g.shadowBlur = on ? 12 : 0;
+          g.fill();
+          g.shadowBlur = 0;
+        }
+      };
+      const W = (o) => ({ score: 0, mult: 0, seatCss: 'hsl(190, 100%, 62%)', alive: true, missChain: 0, chainOut: 3, grooveScore: 0, ...o });
+      const draw = () => {
+        grid.innerHTML = '';
+        cell('wedge · cold', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({})); pips(g, 0); });
+        cell('wedge · chain + groove', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 18450, mult: 2.4, grooveScore: 1250 })); pips(g, 6); });
+        cell('wedge · clipped twice', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 7310, mult: 0, missChain: 2, seatCss: 'hsl(320, 100%, 62%)' })); pips(g, 2); });
+        cell('wedge · spectating', WEDGE_W, WEDGE_H, (g) => paintWedge(g, W({ score: 4200, alive: false })));
+        cell('pop · perfect', POP_W, POP_H, (g) => paintPop(g, 'PERFECT!', 'perfect'));
+        cell('pop · hit', POP_W, POP_H, (g) => paintPop(g, 'HIT', 'hit'));
+        cell('card · count-in', CARD_W, CARD_H, (g) => paintCount(g, 3, 'COMBAT', { name: 'NEON NIGHTS · 2', colour: '#ff6ee0' }));
+        cell('card · grade', CARD_W, CARD_H, (g) => paintGrade(g, { letter: 'A', colour: '#7dff9a', alive: true, coins: 40, dodges: 47, faced: 50, rate: 0.94, perfects: 12 }));
+        cell('card · game over', CARD_W, CARD_H, (g) => paintGrade(g, { letter: 'F', colour: '#ff5040', alive: false, coins: 0, dodges: 9, faced: 14, rate: 0.64, perfects: 0 }));
+      };
+      draw();
+      onFontsReady(() => { draw(); window.__ready = true; });
+    </script>
+  </body>
+</html>

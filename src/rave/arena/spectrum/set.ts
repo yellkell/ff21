@@ -8,11 +8,17 @@
  *              sees the bass towers across the floor — and the treble
  *              runs round to the wall at your back. Peak-hold caps hang
  *              and fall; a chase line runs the circle every bar.
- *   THE RECORD a colossal vinyl hangs in the sky over the far wall, turning, grooves lit by the band
- *              they'd carry, a sheen sweeping round as it spins. The
- *              playhead IS the set's progress: the tone-arm laser starts
- *              at the outer groove on the first beat and reaches the label
- *              on the last — you can read how much set is left in the sky.
+ *   THE RECORD a colossal vinyl hangs in the sky over the far wall, turned
+ *              square to you (so it reads as a true disc with its label
+ *              dead centre, not a skewed ellipse), spinning, grooves lit
+ *              by the band they'd carry, a sheen sweeping round as it
+ *              spins. It DANCES on purpose: a slow pendulum sway across
+ *              the sky every 16 bars, a breathing rise and fall, a kick
+ *              on every beat and the lazy wobble of a warped pressing.
+ *              The playhead IS the set's progress: the tone-arm laser
+ *              starts at the outer groove on the first beat and reaches
+ *              the label on the last — you can read how much set is left
+ *              in the sky.
  *   THE GLASS  every kick sends a ring racing out across the floor from the
  *              edge of the ring, bent into the waveform of the moment.
  *   THE AIR    laser fans from the wall's crest cross over the ring; the
@@ -64,7 +70,26 @@ const FLOOR_OUT = 72;
 const KICKS = 6;
 const RIPPLE_SPEED = 15;
 
-const REC = { y: 52, z: -78, rIn: 8, rOut: 44, tilt: Math.PI / 2 - 0.75 };
+const REC = {
+  y: 52,
+  z: -78,
+  rIn: 8,
+  rOut: 44,
+  /** The pendulum: metres either side of centre, over this many beats. */
+  sway: 11,
+  swayBeats: 64,
+  /** The breath: metres up and down, over this many beats. */
+  rise: 3,
+  riseBeats: 32,
+  /** The kick: metres the disc jumps on the beat. */
+  kick: 0.9,
+  /** The warp: radians the face wobbles off square, once a bar. */
+  warp: 0.07,
+};
+/** Who the record turns to face: the dancer's eye, at the world origin (the
+ *  raid seats everyone there; the foyer and VOIDSTEP spawn there). */
+const VIEWER = new Vector3(0, 1.6, 0);
+const _viewer = new Vector3();
 const FANS = [-1.05, -0.35, 0.35, 1.05];
 const BEAMS_PER_FAN = 6;
 const LASER_LEN = 140;
@@ -375,7 +400,8 @@ export class SpectrumSet {
   private target = { s: [new Color(), new Color(), new Color(), new Color()], peak: new Color(), accent: new Color(), horizon: new Color() };
   private live = { s: [new Color(), new Color(), new Color(), new Color()], peak: new Color(), accent: new Color(), horizon: new Color() };
   private laserCols: Color[] = [];
-  private clock = 0;
+  /** The record's turn so far (radians). */
+  private spin = 0;
 
   /** `parent` takes the set's root. `floorIn`: where the glass starts (outside whatever stands in the middle). */
   constructor(parent: Object3D, { floorIn = FLOOR_IN }: { floorIn?: number } = {}) {
@@ -423,7 +449,6 @@ export class SpectrumSet {
     this.vinyl = vinylMaterial();
     this.disc = new Mesh(new RingGeometry(REC.rIn, REC.rOut, 256, 1), this.vinyl);
     this.disc.position.set(0, REC.y, REC.z);
-    this.disc.rotation.x = REC.tilt;
     this.disc.frustumCulled = false;
     this.root.add(this.disc);
     this.labelCanvas.width = this.labelCanvas.height = 512;
@@ -531,7 +556,6 @@ export class SpectrumSet {
     opts: { trackId?: string | null; title?: string | null; progress?: number; live?: boolean } = {},
   ): void {
     if (!this.root.visible) return;
-    this.clock += dt;
 
     const track = currentTrack();
     const id = opts.trackId !== undefined ? opts.trackId : (track?.id ?? null);
@@ -577,12 +601,30 @@ export class SpectrumSet {
     const prog = opts.progress ?? (beat > 0 && end > 0 ? Math.min(1, beat / end) : 0);
     const play = REC.rOut - 1.5 - prog * (REC.rOut - REC.rIn - 3);
     const u = this.vinyl.uniforms;
-    u.uRot.value = this.clock * (0.12 + act * 0.03);
+    // A visible turn — about one revolution every 15 s, quicker as the acts
+    // climb — slow enough that a disc this size never pulls at your balance.
+    // Accumulated, so an act change speeds the platter up instead of
+    // snapping the label round.
+    this.spin += dt * (0.42 + act * 0.06);
+    u.uRot.value = this.spin;
     u.uPlay.value = play;
     u.uPulse.value = pulse * energy;
     u.uGain.value = gain;
     (u.uBands.value as Float32Array).set(this.grooves);
     this.label.rotation.z = u.uRot.value as number;
+    // The dance: sway, breath and kick, then turn square to the dancer and
+    // wobble off it like a warped pressing on the platter.
+    const tau = Math.PI * 2;
+    this.disc.position.set(
+      Math.sin((beat / REC.swayBeats) * tau) * REC.sway,
+      REC.y + Math.sin((beat / REC.riseBeats) * tau) * REC.rise + pulse * energy * REC.kick,
+      REC.z,
+    );
+    this.root.updateMatrixWorld();
+    this.disc.lookAt(_viewer.copy(VIEWER));
+    const wob = (beat / 4) * tau;
+    this.disc.rotateX(Math.sin(wob) * REC.warp);
+    this.disc.rotateY(Math.cos(wob) * REC.warp);
     // The needle: a fixed point on the record's frame at the playhead.
     this.disc.updateMatrix();
     const needle = new Vector3(Math.cos(-2.3) * play, Math.sin(-2.3) * play, 0).applyMatrix4(this.disc.matrix);

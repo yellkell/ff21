@@ -10,7 +10,7 @@
   <body>
     <!-- Dev-only look-dev harness for the RAVE RAID set: the void (SetEnvironment), the light rig
          (DiscoRig) and the ring of decks + stage, animated on a fake 128 BPM clock.
-         ?seats=8&x=0&y=1.65&z=0&yaw=0&pitch=0.05&act=1&energy=0.8&track=combat&set=void
+         ?seats=8&x=0&y=1.65&z=0&yaw=0&pitch=0.05&act=1&energy=0.8&track=combat&set=void&board=1
          window.__raid.step(n) advances n frames and renders (for hidden panes). -->
     <script type="module">
       import { Color, FogExp2, NoToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
@@ -20,6 +20,7 @@
       import { DiscoRig } from '/src/rave/arena/disco.ts';
       import { buildArena } from '/src/rave/arena/arena.ts';
       import { VOID_BG } from '/src/rave/arena/voidkit.ts';
+      import { BOARD_Y, HoloBoard } from '/src/rave/ui/board.ts';
 
       const params = new URLSearchParams(location.search);
       const num = (k, d) => Number(params.get(k) ?? d);
@@ -40,6 +41,17 @@
       if (params.get('track') && env.setPalette) env.setPalette(paletteFor(params.get('track')), params.get('track').toUpperCase(), true);
       env.root.position.copy(a.stage.position);
       env.root.visible = true;      // DiscoSystem shows it on countdown/raid/podium
+      // ?board=1 hangs the holo leaderboard where RankSystem does, with fake rows.
+      if (params.get('board')) {
+        const board = new HoloBoard();
+        board.group.position.set(a.stage.position.x, BOARD_Y + a.stage.position.y, a.stage.position.z);
+        board.group.lookAt(num('x', 0), num('y', 1.65), num('z', 0));
+        board.redraw(Array.from({ length: seats }, (_, i) => ({
+          rank: i + 1, name: i === 0 ? 'YOU' : `BOT${String(i).padStart(2, '0')}`, score: 9000 - i * 850,
+          combo: 8 - i, alive: i < seats - 1, isMe: i === 0, colorCss: `hsl(${(i * 47) % 360}, 100%, 62%)`,
+        })));
+        scene.add(board.group);
+      }
       rig.root.visible = true;
       const camera = new PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.05, 400);
       camera.position.set(num('x', 0), num('y', 1.65), num('z', 0));

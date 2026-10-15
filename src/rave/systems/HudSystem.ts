@@ -1,13 +1,13 @@
 /**
  * HudSystem — your numbers, OUT of your sightline. A small readout floats
  * off to your LEFT at a natural glance height, turned toward you like a
- * monitor wedge at a gig: the score, the ×multiplier (only while a chain
- * is alive) and the GROOVE row. No labels, no words, and NO LIFE COUNTER —
- * you dance the whole record. The centre of your view belongs to the
+ * monitor wedge at a gig: the score, the ×multiplier chip (lit only
+ * while a chain is alive) and the GROOVE row. Tiny captions, no sentences,
+ * and NO LIFE COUNTER — you dance the whole record. The centre of your view belongs to the
  * giant and the blocks.
  *
  * THE CHAIN WARNING is the exception, and it is silent until it matters:
- * take a hit and a row of marks appears, one lit per clipped landing back
+ * take a hit and a row of alarm cells appears, one lit per clipped landing back
  * to back. Three and the night is over. Dodge once and the row vanishes
  * as if it never happened — because the count didn't survive either.
  *
@@ -24,12 +24,15 @@
  *
  * The count-in and the final grade take the centre — they're cards you
  * READ while nothing is trying to kill you — and the flair pops
- * (PERFECT! / HIT) ride high off to the right, where they can shout
- * without standing between you and the next landing.
+ * (PERFECT / HIT) kick in just beneath the wedge, so the pop and the
+ * numbers it explains live in one glance and never stand between you and
+ * the next landing.
  *
- * NO PANELS. Menus get panels, gameplay gets ink: every glyph wears a
- * thick near-black casing so it reads against the void, the lasers, and
- * the gel creature all at once.
+ * THE LOOK is the neon district's holo hand, the same one FIRE FIGHT's
+ * match UI wears (ui/kit/holo.ts): the wedge is a slim see-through pane
+ * with a lit edge tube, the score a padded counter, the pops GLITCH type
+ * on a sliver of dark glass. The paint lives in ui/hud.ts; this system
+ * owns the planes, the timing and the pips.
  */
 
 import { createSystem, Vector3 } from '@iwsdk/core';
@@ -53,34 +56,38 @@ import { trackById } from '../audio/tracks.js';
 import { danceHue } from '../game/profile.js';
 import { dodgeRate, type Flair, gradeOf, match, me, showBeat } from '../game/state.js';
 import { glintTexture, pipTexture, sizedPointsMaterial } from '../materials/glow.js';
-import { font } from '../ui/fonts.js';
+import { fontsReady } from '../ui/fonts.js';
+import {
+  CARD_H as CH,
+  CARD_W as CW,
+  POP_H,
+  POP_W,
+  WEDGE_H as SH,
+  WEDGE_PIPS,
+  WEDGE_W as SW,
+  paintCount,
+  paintCueing,
+  paintGrade,
+  paintPop,
+  paintWedge,
+} from '../ui/hud.js';
 
 const SET_COLORS = ['#8cff70', '#ff6ee0', '#ffd24a'];
 
-/** The centre card (count-in / grade). */
-const CW = 768;
-const CH = 384;
-/** The wedge strip (live readout). */
-const SW = 512;
-const SH = 288;
 /** The groove's own colour — electric ice, never the seat's, so the two
  *  never blur. Turquoise, per the boss. */
-const GROOVE_CSS = '#1cf5c9';
 const GROOVE_HEX = 0x1cf5c9;
 /** An unlit pip: cold slate, an invitation. */
 const PIP_COLD_HEX = 0x424b59;
 
 /* THE GROOVE ROW's pips live OFF the canvas, as four points and a glint
- * sprite riding the wedge plane (drawGroove below holds the why). These
- * map the canvas layout into the plane's local metres so the sprite row
- * and the canvas tally keep lining up. */
-const PIPS = 4;
-const PIP_ROW_Y = 202; // canvas px, same line the tally is inked on
-const METER_W = 150;
-const TALLY_W = 96;
+ * sprite riding the wedge plane (groovePips below holds the why). These
+ * map the painted row (WEDGE_PIPS) into the plane's local metres so the
+ * sprite row and the canvas tally keep lining up. */
+const PIPS = WEDGE_PIPS.count;
 const PX_X = 0.5 / SW; // the wedge plane is 0.5×0.28 m for 512×288 px
 const PX_Y = 0.28 / SH;
-/** Point size (m) sized so the texture's disc lands at the old 22 px. */
+/** Point size (m) sized so the texture's disc lands at ~22 px. */
 const PIP_WU = 0.05;
 /** The hop: a jump and a small rebound, measured in the RECORD's beats
  *  (the pips dance to the song like everything else on the show side). */
@@ -96,66 +103,10 @@ export function pipHop(tb: number): number {
   if (tb < HOP_ARC + HOP_REB) return 0.24 * Math.sin(((tb - HOP_ARC) / HOP_REB) * Math.PI);
   return 0;
 }
-/** THE ALARM: getting clipped. One red, shared by the HIT pop and the
- *  chain marks so the two always read as the same event — and a deep,
- *  full-chroma one: the old coral sat too light to alarm anybody. */
-const ALARM_CSS = '#ff0033';
 
 const _head = new Vector3();
 const _pipC = new Color();
 const _pipWhite = new Color(0xffffff);
-
-/** Heavy club lettering: a thick near-black casing, then the colour. */
-function ink(
-  g: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  px: number,
-  fill: string,
-  maxWidth?: number,
-): void {
-  g.font = font(700, px);
-  g.lineJoin = 'round';
-  g.lineCap = 'round';
-  g.lineWidth = Math.max(6, px * 0.22);
-  g.strokeStyle = 'rgba(0,2,6,0.96)';
-  if (maxWidth) g.strokeText(text, x, y, maxWidth);
-  else g.strokeText(text, x, y);
-  g.fillStyle = fill;
-  if (maxWidth) g.fillText(text, x, y, maxWidth);
-  else g.fillText(text, x, y);
-}
-
-/** Ink with a neon halo — the same casing, then the colour BLOOMS. The
- *  whites stay white; everything coloured earns a glow of its own hue,
- *  which is where the vibrance lives (a saturated fill with no bloom
- *  reads as flat print, not light).
- *
- *  TWO bloom passes, wide then tight. One pass is a haze around a letter;
- *  two compound into something that reads as actually emitting, which is
- *  the difference between a coloured numeral and a lit one. */
-function neon(
-  g: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  px: number,
-  fill: string,
-  glow = fill,
-  maxWidth?: number,
-): void {
-  ink(g, text, x, y, px, fill, maxWidth);
-  g.fillStyle = fill;
-  g.font = font(700, px);
-  g.shadowColor = glow;
-  for (const blur of [Math.max(20, px * 0.55), Math.max(11, px * 0.24)]) {
-    g.shadowBlur = blur;
-    if (maxWidth) g.fillText(text, x, y, maxWidth);
-    else g.fillText(text, x, y);
-  }
-  g.shadowBlur = 0;
-}
 
 /** A seat's colour at FULL neon: hue straight to hsl, no muddying through
  *  the palette's dimmer value curve. */
@@ -197,7 +148,7 @@ export class HudSystem extends createSystem({}) {
   private flairTex!: CanvasTexture;
   private flairAge = 9;
   private lastKey = '';
-  /** The groove pips — points on the wedge, not ink (see drawGroove). */
+  /** The groove pips — points on the wedge, not paint (see groovePips). */
   private pips!: Points;
   private pipPos = new Float32Array(PIPS * 3);
   private pipCol = new Float32Array(PIPS * 3);
@@ -280,8 +231,8 @@ export class HudSystem extends createSystem({}) {
     this.pipGlint.visible = false;
     this.strip.add(this.pipGlint);
 
-    this.flairCanvas.width = 512;
-    this.flairCanvas.height = 160;
+    this.flairCanvas.width = POP_W;
+    this.flairCanvas.height = POP_H;
     this.flairTex = new CanvasTexture(this.flairCanvas);
     this.flairMat = new MeshBasicMaterial({
       map: this.flairTex,
@@ -361,6 +312,7 @@ export class HudSystem extends createSystem({}) {
       d?.alive,
       match.grooveStreak,
       match.grooveScore,
+      fontsReady(), // repaint once Rajdhani lands
       // (The groove pips animate OFF the canvas — see groovePips — so the
       // strip repaints only when a number on it actually changes. The old
       // row repainted this whole texture ten times a beat to move one dot.)
@@ -377,41 +329,24 @@ export class HudSystem extends createSystem({}) {
 
   private drawGrade(): void {
     const g = this.cardCanvas.getContext('2d')!;
-    g.clearRect(0, 0, CW, CH);
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-
     const d = me();
     if (!d) {
+      g.clearRect(0, 0, CW, CH);
       this.cardTex.needsUpdate = true;
       return;
     }
     const letter = gradeOf(d);
-    const color = GRADE.colors[letter] ?? '#f4f6fb';
-    const faced = d.dodges + d.hits;
-
-    // The letter needs no introduction — a giant glowing grade IS the
-    // headline ("THE SET SAYS" above it was saying nothing). Only a
-    // chain-out still earns one: GAME OVER explains why the night ended
-    // early and why the letter under it is an F.
-    if (!d.alive) ink(g, 'GAME OVER', CW / 2, 46, 32, '#ff5040');
-    // What the night banked — FIRE FIGHT's iron-dollars, the one wallet.
-    if (match.coinsPaid > 0) ink(g, `+ $ ${match.coinsPaid} BANKED`, CW / 2, d.alive ? 46 : 84, 28, '#ffb02e');
-    // The letter, huge, with its own halo.
-    g.shadowColor = color;
-    g.shadowBlur = 40;
-    ink(g, letter, CW / 2, CH / 2 + 6, 190, color);
-    g.shadowBlur = 0;
-    // The number behind the letter, so the grade is never a mystery.
-    ink(
-      g,
-      faced > 0 ? `${d.dodges}/${faced} CLEAN · ${Math.round(dodgeRate(d) * 100)}%` : 'NOTHING THROWN',
-      CW / 2,
-      CH - 66,
-      30,
-      'rgba(240,244,250,1)',
-    );
-    if (d.perfects > 0) ink(g, `${d.perfects} PERFECT`, CW / 2, CH - 28, 26, '#ffd75e');
+    paintGrade(g, {
+      letter,
+      colour: GRADE.colors[letter] ?? '#f4f6fb',
+      alive: d.alive,
+      // What the night banked — FIRE FIGHT's iron-dollars, the one wallet.
+      coins: match.coinsPaid,
+      dodges: d.dodges,
+      faced: d.dodges + d.hits,
+      rate: dodgeRate(d),
+      perfects: d.perfects,
+    });
     this.cardTex.needsUpdate = true;
   }
 
@@ -419,122 +354,40 @@ export class HudSystem extends createSystem({}) {
 
   private drawCard(count: number): void {
     const g = this.cardCanvas.getContext('2d')!;
-    g.clearRect(0, 0, CW, CH);
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-
     if (!Number.isFinite(match.beat)) {
       // The record is still decoding — the clock stays parked until it's
       // ready, so nothing can land early.
-      ink(g, 'CUEING…', CW / 2, CH / 2, 46, '#ffd9f6');
+      paintCueing(g);
       this.cardTex.needsUpdate = true;
       return;
     }
-
     // Clean: the number, the record, and (on tour) the night. No slogan.
-    const cued = trackById(match.trackId);
-    if (match.tour) {
-      const set = TOUR.sets[match.tour.set];
-      ink(
-        g,
-        `${set?.name ?? 'THE TOUR'} · ${match.tour.song + 1}`,
-        CW / 2,
-        58,
-        26,
-        SET_COLORS[match.tour.set % SET_COLORS.length],
-      );
-    }
-    // A flat magenta numeral reads DARK on a black card, however saturated
-    // it is: magenta's own luminance is low. Real neon is a near-white core
-    // inside a coloured halo, so that is what the count wears now.
-    neon(g, `${Math.max(1, count)}`, CW / 2, CH / 2 - 4, 150, '#ffe3f8', '#ff2ad5');
-    if (cued) neon(g, `♪ ${cued.title}`, CW / 2, CH - 52, 36, '#7dffb2');
+    const set = match.tour ? TOUR.sets[match.tour.set] : undefined;
+    paintCount(
+      g,
+      count,
+      trackById(match.trackId)?.title ?? null,
+      match.tour
+        ? { name: `${set?.name ?? 'THE TOUR'} · ${match.tour.song + 1}`, colour: SET_COLORS[match.tour.set % SET_COLORS.length] }
+        : null,
+    );
     this.cardTex.needsUpdate = true;
   }
 
-  /* ── the wedge: score, ×mult, lives — glanceable, wordless ────────────── */
+  /* ── the wedge: score, ×mult, groove, chain — glanceable ──────────────── */
 
   private drawStrip(): void {
-    const g = this.stripCanvas.getContext('2d')!;
-    g.clearRect(0, 0, SW, SH);
-    g.textBaseline = 'middle';
-
     const d = me();
-    const seatCss = seatNeonCss(danceHue(match.mySeat, true));
-    const cx = SW / 2;
-
-    // Score — big and white with the faintest white bloom (the whites are
-    // right; they just get to be LIGHT). The multiplier below it wears the
-    // seat's hue at full neon.
-    g.textAlign = 'center';
-    neon(g, `${d?.score ?? 0}`, cx, 74, 92, '#ffffff', 'rgba(255,255,255,0.55)');
-    if (d && d.alive && d.combo > 0) {
-      const mult = 1 + SCORE.comboStep * Math.min(d.combo, SCORE.comboCap);
-      neon(g, `×${mult.toFixed(1)}`, cx, 150, 54, seatCss);
-    }
-
-    if (d?.alive !== false) this.drawGroove(g, cx);
-
-    if (d?.alive === false) {
-      ink(g, 'SPECTATING', cx, 252, 34, 'rgba(240,244,250,0.92)');
-    } else if (d && d.missChain > 0) {
-      // THE CHAIN WARNING — nothing at all until you're clipped, then a
-      // row of marks counting toward the end of the night. One dodge and
-      // the whole row disappears.
-      const r = 14;
-      const gapX = 46;
-      const x0 = cx - (gapX * (GRADE.chainOut - 1)) / 2;
-      const last = d.missChain === GRADE.chainOut - 1;
-      for (let i = 0; i < GRADE.chainOut; i++) {
-        const lit = i < d.missChain;
-        g.beginPath();
-        g.arc(x0 + i * gapX, 254, r, 0, Math.PI * 2);
-        // A thinner casing: the ring used to eat a third of the disc, so
-        // what little red survived read as a dull bead.
-        g.lineWidth = 5;
-        g.strokeStyle = 'rgba(0,2,6,0.96)';
-        g.stroke();
-        if (lit) {
-          g.shadowColor = ALARM_CSS;
-          g.shadowBlur = last ? 34 : 22;
-          g.fillStyle = ALARM_CSS;
-          g.fill();
-          g.fill(); // twice through the bloom — the mark burns, not blushes
-        } else {
-          g.fillStyle = 'rgba(70,78,92,0.85)';
-          g.fill();
-        }
-        g.shadowBlur = 0;
-      }
-    }
-
+    paintWedge(this.stripCanvas.getContext('2d')!, {
+      score: d?.score ?? 0,
+      mult: d && d.alive && d.combo > 0 ? 1 + SCORE.comboStep * Math.min(d.combo, SCORE.comboCap) : 0,
+      seatCss: seatNeonCss(danceHue(match.mySeat, true)),
+      alive: d?.alive !== false,
+      missChain: d?.missChain ?? 0,
+      chainOut: GRADE.chainOut,
+      grooveScore: match.grooveScore,
+    });
     this.stripTex.needsUpdate = true;
-  }
-
-  /**
-   * THE GROOVE ROW — the combo catching, then running.
-   *
-   * Cold: four hollow pips, an invitation. Winding up: one lights per
-   * rhythmic swap — popping as it catches — so the very first paid swap
-   * is visible. Running (past the fourth): the pips stay on the floor and
-   * keep dancing — the cycle walks 1-2-3-4 with every paid swap, and the
-   * pip whose turn it is HOPS, a four-point lens glint riding it, with
-   * the streak's earnings beside. It all vanishes when the groove drops —
-   * you always know whether you're on or off.
-   *
-   * Only the TALLY is canvas ink now. The pips are four real points and a
-   * glint sprite riding the plane (groovePips below): the old row
-   * repainted and re-uploaded this whole 512×288 texture ten times a beat
-   * to move one dot — and the dot still stepped. The two halves share the
-   * same layout constants, so the row stays one centred [meter][tally]
-   * pair whether the tally is there or not.
-   */
-  private drawGroove(g: CanvasRenderingContext2D, cx: number): void {
-    if (match.grooveScore <= 0) return;
-    const left = cx - (METER_W + TALLY_W) / 2;
-    g.textAlign = 'left';
-    // What the streak has paid — the combo's own ledger, dying with it.
-    neon(g, `+${match.grooveScore}`, left + METER_W + 14, PIP_ROW_Y, 40, GROOVE_CSS);
   }
 
   /**
@@ -573,16 +426,13 @@ export class HudSystem extends createSystem({}) {
 
     const running = streak > PIPS;
     const turn = running ? (streak - 1) % PIPS : -1;
-    // The canvas tally's own layout: [meter][tally], centred as a pair.
-    const left = SW / 2 - (METER_W + (match.grooveScore > 0 ? TALLY_W : 0)) / 2;
-    const gap = METER_W / PIPS;
     let glintOn = false;
     for (let i = 0; i < PIPS; i++) {
       const lit = running || i < streak;
       const active = i === turn;
       const justLit = !running && i === streak - 1;
-      const px = left + gap / 2 + i * gap;
-      const py = PIP_ROW_Y - (active ? hop * 8 : 0);
+      const px = WEDGE_PIPS.x0 + i * WEDGE_PIPS.gap;
+      const py = WEDGE_PIPS.y - (active ? hop * 8 : 0);
       this.pipPos[i * 3] = (px - SW / 2) * PX_X;
       this.pipPos[i * 3 + 1] = (SH / 2 - py) * PX_Y;
       this.pipSize[i] = active ? 1 + hop * 0.3 : justLit ? 1 + hop * 0.45 : 1;
@@ -605,38 +455,7 @@ export class HudSystem extends createSystem({}) {
   }
 
   private drawFlair(text: string, tone: Flair['tone']): void {
-    const g = this.flairCanvas.getContext('2d')!;
-    g.clearRect(0, 0, 512, 160);
-    // The house semantic set — each tone unmistakably its own: green
-    // survived, WHITE rode the last beat (a perfect is the cleanest thing
-    // you can do, and white is the cleanest thing on the strip), the alarm
-    // red got clipped, magenta is a milestone, cyan is information.
-    const color =
-      tone === 'perfect'
-        ? '#ffffff'
-        : tone === 'hit'
-          ? ALARM_CSS
-          : tone === 'milestone'
-            ? '#ff2ad5'
-            : tone === 'info'
-              ? '#6fc8ff'
-              : '#2be28a';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.shadowColor = color;
-    // The alarm blooms hardest: a deep red only reads as VIVID against the
-    // void if it throws light, and this is the pop you must not miss.
-    g.shadowBlur = tone === 'hit' ? 22 : 12;
-    ink(g, text, 256, 80, 52, color, 490);
-    g.shadowBlur = 0;
-    if (tone === 'hit') {
-      // ...then a crisp core ON TOP of its own bloom. A heavy casing eats
-      // into 52px glyphs, and a halo brighter than the letters it surrounds
-      // reads as dark text in a red fog — the opposite of vivid.
-      g.fillStyle = color;
-      g.font = font(700, 52);
-      g.fillText(text, 256, 80, 490);
-    }
+    paintPop(this.flairCanvas.getContext('2d')!, text, tone);
     this.flairTex.needsUpdate = true;
   }
 }
