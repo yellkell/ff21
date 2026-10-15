@@ -38,6 +38,7 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   SphereGeometry,
 } from 'three';
 import { BODY_IK } from '../config.js';
@@ -52,6 +53,26 @@ function toneMat(tone: BlankTone): MeshStandardMaterial {
   return tone === 'white'
     ? new MeshStandardMaterial({ color: 0xf4f2ee, roughness: 0.72, metalness: 0.02 })
     : new MeshStandardMaterial({ color: 0x17171a, roughness: 0.4, metalness: 0.3 });
+}
+
+/**
+ * Re-prime a built blank's head + body in `fill` (a CSS colour), or hand
+ * them back to their tone's own primer (null). THE PAINT bakes the fill as
+ * the canvas ground under every unit (avatar/paint.ts `paintFill`), so this
+ * takes effect on the next applyLook. Gear is left alone (it has its own
+ * atlas map) — only the mannequin's own surfaces change. Used for the
+ * tutorial's rust bucket; the rig is reused bout to bout, so it must be
+ * cleared again afterwards.
+ */
+export function setBlankFill(root: Object3D, fill: string | null): void {
+  root.traverse((o) => {
+    const mesh = o as Mesh;
+    const part = mesh.userData?.paintPart;
+    if (!mesh.isMesh || mesh.userData.paintMap || (part !== 'head' && part !== 'body')) return;
+    const mat = mesh.material as MeshStandardMaterial;
+    if (fill) mat.userData.paintFill = fill;
+    else delete mat.userData.paintFill;
+  });
 }
 
 /** The skin id each tone answers to (skinTag drives applyAvatarSkin's
