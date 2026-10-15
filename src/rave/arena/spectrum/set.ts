@@ -12,9 +12,13 @@
  *              square to you (so it reads as a true disc with its label
  *              dead centre, not a skewed ellipse), spinning, grooves lit
  *              by the band they'd carry, a sheen sweeping round as it
- *              spins. It DANCES on purpose: a slow pendulum sway across
- *              the sky every 16 bars, a breathing rise and fall, a kick
- *              on every beat and the lazy wobble of a warped pressing.
+ *              spins. It MOVES on purpose — a slow pendulum sway across
+ *              the sky every 16 bars, a breathing rise and fall, the lazy
+ *              wobble of a warped pressing — but it never THROBS: no jump
+ *              on the kick, no flashing playhead, and its light follows
+ *              the music and the danger duck on a slow ease. It is the
+ *              biggest thing in the sky; anything it does on the beat
+ *              pulls the eye off the landings.
  *              The playhead IS the set's progress: the tone-arm laser
  *              starts at the outer groove on the first beat and reaches
  *              the label on the last — you can read how much set is left
@@ -81,10 +85,12 @@ const REC = {
   /** The breath: metres up and down, over this many beats. */
   rise: 3,
   riseBeats: 32,
-  /** The kick: metres the disc jumps on the beat. */
-  kick: 0.9,
-  /** The warp: radians the face wobbles off square, once a bar. */
-  warp: 0.07,
+  /** The warp: radians the face wobbles off square, over this many beats. */
+  warp: 0.06,
+  warpBeats: 16,
+  /** How fast the record's light follows the music and the duck (1/s) —
+   *  slow, so it swells instead of flickering. */
+  ease: 1.2,
 };
 /** Who the record turns to face: the dancer's eye, at the world origin (the
  *  raid seats everyone there; the foyer and VOIDSTEP spawn there). */
@@ -188,7 +194,6 @@ function vinylMaterial(): ShaderMaterial {
       uAccent: { value: new Color() },
       uRot: { value: 0 },
       uPlay: { value: REC.rOut },
-      uPulse: { value: 0 },
       uGain: { value: 1 },
       uBands: { value: new Float32Array(GROOVE_BANDS) },
     },
@@ -203,7 +208,6 @@ function vinylMaterial(): ShaderMaterial {
       uniform vec3 uAccent;
       uniform float uRot;
       uniform float uPlay;
-      uniform float uPulse;
       uniform float uGain;
       uniform float uBands[${GROOVE_BANDS}];
       varying vec2 vP;
@@ -224,7 +228,7 @@ function vinylMaterial(): ShaderMaterial {
         vec3 col = ramp(1.0 - t);
         vec3 c = col * groove * (0.16 + band * 0.9 + sheen * 0.9) * played;
         // The playhead: a lit ring where the needle is.
-        float head = exp(-abs(r - uPlay) * 1.4) * (1.2 + uPulse * 1.8);
+        float head = exp(-abs(r - uPlay) * 1.4) * 1.4;
         c += uAccent * head;
         // The lead-out and lead-in edges.
         c += col * (exp(-abs(r - ${REC.rOut.toFixed(1)}) * 2.0) + exp(-abs(r - ${REC.rIn.toFixed(1)}) * 2.0)) * 0.8;
@@ -377,6 +381,9 @@ export class SpectrumSet {
   private colGain = new Float32Array(WALL_N);
   private bands = new Float32Array(BANDS);
   private grooves = new Float32Array(GROOVE_BANDS);
+  /** The record's slow copies (see REC.ease). */
+  private recBands = new Float32Array(GROOVE_BANDS);
+  private recGain = 0.7;
 
   private disc: Mesh;
   private vinyl: ShaderMaterial;
@@ -597,6 +604,11 @@ export class SpectrumSet {
 
     // ── the record ──────────────────────────────────────────────────────
     for (let i = 0; i < GROOVE_BANDS; i++) this.grooves[i] = this.bands[Math.floor((i / GROOVE_BANDS) * BANDS)];
+    // The record's own copies of the bands and the gain, eased slowly: the
+    // floor ripples can twitch with the spectrum, the sky must not.
+    const k = 1 - Math.exp(-dt * REC.ease);
+    for (let i = 0; i < GROOVE_BANDS; i++) this.recBands[i] += (this.grooves[i] - this.recBands[i]) * k;
+    this.recGain += (gain - this.recGain) * k;
     const end = setEndBeat();
     const prog = opts.progress ?? (beat > 0 && end > 0 ? Math.min(1, beat / end) : 0);
     const play = REC.rOut - 1.5 - prog * (REC.rOut - REC.rIn - 3);
@@ -608,21 +620,20 @@ export class SpectrumSet {
     this.spin += dt * (0.42 + act * 0.06);
     u.uRot.value = this.spin;
     u.uPlay.value = play;
-    u.uPulse.value = pulse * energy;
-    u.uGain.value = gain;
-    (u.uBands.value as Float32Array).set(this.grooves);
+    u.uGain.value = this.recGain;
+    (u.uBands.value as Float32Array).set(this.recBands);
     this.label.rotation.z = u.uRot.value as number;
-    // The dance: sway, breath and kick, then turn square to the dancer and
+    // The drift: sway and breath, then turn square to the dancer and
     // wobble off it like a warped pressing on the platter.
     const tau = Math.PI * 2;
     this.disc.position.set(
       Math.sin((beat / REC.swayBeats) * tau) * REC.sway,
-      REC.y + Math.sin((beat / REC.riseBeats) * tau) * REC.rise + pulse * energy * REC.kick,
+      REC.y + Math.sin((beat / REC.riseBeats) * tau) * REC.rise,
       REC.z,
     );
     this.root.updateMatrixWorld();
     this.disc.lookAt(_viewer.copy(VIEWER));
-    const wob = (beat / 4) * tau;
+    const wob = (beat / REC.warpBeats) * tau;
     this.disc.rotateX(Math.sin(wob) * REC.warp);
     this.disc.rotateY(Math.cos(wob) * REC.warp);
     // The needle: a fixed point on the record's frame at the playhead.
@@ -634,8 +645,7 @@ export class SpectrumSet {
     this.arm.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), span.clone().normalize());
     this.arm.scale.set(1, span.length(), 1);
     this.flare.position.copy(needle);
-    this.flare.scale.setScalar(1 + pulse * 0.6);
-    this.armMat.opacity = 0.55 + energy * 0.35;
+    this.armMat.opacity = 0.35 + this.recGain * 0.5;
 
     // ── the glass: a ring away on every kick ────────────────────────────
     if (Math.floor(beat) !== Math.floor(this.lastBeat) && beat > this.lastBeat) {

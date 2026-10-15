@@ -84,7 +84,8 @@ export interface WedgeState {
   chainOut: number;
   /** What the running groove streak has paid (0 hides the tally). */
   grooveScore: number;
-  /** What a perfect landing multiplies its points by. */
+  /** What a perfect landing pays RIGHT NOW: the chain's ×mult times the
+   *  perfect bonus — so it climbs with the chain like the score does. */
   perfectMult: number;
   /** A perfect just landed: the PERFECT chip burns. */
   perfectLit: boolean;
@@ -129,13 +130,16 @@ export function paintWedge(g: CanvasRenderingContext2D, s: WedgeState): void {
   g.restore();
   caption(g, 'MULT', cx + cw - 4, y + 28, `rgba(${ACCENT_RGB},0.5)`, 'right');
 
-  // ── PERFECT ×1.5: what riding the last beat pays, under the chain's
-  // multiplier — dark tube until a perfect lands, then it burns white.
+  // ── PERFECT ×n: what a perfect landing pays right now — the chain's
+  // multiplier with the perfect bonus on top, so it climbs as the chain
+  // does. Dark tube with no chain running, lit while one is, and it burns
+  // white the moment a perfect lands.
   const pw = cw - 8;
   const ph = 26;
   const px = cx + 4;
   const py = cy + ch + 8;
   const hot = s.alive && s.perfectLit;
+  const running = s.alive && s.mult > 1;
   if (hot) {
     g.save();
     g.shadowColor = ACCENT;
@@ -145,15 +149,16 @@ export function paintWedge(g: CanvasRenderingContext2D, s: WedgeState): void {
     g.fill();
     g.restore();
   } else {
-    neonCell(g, px, py, pw, ph, false, ACCENT);
+    neonCell(g, px, py, pw, ph, running, ACCENT);
   }
   g.save();
   g.font = font(700, 16);
-  g.letterSpacing = '1px';
+  g.letterSpacing = '0.5px';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillStyle = hot ? 'rgba(3,6,14,0.92)' : `rgba(${ACCENT_RGB},0.5)`;
-  g.fillText(`PERFECT ×${s.perfectMult.toFixed(1)}`, px + pw / 2, py + ph / 2 + 1);
+  g.fillStyle = hot || running ? 'rgba(3,6,14,0.92)' : `rgba(${ACCENT_RGB},0.5)`;
+  // ×1.5, ×1.65, ×3.6 — two places only when the second one says something.
+  g.fillText(`PERFECT ×${s.perfectMult.toFixed(2).replace(/0$/, '')}`, px + pw / 2, py + ph / 2 + 1);
   g.restore();
 
   // A hairline with readout ticks under the counter — the instrument's rule.

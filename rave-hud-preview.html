@@ -19,6 +19,7 @@
     <script type="module">
       import { paintWedge, paintPop, paintCount, paintGrade, WEDGE_W, WEDGE_H, POP_W, POP_H, CARD_W, CARD_H, WEDGE_PIPS } from '/src/rave/ui/hud.ts';
       import { onFontsReady } from '/src/ui/kit/fonts.ts';
+      import { HoloBoard } from '/src/rave/ui/board.ts';
       const grid = document.getElementById('grid');
       const cell = (label, w, h, paint) => {
         const d = document.createElement('div');
@@ -46,13 +47,22 @@
       const draw = () => {
         grid.innerHTML = '';
         cell('wedge · cold', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({})); pips(g, 0); });
-        cell('wedge · chain + beats + perfect', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 18450, mult: 2.4, grooveScore: 1250, perfectLit: true })); pips(g, 6); });
+        cell('wedge · chain + beats + perfect', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 18450, mult: 2.4, grooveScore: 1250, perfectMult: 3.6, perfectLit: true })); pips(g, 6); });
+        cell('wedge · chain running', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 9120, mult: 1.1, grooveScore: 0, perfectMult: 1.65 })); pips(g, 1); });
         cell('wedge · clipped twice', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 7310, mult: 0, missChain: 2, seatCss: 'hsl(320, 100%, 62%)' })); pips(g, 2); });
         cell('wedge · spectating', WEDGE_W, WEDGE_H, (g) => paintWedge(g, W({ score: 4200, alive: false })));
         cell('pop · perfect', POP_W, POP_H, (g) => paintPop(g, 'PERFECT!', 'perfect'));
         cell('pop · hit', POP_W, POP_H, (g) => paintPop(g, 'HIT', 'hit'));
         cell('card · count-in', CARD_W, CARD_H, (g) => paintCount(g, 3, 'COMBAT'));
         cell('card · grade', CARD_W, CARD_H, (g) => paintGrade(g, { letter: 'A', colour: '#7dff9a', alive: true, coins: 40, dodges: 47, faced: 50, rate: 0.94, perfects: 12 }));
+        const board = (label, rows) => {
+          const b = new HoloBoard();
+          b.redraw(rows);
+          cell(label, 768, 1024, (g) => g.drawImage(b.canvas, 0, 0));
+        };
+        const R = (rank, name, score, combo, o = {}) => ({ rank, name, score, combo, alive: true, isMe: false, colorCss: `hsl(${(rank * 67) % 360}, 100%, 64%)`, ...o });
+        board('board · live', [R(1, 'BOT03', 14820, 12), R(2, 'YOU', 13400, 7, { isMe: true }), R(3, 'BOT01', 9900, 0), R(4, 'kellbot', 6100, 3), R(5, 'BOT02', 4100, 0, { alive: false })]);
+        board('board · final', [R(1, 'YOU', 22450, 0, { isMe: true, grade: 'S', gradeCss: '#ffd75e' }), R(2, 'BOT03', 18820, 0, { grade: 'A', gradeCss: '#7dff9a' }), R(3, 'BOT01', 9900, 0, { grade: 'C', gradeCss: '#6fc8ff' })]);
         cell('card · game over', CARD_W, CARD_H, (g) => paintGrade(g, { letter: 'F', colour: '#ff5040', alive: false, coins: 0, dodges: 9, faced: 14, rate: 0.64, perfects: 0 }));
       };
       draw();

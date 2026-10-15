@@ -2,8 +2,9 @@
  * HudSystem — your numbers, OUT of your sightline. A small readout floats
  * off to your LEFT at a natural glance height, turned toward you like a
  * monitor wedge at a gig: the score, the ×multiplier chip (lit only
- * while a chain is alive), the PERFECT ×1.5 chip (lit for a moment after
- * a perfect landing) and the BEATS row. Tiny captions, no sentences,
+ * while a chain is alive), the PERFECT chip — what a perfect landing pays
+ * right now, the chain's multiplier times the perfect bonus, so it climbs
+ * with the chain and flashes when one lands — and the BEATS row. Tiny captions, no sentences,
  * and NO LIFE COUNTER — you dance the whole record. The centre of your view belongs to the
  * giant and the blocks.
  *
@@ -322,7 +323,7 @@ export class HudSystem extends createSystem({}) {
       d?.alive,
       match.grooveStreak,
       match.grooveScore,
-      this.perfectAge < PERFECT_HOLD, // the PERFECT ×1.5 chip lights, then goes dark
+      this.perfectAge < PERFECT_HOLD, // the PERFECT chip flashes white, then settles
       fontsReady(), // repaint once Rajdhani lands
       // (The groove pips animate OFF the canvas — see groovePips — so the
       // strip repaints only when a number on it actually changes. The old
@@ -381,15 +382,18 @@ export class HudSystem extends createSystem({}) {
 
   private drawStrip(): void {
     const d = me();
+    const mult = d && d.alive && d.combo > 0 ? 1 + SCORE.comboStep * Math.min(d.combo, SCORE.comboCap) : 0;
     paintWedge(this.stripCanvas.getContext('2d')!, {
       score: d?.score ?? 0,
-      mult: d && d.alive && d.combo > 0 ? 1 + SCORE.comboStep * Math.min(d.combo, SCORE.comboCap) : 0,
+      mult,
       seatCss: seatNeonCss(danceHue(match.mySeat, true)),
       alive: d?.alive !== false,
       missChain: d?.missChain ?? 0,
       chainOut: GRADE.chainOut,
       grooveScore: match.grooveScore,
-      perfectMult: SCORE.perfectMult,
+      // What a perfect pays now (ChoreoSystem.applyDodge): the chain's
+      // multiplier times the perfect bonus.
+      perfectMult: Math.max(1, mult) * SCORE.perfectMult,
       perfectLit: this.perfectAge < PERFECT_HOLD,
     });
     this.stripTex.needsUpdate = true;
