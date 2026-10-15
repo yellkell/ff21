@@ -11,7 +11,7 @@
  * needed to see it.
  *
  * What stays in code is the LIVE layer — the things that move, glow on the
- * beat, or hand refs to a system: the eclipse chandelier and the floor
+ * beat, or hand refs to a system: the floor
  * inlay (ClubSystem), the DJ's working surface, the bottle wall's breath,
  * the still room's andon, the MIRROR's pane and figures (ClubMirrorSystem),
  * SUPER OCTAGON's screen and board (ArcadeSystem), THE STEP's void and
@@ -50,22 +50,16 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { PALETTE, hueToColor } from '../config.js';
 import { glowTexture } from '../materials/glow.js';
-import { FoyerEnvironment } from '../arena/environment.js';
+import { SpectrumSet } from '../arena/spectrum/set.js';
 import { VOID_BG } from '../arena/voidkit.js';
 import { buildLedFloor, type LedFloor } from './ledFloor.js';
 import { CLUB, DECOR } from './config.js';
-import { blackSteelMat } from './materials.js';
 import { collapseStatic } from './merge.js';
 import { registerArcade } from './arcade.js';
 import { registerStep } from './step.js';
 import { adoptLedWall, loadDjGear } from './stageShow.js';
 import { font, onFontsReady } from '../ui/fonts.js';
 
-export interface ChandelierRing {
-  pivot: Group;
-  glowMat: MeshStandardMaterial;
-  speed: number;
-}
 
 /** The FOYER — the menu place. Not an antechamber of the club anymore but
  *  a piece of THE VOID (the set's own space, see arena/voidkit.ts): a
@@ -73,17 +67,13 @@ export interface ChandelierRing {
  *  the board, not a thing in the room. */
 export interface FoyerRefs {
   root: Group;
-  /** The world around the platform — ClubSystem idles it on the loop. */
-  env: FoyerEnvironment;
+  /** The world around the platform (SPECTRUM) — ClubSystem plays it off the lobby loop. */
+  env: SpectrumSet;
 }
 
 /** Everything the systems animate or query — kept out of the static bake. */
 export interface ClubRefs {
   root: Group;
-  chandelier: {
-    group: Group;
-    rings: ChandelierRing[];
-  };
   /** The live LED tile dance floor (ledFloor.ts). */
   ledFloor: LedFloor;
   /** The backlit ribbed glass behind the bar (slow breathing). */
@@ -226,7 +216,6 @@ export function buildClub(scene: Scene, renderer: WebGLRenderer | null = null): 
   root.name = 'the-club';
 
   loadVenue(root, renderer);
-  const chandelier = buildChandelier(root);
   const ledFloor = buildLedFloor(root);
   const consoleMat = liveConsole(root);
   const barBackMat = liveBarGlow(root);
@@ -246,7 +235,7 @@ export function buildClub(scene: Scene, renderer: WebGLRenderer | null = null): 
   liveLights(root);
 
   scene.add(root);
-  return { root, chandelier, ledFloor, barBackMat, candleMat, stillLampMat, consoleMat };
+  return { root, ledFloor, barBackMat, candleMat, stillLampMat, consoleMat };
 }
 
 /* ── the DJ's kit on the baked booth (club/stageShow.ts): decks, mixer, laptop.
@@ -531,7 +520,7 @@ function liveLights(root: Group): void {
   root.add(new HemisphereLight(0x9a8cff, 0x0b0910, 0.85));
   const F = CLUB.floor;
   const key = new PointLight(0xff7ad8, 1.6, 16, 1.55);
-  key.position.set(F.x, CLUB.chandelier.y - 0.4, F.z);
+  key.position.set(F.x, CLUB.ceilH + 0.3, F.z);
   root.add(key);
   const barLight = new PointLight(0xffc48a, 1.4, 11, 1.55);
   barLight.position.set(CLUB.bar.x - 0.5, 2.3, (CLUB.bar.z0 + CLUB.bar.z1) / 2);
@@ -541,69 +530,8 @@ function liveLights(root: Group): void {
   root.add(stage);
 }
 
-/* ── THE ECLIPSE: counter-rotating rings over the dance floor ─────────── */
-function buildChandelier(root: Group): ClubRefs['chandelier'] {
-  const F = CLUB.floor;
-  const group = new Group();
-  group.name = 'live-chandelier';
-  group.position.set(F.x, CLUB.chandelier.y, F.z);
-  root.add(group);
-
-  const cableMat = blackSteelMat();
-  // Polished chrome under the white dome (the clean house; club/build_club.py).
-  const chrome = new MeshStandardMaterial({ color: 0xe8ecf2, metalness: 0.75, roughness: 0.16 });
-  wantsVenueEnv.push(chrome); // reflects the room once its panorama lands
-  const rings: ChandelierRing[] = [];
-  CLUB.chandelier.rings.forEach((def, i) => {
-    const pivot = new Group();
-    // Each ring hangs at its own height — a shallow inverted cone of rings.
-    pivot.position.y = i * 0.16;
-    group.add(pivot);
-
-    const brass = new Mesh(new TorusGeometry(def.r, 0.028, 10, 56), chrome);
-    brass.rotation.x = Math.PI / 2;
-    pivot.add(brass);
-
-    // The LED channel on the ring's underside — this is what phases. Cyan
-    // now: the rings are the venue's neon, not its brass.
-    const glowMat = new MeshStandardMaterial({
-      color: 0x1d2228,
-      emissive: DECOR.neon,
-      emissiveIntensity: 1.4,
-      metalness: 0.5,
-      roughness: 0.4,
-    });
-    const glow = new Mesh(new TorusGeometry(def.r, 0.011, 6, 56), glowMat);
-    glow.rotation.x = Math.PI / 2;
-    glow.position.y = -0.035;
-    pivot.add(glow);
-
-    // Three hanger cables per ring, up into the dome.
-    for (let k = 0; k < 3; k++) {
-      const a = (k / 3) * Math.PI * 2 + i * 0.6;
-      const drop = 1.6 - i * 0.16;
-      const cable = new Mesh(new CylinderGeometry(0.004, 0.004, drop, 4), cableMat);
-      cable.position.set(Math.sin(a) * def.r, drop / 2, Math.cos(a) * def.r);
-      pivot.add(cable);
-    }
-    rings.push({ pivot, glowMat, speed: def.speed });
-  });
-
-  // No moon at the heart. The crescent disc and its corona used to hang in
-  // the middle of the rings; the rings are the fixture, and they read
-  // better as an open eclipse with nothing in the eye of it.
-  const stem = new Mesh(new CylinderGeometry(0.012, 0.012, 1.6, 6), cableMat);
-  stem.position.y = 0.8;
-  group.add(stem);
-
-  // THE TRUSS. A square lattice frame hung in the dome's mouth, the rings
-  // turning inside it: four chords, a rail of diagonals between each pair,
-  // and the ring cables now read as hung from something. Static, so it
-  // lives beside the live group rather than in it.
-  return { group, rings };
-}
-
-/** The mirror's live refs — the builder runs long before ClubMirrorSystem sees them. */
+/** What ClubMirrorSystem drives: the pane's smoke, the figures' room, the
+ *  depth-haze and the recess key. Everything else about the mirror bakes. */
 export interface MirrorRefs {
   /** The glass tint — near-opaque asleep, light smoke awake. */
   pane: MeshBasicMaterial;
@@ -613,6 +541,8 @@ export interface MirrorRefs {
   haze: Group;
 }
 
+/** buildClub() → ClubMirrorSystem hand-off (same pattern as socialView:
+ *  the builder runs long before any system's init sees the refs). */
 export const mirrorRefs: { current: MirrorRefs | null } = { current: null };
 
 function voidPaneTexture(): CanvasTexture {
@@ -784,10 +714,12 @@ export function buildFoyer(scene: Scene): FoyerRefs {
     root.add(slab);
   }
 
-  // ── the void around: a lit plain far below with a world standing on it
-  const env = new FoyerEnvironment(-7);
-  env.root.name = 'live-foyer-void';
-  root.add(env.root);
+  // ── the world around: SPECTRUM, the raid's own — its glass seven metres
+  // below the platform, the EQ wall ringing the horizon, the record in the sky.
+  const env = new SpectrumSet(root, { floorIn: 3 });
+  env.root.name = 'live-foyer-spectrum';
+  env.root.position.y = -7;
+  env.setActive(true);
 
   // ── THE PORTAL: the moon-gate to the club floor ───────────────────────
   // A ring of light standing on the deck's north edge; its inner shimmer

@@ -57,6 +57,7 @@
         renderer.toneMapping = NoToneMapping;
         env = buildNeon(renderer);
         env.setSite(site === 'backstreet' ? 'backstreet' : 'plaza');
+        env.setShown(true); // as DesertSystem does: plinths up, the street's decks laid
         env.root.visible = true;
         scene.add(env.root);
         scene.background = env.skyColor;

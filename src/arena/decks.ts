@@ -49,7 +49,8 @@ export type DeckStyle =
   | 'copper'
   | 'basalt'
   | 'magma'
-  | 'meteorite';
+  | 'meteorite'
+  | 'iron';
 
 export interface DeckLook {
   map: CanvasTexture;
@@ -79,6 +80,18 @@ export interface DeckLook {
 /** Metres of deck one tile covers — the pad's full width (1.72 m), so the
  *  tile is laid once, centred, and never repeats on a pad. */
 export const DECK_TILE_M = 1.72;
+
+/** THE STREET: while a site whose ground is a road is up (the neon district),
+ *  the house decks — the free timber everyone is born with — are laid as the
+ *  street's own cast-iron plate. Bought and earned decks keep their material:
+ *  someone paid for that marble. (avatar/skins.ts applies it; neon flips it.) */
+let street = false;
+export function streetDecks(): boolean {
+  return street;
+}
+export function setStreetFlag(on: boolean): void {
+  street = on;
+}
 /** Texels per tile side. */
 const SIZE = 512;
 
@@ -494,6 +507,112 @@ function lacquerSkin(): Skin {
   });
 }
 
+/** The cast lettering and emblem for the iron plate, as a coverage mask
+ *  (1 = raised metal): the inscription ring and the 炎 at the centre. */
+let ironMask: Uint8ClampedArray | null = null;
+const IRON_MASK = 1024;
+function ironLettering(): Uint8ClampedArray {
+  if (ironMask) return ironMask;
+  const S = IRON_MASK;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, S, S);
+  g.fillStyle = '#fff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  // The inscription runs clockwise round the band, every glyph upright to the rim.
+  const ring = 'NEON DISTRICT ・ 防火 ・ FIRE FIGHT ・ 消防用 ・ NEON DISTRICT ・ 防火 ・ FIRE FIGHT ・ 消防用 ・ ';
+  const R = 0.37 * S;
+  g.font = `900 ${Math.round(S * 0.034)}px 'Arial Black', 'Yu Gothic', sans-serif`;
+  const glyphs = [...ring];
+  for (let i = 0; i < glyphs.length; i++) {
+    const a = (i / glyphs.length) * Math.PI * 2;
+    g.save();
+    g.translate(S / 2 + Math.sin(a) * R, S / 2 - Math.cos(a) * R);
+    g.rotate(a);
+    g.fillText(glyphs[i], 0, 0);
+    g.restore();
+  }
+  // The emblem: 炎, cast proud in the medallion.
+  g.font = `900 ${Math.round(S * 0.15)}px 'Yu Gothic', 'Meiryo', sans-serif`;
+  g.fillText('炎', S / 2, S / 2 + S * 0.006);
+  const img = g.getImageData(0, 0, S, S).data;
+  ironMask = new Uint8ClampedArray(S * S);
+  for (let i = 0; i < S * S; i++) ironMask[i] = img[i * 4];
+  return ironMask;
+}
+
+function ironSkin(): Skin {
+  // THE STREET PLATE — the neon district's own deck: a cast-iron cover in
+  // the Japanese manhole tradition, laid in the road. From the rim in: a
+  // raised lip; an inscription band, its lettering cast proud of a sunk
+  // ground; a beaded ring; a field of raised hex bosses for grip, broken by
+  // two lifting slots; and a medallion holding 炎. Iron weathers the way it
+  // really does: the high points worn bright by feet, the low ground dark,
+  // rust settling into the recesses, and water standing in them (the finish
+  // map keeps the worn tops metal and the wet recesses glossy). The tile is
+  // centred on the pad, so the cover is too.
+  const mask = ironLettering();
+  const S = IRON_MASK;
+  return skin('iron', 4909, (x, y, n) => {
+    const dx = x - 0.5;
+    const dy = y - 0.5;
+    const r = Math.hypot(dx, dy);
+    const px = 1 / 512;
+    const band = (a: number, b: number): number => clamp01((r - a) / px + 0.5) * clamp01((b - r) / px + 0.5);
+    const lettering = mask[Math.min(S - 1, Math.floor(y * S)) * S + Math.min(S - 1, Math.floor(x * S))] / 255;
+    let h = 0.5;                                          // the plate's face
+    h += 0.22 * band(0.413, 0.44);                        // the rim lip
+    const inscription = band(0.338, 0.405);
+    h -= 0.12 * inscription;                              // the sunk band…
+    h += 0.3 * inscription * lettering;                   // …its letters cast proud
+    h += 0.18 * band(0.322, 0.335);                       // the beaded ring
+    // The field: hex bosses, ~3.8 cm pitch, between the medallion and the bead.
+    if (r > 0.118 && r < 0.318) {
+      const P = 0.022;
+      const row = Math.floor(dy / (P * 0.866) + 0.5);
+      const cy = row * P * 0.866;
+      const cx = (Math.floor(dx / P + (row % 2 ? 0.5 : 0) + 0.5) - (row % 2 ? 0.5 : 0)) * P;
+      const d = Math.hypot(dx - cx, dy - cy);
+      h += 0.16 * clamp01((0.0072 - d) / px + 0.5);
+      // Two lifting slots, either side, sunk through the field.
+      for (const sx of [-1, 1]) {
+        const ux = dx - sx * 0.25;
+        if (Math.abs(ux) < 0.018 && Math.abs(dy) < 0.0065) h = 0.22;
+        if (Math.abs(ux) < 0.004 && Math.abs(dy) < 0.0065) h = 0.42;   // the bar across it
+      }
+    }
+    // The medallion: a raised ring, a sunk ground, 炎 cast proud of it.
+    h += 0.2 * band(0.1, 0.116);
+    const medal = clamp01((0.1 - r) / px + 0.5);
+    h -= 0.1 * medal;
+    h += 0.3 * medal * lettering;
+    // Casting texture: sand-grain pits all over the face.
+    const grain = n(x, y, 96, 2, 1);
+    h += (grain - 0.5) * 0.03;
+    h = clamp01(h);
+    // Weathering, driven by height: worn bright on top, rust and water below.
+    const wearN = n(x, y, 24, 3, 2);
+    const rustN = n(x, y, 12, 3, 3);
+    const high = clamp01((h - 0.6) / 0.15);
+    const low = clamp01((0.47 - h) / 0.12);
+    const wear = clamp01(high * (0.55 + wearN * 0.7));
+    const rust = clamp01(low * (rustN * 1.1 - 0.4) + (rustN - 0.78) * 0.4);
+    const tone = 0.85 + n(x, y, 6, 3, 4) * 0.3;
+    const iron: [number, number, number] = [0.11 * tone, 0.105 * tone, 0.1 * tone];
+    const bright: [number, number, number] = [0.46, 0.46, 0.48];
+    const rustC: [number, number, number] = [0.24, 0.11, 0.05];
+    const col = iron.map((c, i) => c * (1 - wear) + bright[i] * wear) as [number, number, number];
+    const out = col.map((c, i) => c * (1 - rust) + rustC[i] * rust) as [number, number, number];
+    const wet = clamp01(low * 1.5 + (n(x, y, 5, 2, 5) - 0.6) * 1.5);
+    const rough = clamp01(0.55 - wear * 0.25 - wet * 0.35 + rust * 0.3);
+    const metal = clamp01(0.55 + wear * 0.4 - rust * 0.5);
+    return [out[0], out[1], out[2], h, rough, metal];
+  });
+}
+
 function tideSkin(): Skin {
   // Wet green stone under a slick — the tide's own ground.
   return skin('tide', 3808, (x, y, n) => {
@@ -703,6 +822,8 @@ function rawLook(style: DeckStyle): DeckLook {
       return { ...jadeSkin(), color: 0xffffff, roughness: 0.26, metalness: 0.02, bumpScale: 0.15, envMapIntensity: 0.6 };
     case 'bullion':
       return { ...bullionSkin(), color: 0xffffff, roughness: 0.3, metalness: 0.85, bumpScale: 0.25, envMapIntensity: 0.9, emissive: 0x3a2400, emissiveIntensity: 0.25 };
+    case 'iron':
+      return { ...ironSkin(), color: 0xffffff, roughness: 1, metalness: 1, bumpScale: 0.9, envMapIntensity: 0.9 };
     case 'lacquer':
       return { ...lacquerSkin(), color: 0xffffff, roughness: 1, metalness: 1, bumpScale: 0.2, envMapIntensity: 1.0, emissive: 0x2a0404, emissiveIntensity: 0.12 };
     case 'tide':

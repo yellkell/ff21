@@ -19,6 +19,7 @@ import { buildFactory, type Factory } from '../arena/factory/index.js';
 import { buildSaltFlats, type SaltFlats } from '../arena/saltflats/index.js';
 import { buildCove, type Cove } from '../arena/cove/index.js';
 import { buildNeon, type Neon, type NeonSite } from '../arena/neon/index.js';
+import { setFoeStageShown } from '../arena/arena.js';
 import { Curtain } from '../experience/Curtain.js';
 import { CONFIG } from '../arena/desert/config.js';
 
@@ -105,6 +106,11 @@ export class DesertSystem extends createSystem({}) {
       this.crossNeon(delta);
       this.neon?.update(delta, this.time, this.world.camera.getWorldPosition(this.eye));
     }
+    // A fight's other pads belong to the plaza: launching one from the
+    // backstreet flips the state before the curtain has carried you over,
+    // so hold everyone else's ground back until you're actually there.
+    const fighting = app.state === 'playing' || app.state === 'training';
+    setFoeStageShown(!(app.environment === 'neon' && fighting && this.neon?.site !== 'plaza'));
   }
 
   /** Which desert site the current activity stands in: every campaign

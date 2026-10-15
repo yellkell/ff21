@@ -10,7 +10,8 @@
 
 import { Color, Mesh, MeshStandardMaterial, type Object3D, SRGBColorSpace } from 'three';
 import { PALETTE } from '../config.js';
-import { deckLook, type DeckStyle } from '../arena/decks.js';
+import { deckLook, setStreetFlag, streetDecks, type DeckLook, type DeckStyle } from '../arena/decks.js';
+import { allPads } from '../arena/padKit.js';
 
 export interface AvatarSkin {
   id: string;
@@ -259,31 +260,67 @@ export function applyAvatarSkin(root: Object3D, skin: AvatarSkin): void {
  * the per-skin FX (BLAZING's fire, TIDEBREAKER's pool) by their tag. The
  * deck textures are shared per style, so swapping skins never uploads.
  */
+/** Every dressed pad and what it wears, so a change of street re-lays it. */
+const dressedPads = new Map<Object3D, PlatformSkin>();
+
+/** The free timber decks (and the bot's): what the street re-lays as iron. */
+const HOUSE_TIMBER = new Set<DeckStyle>(['charred', 'ash', 'redwood', 'oak']);
+
+/** What this skin's deck is made of HERE — its own, or the street's plate. */
+function deckHere(skin: PlatformSkin): DeckStyle {
+  return streetDecks() && HOUSE_TIMBER.has(skin.deck) && !skin.price && !skin.earnedBy ? 'iron' : skin.deck;
+}
+
+/** Lay the house decks as the street's iron (the neon district) or back to their timber. */
+export function setStreetDecks(on: boolean): void {
+  if (streetDecks() === on) return;
+  setStreetFlag(on);
+  for (const [root, skin] of dressedPads) {
+    if (root.parent) applyPlatformSkin(root, skin);
+    else dressedPads.delete(root);
+  }
+  // Pads nobody has dressed yet still wear the house deck: re-lay theirs.
+  const house: DeckStyle = on ? 'iron' : 'charred';
+  for (const p of allPads()) {
+    if (dressedPads.has(p.group)) continue;
+    layDeck(p.slabMat as MeshStandardMaterial, house);
+  }
+}
+
+/** Put a deck's material on a pad's slab (maps, finish, surface values). */
+function layDeck(m: MeshStandardMaterial, deck: DeckStyle): DeckLook {
+  const look = deckLook(deck);
+  if (m.userData.deck !== deck) {
+    m.userData.deck = deck;
+    m.map = look.map;
+    m.bumpMap = look.bump;
+    m.emissiveMap = look.emissiveMap ?? null;
+    // A two-material deck (CHAMPION's gold in lacquer, the street's iron)
+    // carries its roughness and metalness per texel; the rest clear it.
+    m.roughnessMap = look.finish ?? null;
+    m.metalnessMap = look.finish ?? null;
+    m.needsUpdate = true;
+  }
+  m.color.setHex(look.color);
+  m.roughness = look.roughness;
+  m.metalness = look.metalness;
+  m.bumpScale = look.bumpScale;
+  m.envMapIntensity = look.envMapIntensity;
+  return look;
+}
+
 export function applyPlatformSkin(root: Object3D, skin: PlatformSkin): void {
   if (skin.locked) return;
-  const look = deckLook(skin.deck);
+  dressedPads.set(root, skin);
+  const deck = deckHere(skin);
+  const look = deckLook(deck);
   root.traverse((o) => {
     if (o.userData?.skinTag) o.visible = o.userData.skinTag === skin.id;
     const m = (o as Mesh).material as MeshStandardMaterial | undefined;
     if (!m || Array.isArray(m) || !m.userData?.role) return;
     switch (m.userData.role) {
       case 'slab':
-        if (m.userData.deck !== skin.deck) {
-          m.userData.deck = skin.deck;
-          m.map = look.map;
-          m.bumpMap = look.bump;
-          m.emissiveMap = look.emissiveMap ?? null;
-          // A two-material deck (CHAMPION's gold in lacquer) carries its
-          // roughness and metalness per texel; the rest clear it.
-          m.roughnessMap = look.finish ?? null;
-          m.metalnessMap = look.finish ?? null;
-          m.needsUpdate = true;
-        }
-        m.color.setHex(look.color);
-        m.roughness = look.roughness;
-        m.metalness = look.metalness;
-        m.bumpScale = look.bumpScale;
-        m.envMapIntensity = look.envMapIntensity;
+        layDeck(m, deck);
         // A deck that burns or shines from within says so; otherwise the
         // faintest trace of the tube's colour, so the board edges read lit.
         m.emissive.setHex(look.emissive ?? skin.neon);

@@ -63,7 +63,6 @@
       renderer.setAnimationLoop(() => {
         t += 1 / 60;
         // A little life so screenshots catch the room breathing.
-        refs.chandelier.rings.forEach((ring, i) => { ring.pivot.rotation.y = t * ring.speed * (i % 2 ? -1 : 1); });
         // the stage show at the club record's tempo (125 BPM)
         const beat = t * (125 / 60);
         const pulse = Math.max(0, 1 - (beat - Math.floor(beat)) * 2.4);

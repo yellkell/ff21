@@ -18,7 +18,7 @@
  * This system builds both interiors once, swaps them per frame, and keeps
  * whichever is open breathing:
  *
- *  - club: the eclipse chandelier counter-rotates and PHASES with the
+ *  - club: the room PHASES with the
  *    music, leaning into the kick; the moon brightens on the bar; the
  *    LED dance floor plays the record that's on; the bar's
  *    ribbed glass pulses slow; candles flicker on one shared flame; the
@@ -36,6 +36,7 @@
 import { createSystem } from '@iwsdk/core';
 import { FogExp2, type Scene } from 'three';
 import { ambientBeat, ambientRunning, ambientTrackId, setAmbientDuck } from '../audio/music.js';
+import { TRACKS } from '../audio/tracks.js';
 import { VOID_BG } from '../arena/voidkit.js';
 import { buildClub, buildFoyer, type ClubRefs, type FoyerRefs } from '../club/build.js';
 import { CLUB } from '../club/config.js';
@@ -110,27 +111,23 @@ export class ClubSystem extends createSystem({}) {
     const beat = Number.isFinite(match.beat) ? match.beat : t / 0.86;
     const beatFrac = beat - Math.floor(beat);
     const pulse = Math.max(0, 1 - beatFrac * 2.4); // crests on the kick, dies fast
-    const bar = beat / 4;
 
     if (wantFoyer) {
-      // The world around the platform idles on the lobby loop: waves roll
-      // the towers, the truss turns, shards drift, the plain breathes.
-      foyer.env.update(delta, t, pulse);
+      // The world around the platform is SPECTRUM playing the lobby loop:
+      // its wall is the loop's spectrum, its record the loop going round.
+      const amb = ambientRunning() ? ambientBeat() : NaN;
+      const fb = Number.isFinite(amb) ? amb : beat;
+      const id = ambientTrackId();
+      foyer.env.update(delta, fb, 0, 0.55, {
+        trackId: id ?? 'swag',
+        title: TRACKS.find((tr) => tr.id === id)?.title ?? 'NEON DISTRICT',
+        progress: ((fb / 256) % 1 + 1) % 1,
+      });
     }
 
     if (wantClub) {
       // The shared candle flame flickers wherever it burns.
       club.candleMat.opacity = 0.74 + Math.sin(t * 12.7) * 0.07 + Math.sin(t * 29.3) * 0.05;
-
-      // ── the eclipse ───────────────────────────────────────────────────
-      club.chandelier.rings.forEach((ring, i) => {
-        ring.pivot.rotation.y += ring.speed * delta;
-        // The phase wave: one crest slowly orbiting the ring stack, plus a
-        // gentle lean into the kick. Music-reactive, never strobing.
-        const phase = Math.sin(bar * Math.PI * 0.5 - i * 1.1);
-        ring.glowMat.emissiveIntensity = 1.05 + phase * 0.5 + pulse * 0.28;
-      });
-      club.chandelier.group.rotation.y += delta * 0.02; // stately drift
 
       // ── the LED dance floor plays the record that's on ────────────────
       const amb = ambientRunning() ? ambientBeat() : NaN;

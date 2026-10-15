@@ -1,55 +1,22 @@
 /**
- * CourseVoidSystem — THE VOID, rehung around a circuit.
+ * CourseVoidSystem — VOIDSTEP's world: SPECTRUM, hung round a circuit.
  *
- * Same environment kit the set and the foyer are built from
- * (arena/voidkit.ts), same recipe, same discipline — a ring of near towers
- * with their portholes and shafts, a bigger ring behind them, a parallax
- * skyline, a truss and six great arcs overhead, shards adrift, dust, a
- * horizon with no land under it, and THE MIRROR doubling every light in
- * black glass for one extra draw per bank. The only thing that changes is
- * what it is arranged around: not a ring of dancers, but a route you RIDE
- * through, which is what arcs are for.
+ * The same world the raid and the foyer stand in (arena/spectrum/set.ts) —
+ * the 360° equaliser wall, the record turning in the sky, ripples racing
+ * over the glass, lasers off the wall's crest — arranged round the route
+ * you RIDE instead of a ring of dancers, its glass starting outside the
+ * circuit's widest reach. The course's live kit plays on the music bus, so
+ * the wall is literally what you're stepping to; laps open the acts.
  *
- *   NEAR   r 20 · 16 towers ·  7–14 m
- *   MID    r 34 · 24 towers · 13–24 m
- *   FAR    r 52–88 · 48 slabs · 20–54 m — pure parallax
- *   SKY    a low horizon band at r 92, dust drifting through all of it
- *
- * The palette is the club's disco wheel (LASER_HUES, snapping per bar) and
- * the world DUCKS while the ground under you counts itself out — the house
- * law that danger never competes with scenery, applied to the only danger
- * there is out here.
+ * VOIDSTEP wears its own sleeve (palettes.ts: ABYSS) and the world DUCKS
+ * while the ground under you counts itself out — the house law that danger
+ * never competes with scenery, applied to the only danger there is out here.
  */
 
 import { createSystem } from '@iwsdk/core';
-import {
-  CanvasTexture,
-  Color,
-  Group,
-  Mesh,
-  MeshBasicMaterial,
-  PlaneGeometry,
-  SRGBColorSpace,
-  type Points,
-} from 'three';
-import { hueToColor, LASER_HUES, PALETTE } from '../config.js';
-import {
-  buildArcs,
-  buildCanopy,
-  buildDust,
-  buildHorizon,
-  buildShardField,
-  buildSkyline,
-  buildTowerRing,
-  buildVoidFloor,
-  mirrorOf,
-  type Canopy,
-  type GlowBank,
-  type ShardField,
-  type TowerRing,
-  type VoidFloor,
-} from '../arena/voidkit.js';
-import { driveFacades, upgradeVoid } from '../arena/voidSculpt.js';
+import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
+import { PALETTE } from '../config.js';
+import { SpectrumSet } from '../arena/spectrum/set.js';
 import { ENERGY } from '../course/config.js';
 import { applyDim } from '../course/dimmer.js';
 import { panelTexture, textPanel } from '../course/textures.js';
@@ -127,97 +94,23 @@ function dangerTexture(): CanvasTexture {
 }
 
 export class CourseVoidSystem extends createSystem({}) {
-  private near!: TowerRing;
-  private mid!: TowerRing;
-  private skyEdges!: GlowBank;
-  private skyCount = 0;
-  private canopy!: Canopy;
+  private spectrum!: SpectrumSet;
   private danger!: Mesh;
   private dangerMat!: MeshBasicMaterial;
-  private arcs!: GlowBank;
-  private arcCount = 0;
-  private shards!: ShardField;
-  private floor!: VoidFloor;
-  private horizonNear!: MeshBasicMaterial;
-  private horizonFar!: MeshBasicMaterial;
-  private dust!: Points;
   private card!: Mesh;
   private cardMat!: MeshBasicMaterial;
-  private hueCursor = 0;
-  private lastBar = -1;
-  private facadeHue = new Color();
   private clock = 0;
   private warning: Mesh | undefined;
 
   init(): void {
     const root = courseRoot();
 
-    // ── underfoot ────────────────────────────────────────────────────────
-    this.floor = buildVoidFloor(46, INNER, hueToColor(LASER_HUES[1], 0.5), 1.4, 0.13);
-    this.floor.group.position.y = FLOOR_Y;
-    root.add(this.floor.group);
-
-    // ── the reflectable world: silhouettes and their light ───────────────
-    // One group, so the mirror is a single clone.
-    const reflectable = new Group();
-    reflectable.name = 'course-reflectable';
-
-    this.near = buildTowerRing({
-      count: 16,
-      radius: 20,
-      baseY: FLOOR_Y,
-      minH: 7,
-      maxH: 14,
-      width: 1.15,
-      seed: 0x51,
-      scatter: 1.8,
-    });
-    reflectable.add(this.near.group);
-
-    this.mid = buildTowerRing({
-      count: 24,
-      radius: 34,
-      baseY: FLOOR_Y,
-      minH: 13,
-      maxH: 24,
-      width: 1.9,
-      seed: 0x9c,
-      scatter: 4,
-    });
-    reflectable.add(this.mid.group);
-
-    const sky = buildSkyline(48, 52, 88, 20, 54, 0x2f);
-    reflectable.add(sky.group);
-    this.skyEdges = sky.edges;
-    this.skyCount = sky.count;
-
-    root.add(reflectable);
-    root.add(mirrorOf(reflectable, 0.4, FLOOR_Y));
-
-    // ── overhead ─────────────────────────────────────────────────────────
-    // The truss sits clear above the skywalk's headroom (a 3.8 m deck plus a
-    // standing body), so the ride threads UNDER the structure.
-    this.canopy = buildCanopy(2, 9.2, 3.4, 12.5, 1.8, 16);
-    root.add(this.canopy.group);
-
-    const arcs = buildArcs(6, 26, 0.26, 0x77);
-    root.add(arcs.group);
-    this.arcs = arcs.bank;
-    this.arcCount = 6;
-
-    // ── the air ──────────────────────────────────────────────────────────
-    this.shards = buildShardField(22, 14, 26, 4, 16, 0xd4);
-    root.add(this.shards.group);
-
-    const dust = buildDust(1200, 10, 60, -1, 30, hueToColor(LASER_HUES[1], 0.4), 0x33);
-    root.add(dust.points);
-    this.dust = dust.points;
-
-    const horizon = buildHorizon(92, 9, hueToColor(LASER_HUES[3], 0.5), 0.24);
-    root.add(horizon.group);
-    upgradeVoid(root); // the sculpted kit (arena/voidSculpt.ts)
-    this.horizonNear = horizon.near;
-    this.horizonFar = horizon.far;
+    // ── the world: SPECTRUM, the raid's own, hung round the circuit — the
+    // course's live kit IS its music, so the EQ wall plays what you step to.
+    this.spectrum = new SpectrumSet(root, { floorIn: INNER });
+    this.spectrum.root.name = 'course-spectrum';
+    this.spectrum.root.position.y = FLOOR_Y;
+    this.spectrum.setActive(true);
 
     // THE ROOM CHECK — the only words in the whole place, dead ahead of the
     // home pad because that is the way you arrive facing.
@@ -331,72 +224,15 @@ export class CourseVoidSystem extends createSystem({}) {
 
     const beat = G.transport.bars * 4;
     const energy = G.energy;
-    const beatFrac = beat - Math.floor(beat);
-    const pulse = Math.max(0, 1 - beatFrac * 2.2);
 
-    // Hue snaps per bar, marching around the wheel with the light rig.
-    const bar = Math.floor(G.transport.bars);
-    if (bar !== this.lastBar && beat > 0) {
-      this.lastBar = bar;
-      this.hueCursor = (this.hueCursor + 1) % LASER_HUES.length;
-    }
-    const hueAt = (n: number): number =>
-      hueToColor(LASER_HUES[(this.hueCursor + n) % LASER_HUES.length], 0.55);
-
-    // Towers breathe on the kick as a travelling wave, so the rings ROLL
-    // around the arena instead of flashing as one.
-    for (let i = 0; i < this.near.count; i++) {
-      const wave = Math.sin(beat * Math.PI * 0.5 + (i / this.near.count) * Math.PI * 2);
-      this.near.setGlow(i, hueAt(i), 0.42 + energy * (0.4 + pulse * 0.85 + Math.max(0, wave) * 0.4));
-    }
-    this.near.commit();
-    for (let i = 0; i < this.mid.count; i++) {
-      const wave = Math.sin(beat * Math.PI * 0.5 - 1.2 + (i / this.mid.count) * Math.PI * 2);
-      this.mid.setGlow(i, hueAt(i * 2 + 1), 0.3 + energy * (0.3 + pulse * 0.5 + Math.max(0, wave) * 0.3));
-    }
-    this.mid.commit();
-
-    // The skyline barely moves — a slow swell, so the far edge of the world
-    // feels alive without ever pulling the eye off the floor.
-    const far = 0.28 + energy * 0.18 + Math.sin(this.clock * 0.5) * 0.05;
-    for (let i = 0; i < this.skyCount; i++) this.skyEdges.tint(i, hueAt(3), far);
-    this.skyEdges.commit();
-    driveFacades(this.facadeHue.setHex(hueAt(2)), 0.45 + energy * (0.35 + pulse * 0.3), this.clock);
-
-    // The canopy turns and its joints take the kick; laps spin it up.
-    this.canopy.spin(dt, 0.12 * (1 + Math.min(course.laps, 3) * 0.4));
-    this.canopy.setGlow(hueAt(1), 0.5 + energy * (0.35 + pulse * 0.6));
-    this.canopy.commit();
-
-    for (let i = 0; i < this.arcCount; i++) {
-      const wave = Math.sin(beat * Math.PI * 0.25 + (i / this.arcCount) * Math.PI * 2);
-      this.arcs.tint(i, hueAt(i + 2), 0.3 + energy * (0.25 + Math.max(0, wave) * 0.5));
-    }
-    this.arcs.commit();
-
-    // The floor: rays chase around the ring on the beat, the concentric
-    // lines swell outward from the middle a bar at a time.
-    for (let i = 0; i < this.floor.rayCount; i++) {
-      const chase = Math.sin(beat * Math.PI - (i / this.floor.rayCount) * Math.PI * 4);
-      this.floor.rays.tint(i, hueAt(2), 0.18 + energy * (0.2 + Math.max(0, chase) * 0.7));
-    }
-    this.floor.rays.commit();
-    for (let i = 0; i < this.floor.ringCount; i++) {
-      const swell = Math.max(0, Math.sin(beat * Math.PI * 0.5 - i * 0.7));
-      this.floor.rings.tint(i, hueAt(i), 0.25 + energy * (0.25 + swell * 0.65));
-    }
-    this.floor.rings.commit();
-    this.floor.gridMat.opacity = 0.08 + energy * (0.06 + pulse * 0.05);
-
-    // Shards tumble; dust turns the whole room a hair each second so the
-    // middle distance is never static.
-    this.shards.drift(this.clock, dt);
-    this.shards.setGlow(hueAt(4), 0.3 + energy * (0.25 + pulse * 0.4));
-    this.shards.commit();
-    this.dust.rotation.y += dt * 0.008;
-
-    this.horizonNear.opacity = 0.16 + energy * 0.12;
-    this.horizonFar.opacity = 0.08 + energy * 0.06;
+    // The world plays the kit: laps open the acts, the record turns once
+    // every sixteen bars, and `energy` carries the duck — danger dims it all.
+    this.spectrum.update(dt, beat, Math.min(course.laps, 3), energy, {
+      trackId: 'voidstep',
+      title: 'VOIDSTEP',
+      progress: ((G.transport.bars / 16) % 1 + 1) % 1,
+      live: true,
+    });
   }
 
   /** The play-area courtesy: say so, plainly, before the first ride. */

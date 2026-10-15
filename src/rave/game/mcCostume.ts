@@ -18,6 +18,7 @@ import { MeshStandardMaterial, type Material, type Mesh, type Object3D } from 't
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { ACCENT_REST, type DancerRig } from './avatars.js';
+import { horizonEnv } from '../arena/voidSculpt.js';
 
 const KIT_URL = 'club/mc_kit.glb';
 let kit: Promise<Object3D> | null = null;
@@ -32,6 +33,53 @@ function loadKit(): Promise<Object3D> {
 
 /** Dress a house rig as the MC. Safe to call before the kit has loaded —
  *  the pieces arrive when it does. */
+/** Shared per source material, so every clone of a piece wears the same one. */
+const dressed = new Map<Material, Material>();
+
+/**
+ * The kit's surfaces as the game needs them. glTF has no smoked glass, so
+ * the visor exported as an opaque near-black pane over the lit band: it
+ * becomes real smoke here, the band glowing through. And a fully metallic
+ * dark gunmetal shows only what it reflects — with nothing to reflect it
+ * read as a black hole: the shell becomes polished silver, metal and gloss
+ * wear the neon horizon (the void's own light), and the near-blacks are
+ * lifted enough to take a light.
+ */
+function dressSurface(m: Material): Material {
+  const done = dressed.get(m);
+  if (done) return done;
+  let out: Material = m;
+  const std = m as MeshStandardMaterial;
+  if (std.isMeshStandardMaterial) {
+    const c = std.clone();
+    if (m.name.startsWith('visor_glass')) {
+      c.color.setHex(0x0a0c12);
+      c.transparent = true;
+      c.opacity = 0.32;
+      c.depthWrite = false;
+      c.metalness = 0;
+      c.roughness = 0.04;
+    } else if (m.name.startsWith('gunmetal')) {
+      // The shell, fin and armour: polished silver, so the stage's light
+      // (and the visor's) runs over it instead of vanishing into it.
+      c.color.setHex(0xc4c9d4);
+      c.metalness = 0.9;
+      c.roughness = 0.16;
+    } else {
+      const lum = c.color.r * 0.2126 + c.color.g * 0.7152 + c.color.b * 0.0722;
+      if (lum < 0.06) c.color.multiplyScalar(Math.min(4, 0.06 / Math.max(lum, 0.005)));
+    }
+    if (c.metalness > 0.4 || c.roughness < 0.3 || c.transparent) {
+      c.envMap = horizonEnv();
+      c.envMapIntensity = 1.3;
+    }
+    c.needsUpdate = true;
+    out = c;
+  }
+  dressed.set(m, out);
+  return out;
+}
+
 export function dressMc(rig: DancerRig): void {
   const mount = rig.mount;
   if (!mount) return;
@@ -46,7 +94,10 @@ export function dressMc(rig: DancerRig): void {
           const mesh = n as Mesh;
           if (!mesh.isMesh) return;
           const m = mesh.material as Material;
-          if (!m.name.startsWith('glow_')) return;
+          if (!m.name.startsWith('glow_')) {
+            mesh.material = dressSurface(m);
+            return;
+          }
           // One accent per piece-material, so the rig drives it like its own trim.
           const glow = new MeshStandardMaterial({
             color: 0x101218,

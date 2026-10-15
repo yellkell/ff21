@@ -211,7 +211,7 @@ function vinylMaterial(): ShaderMaterial {
 }
 
 /* ── the glass ────────────────────────────────────────────────────────── */
-function rippleMaterial(): ShaderMaterial {
+function rippleMaterial(floorIn: number): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       ...stopUniforms(),
@@ -241,7 +241,7 @@ function rippleMaterial(): ShaderMaterial {
         float ring = 0.0;
         for (int i = 0; i < ${KICKS}; i++) {
           float age = uKicks[i];
-          float rr = ${FLOOR_IN.toFixed(1)} + age * ${RIPPLE_SPEED.toFixed(1)};
+          float rr = ${floorIn.toFixed(2)} + age * ${RIPPLE_SPEED.toFixed(1)};
           float w = 0.18 + age * 0.35;
           float x = (r - rr - wob * min(1.0, age * 2.0)) / w;
           ring += exp(-x * x) * exp(-age * 1.1);
@@ -252,7 +252,7 @@ function rippleMaterial(): ShaderMaterial {
         float cr = abs(fract(r / 6.0) - 0.5);
         float circ = 1.0 - smoothstep(0.0, fwidth(r / 6.0) * 1.5, 0.5 - cr);
         float grid = max(spoke, circ) * 0.07;
-        float fade = smoothstep(${FLOOR_IN.toFixed(1)}, ${(FLOOR_IN + 2).toFixed(1)}, r) * (1.0 - smoothstep(${(FLOOR_OUT - 18).toFixed(1)}, ${FLOOR_OUT.toFixed(1)}, r));
+        float fade = smoothstep(${floorIn.toFixed(2)}, ${(floorIn + 2).toFixed(2)}, r) * (1.0 - smoothstep(${(FLOOR_OUT - 18).toFixed(1)}, ${FLOOR_OUT.toFixed(1)}, r));
         vec3 col = mix(ramp(0.35 + r / ${FLOOR_OUT.toFixed(1)} * 0.5), uAccent, 0.25);
         gl_FragColor = vec4(col * (ring * 1.3 + grid) * fade * uGain, 1.0);
         #include <colorspace_fragment>
@@ -377,7 +377,8 @@ export class SpectrumSet {
   private laserCols: Color[] = [];
   private clock = 0;
 
-  constructor(scene: Object3D) {
+  /** `parent` takes the set's root. `floorIn`: where the glass starts (outside whatever stands in the middle). */
+  constructor(parent: Object3D, { floorIn = FLOOR_IN }: { floorIn?: number } = {}) {
     this.root.name = 'set-spectrum';
     this.root.visible = false;
 
@@ -446,8 +447,8 @@ export class SpectrumSet {
     this.root.add(this.flare);
 
     // ── the glass ────────────────────────────────────────────────────────
-    this.ripple = rippleMaterial();
-    const glass = new Mesh(new RingGeometry(FLOOR_IN, FLOOR_OUT, 192, 8), this.ripple);
+    this.ripple = rippleMaterial(floorIn);
+    const glass = new Mesh(new RingGeometry(floorIn, FLOOR_OUT, 192, 8), this.ripple);
     glass.rotation.x = -Math.PI / 2;
     glass.position.y = -0.04;
     glass.frustumCulled = false;
@@ -471,7 +472,7 @@ export class SpectrumSet {
     this.root.add(this.lasers);
 
     this.setPalette(paletteFor(null), null, true);
-    scene.add(this.root);
+    parent.add(this.root);
   }
 
   setActive(on: boolean): void {
@@ -515,15 +516,28 @@ export class SpectrumSet {
     this.armMat.color.copy(this.live.accent);
   }
 
-  /** `beat` is the continuous song beat, `act` 0..3, `energy` 0..1 (pre-ducked). */
-  update(dt: number, beat: number, act: number, energy: number): void {
+  /**
+   * `beat` is the continuous song beat, `act` 0..3, `energy` 0..1 (pre-ducked).
+   * Outside a set (the foyer, VOIDSTEP) the caller names the record
+   * (`trackId`/`title` — its sleeve and label), how far through it the
+   * needle is (`progress` 0..1), and `live` when its music is on the bus
+   * but isn't a record (the course's kit).
+   */
+  update(
+    dt: number,
+    beat: number,
+    act: number,
+    energy: number,
+    opts: { trackId?: string | null; title?: string | null; progress?: number; live?: boolean } = {},
+  ): void {
     if (!this.root.visible) return;
     this.clock += dt;
 
     const track = currentTrack();
-    if (track && track.id !== this.trackId) {
-      this.trackId = track.id;
-      this.setPalette(paletteFor(track.id), track.title);
+    const id = opts.trackId !== undefined ? opts.trackId : (track?.id ?? null);
+    if (id && id !== this.trackId) {
+      this.trackId = id;
+      this.setPalette(paletteFor(id), opts.title !== undefined ? opts.title : (track?.title ?? id.toUpperCase()));
     }
     this.ease(1 - Math.exp(-dt * 1.6));
 
@@ -532,7 +546,7 @@ export class SpectrumSet {
     const gain = 0.35 + energy * 0.65;
 
     // ── the wall ────────────────────────────────────────────────────────
-    readBands(this.bands, beat);
+    readBands(this.bands, beat, opts.live);
     const lv = this.level.array as Float32Array;
     const pk = this.peak.array as Float32Array;
     const fall = dt * (1.3 + act * 0.2);
@@ -560,7 +574,7 @@ export class SpectrumSet {
     // ── the record ──────────────────────────────────────────────────────
     for (let i = 0; i < GROOVE_BANDS; i++) this.grooves[i] = this.bands[Math.floor((i / GROOVE_BANDS) * BANDS)];
     const end = setEndBeat();
-    const prog = beat > 0 && end > 0 ? Math.min(1, beat / end) : 0;
+    const prog = opts.progress ?? (beat > 0 && end > 0 ? Math.min(1, beat / end) : 0);
     const play = REC.rOut - 1.5 - prog * (REC.rOut - REC.rIn - 3);
     const u = this.vinyl.uniforms;
     u.uRot.value = this.clock * (0.12 + act * 0.03);
@@ -615,7 +629,9 @@ export class SpectrumSet {
         o.scale.set(1, on ? LASER_LEN : 0.0001, 1);
         o.updateMatrix();
         this.lasers.setMatrixAt(i, o.matrix);
-        c.copy(this.laserCols[(f + b + Math.floor(beat / 4)) % this.laserCols.length]);
+        // The count-in runs on negative beats: wrap the index into range.
+        const n = this.laserCols.length;
+        c.copy(this.laserCols[(((f + b + Math.floor(beat / 4)) % n) + n) % n]);
         this.lasers.setColorAt(i, c);
       }
     }

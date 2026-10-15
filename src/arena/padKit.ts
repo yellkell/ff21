@@ -33,11 +33,29 @@ export interface PadParts {
 }
 
 const pads: PadParts[] = [];
+
+/** The deck's UVs are metres centred on the pad (pad_kit.py) — but glTF
+ *  stores V as 1 − v, which put every deck's centre a metre off (CHAMPION's
+ *  medallion and the street's iron plate off on a corner). Undone once. */
+function unflipDeckUv(deck: Mesh): void {
+  if (deck.userData.uvFixed) return;
+  deck.userData.uvFixed = true;
+  const uv = deck.geometry.getAttribute('uv');
+  if (!uv) return;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+  uv.needsUpdate = true;
+}
+
 let kit: Object3D | null = null;
 let loading = false;
 let steel: MeshStandardMaterial | null = null;
 
 /** Register a freshly built pad; it upgrades now if the kit is in, or when it lands. */
+/** Every pad ever built (the street re-lays the undressed ones). */
+export function allPads(): readonly PadParts[] {
+  return pads;
+}
+
 export function registerPad(p: PadParts): void {
   pads.push(p);
   if (kit) upgrade(p);
@@ -75,6 +93,7 @@ function upgrade(p: PadParts): void {
   };
   const deck = kit.getObjectByName('PAD_DECK') as Mesh | undefined;
   if (deck?.isMesh) {
+    unflipDeckUv(deck);
     p.slab.geometry = deck.geometry;
     p.slab.position.y = 0; // the kit deck is authored at its true height (top +0.015)
   }

@@ -137,6 +137,8 @@ const SLEEVES: Record<string, keyof typeof PALETTES> = {
   swag: 'synthwave',
   eclipse: 'ultraviolet',
   credits: 'sakura',
+  // VOIDSTEP's live kit (systems/CourseVoidSystem.ts)
+  voidstep: 'abyss',
 };
 
 const KEYS = Object.keys(PALETTES);

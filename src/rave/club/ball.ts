@@ -62,20 +62,15 @@ export function ballSpawnPos(head: Vector3, fwd: Vector3): [number, number, numb
   return [x, 1.5, z];
 }
 
-/** The eclipse's reach: its widest ring plus the ball's radius and a
- *  whisker — inside this footprint a descending ball would thread the
- *  fixture's rings, so it hangs OFF the eclipse instead. */
-const ECLIPSE_SPAN = Math.max(...CLUB.chandelier.rings.map((r) => r.r)) + 0.27;
-/** ...and where that hang starts: just under the fixture's lowest glow
- *  channel, with the ball's radius of clearance. */
-const ECLIPSE_UNDERSIDE = CLUB.chandelier.y - 0.35;
+/** The dome's crown: over the middle of the floor the ball drops from the
+ *  top tier of the white dome (build_club.py DOME: r 3.0 at 5.6 m). */
+const CROWN_R = 3.0;
 
 /**
  * Where the cable that lowers THE BALL is anchored — the local ceiling
  * over a spot on the floor. The corner rooms cap at door height, the
- * eclipse claims its own footprint (the ball hangs off the fixture and
- * never threads its rings — `bare`, because there is no slab there to
- * emerge from), the dome's first tread covers the floor's rim, and the
+ * dome's crown covers the middle of the floor, its first tread the
+ * floor's rim, and the
  * main slab takes the rest of the hall.
  */
 export function ballAnchor(x: number, z: number): { y: number; bare: boolean } {
@@ -83,7 +78,7 @@ export function ballAnchor(x: number, z: number): { y: number; bare: boolean } {
     if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) return { y: CLUB.roomCeilH, bare: false };
   }
   const d = Math.hypot(x - CLUB.floor.x, z - CLUB.floor.z);
-  if (d < ECLIPSE_SPAN) return { y: ECLIPSE_UNDERSIDE, bare: true };
+  if (d < CROWN_R) return { y: CLUB.domeH, bare: false };
   if (d < 3.3) return { y: CLUB.ceilH + 0.55, bare: false }; // the dome's first tread
   return { y: CLUB.ceilH, bare: false };
 }

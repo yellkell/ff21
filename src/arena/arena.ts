@@ -49,7 +49,7 @@ import { MAX_OPPONENTS } from '../combat/opponentBus.js';
 import { localLayout } from '../combat/layout.js';
 import { app } from '../menu/appState.js';
 import { hazardTexture } from '../materials/hazard.js';
-import { deckLook } from './decks.js';
+import { deckLook, streetDecks } from './decks.js';
 import { octagonSlab } from './octagon.js';
 import { createTitleBanner } from './banner.js';
 import { registerPad } from './padKit.js';
@@ -303,7 +303,7 @@ let plinthMat: MeshStandardMaterial | null = null;
 let plinthBodyGeo: BufferGeometry | null = null;
 let plinthFootGeo: BufferGeometry | null = null;
 
-function makePlinth(color: number): Group {
+function makePlinth(): Group {
   const plinth = new Group();
   plinth.name = 'stage-plinth';
   // Shared across every pad: one material, two geometries.
@@ -319,12 +319,8 @@ function makePlinth(color: number): Group {
   const foot = new Mesh(plinthFootGeo, plinthMat);
   foot.position.y = -STAGE_RAISE;
   plinth.add(foot);
-  // A neon foot band where the plinth meets the wet street (team-tinted
-  // with the deck's own rim by tintPlatform / applyPlatformSkin).
-  const band = makeNeonRim(color);
-  band.scale.set(0.97, 1, 0.97);
-  band.position.y = -STAGE_RAISE + 0.045; // riding the foot's top edge
-  plinth.add(band);
+  // No light at the foot: one lit seam in the bezel is the pad's colour —
+  // a second band round the base read as a toy, not street furniture.
   plinth.visible = plinthsOn;
   plinths.push(plinth);
   return plinth;
@@ -332,13 +328,14 @@ function makePlinth(color: number): Group {
 
 export function makePlatform(color: number, groupScale = 1): Group {
   const group = new Group();
-  group.add(makePlinth(color));
+  group.add(makePlinth());
 
   // THE DECK is a MATERIAL (arena/decks.ts): the pedestal is born as the
   // house deck — SMOULDER's charred oak — and applyPlatformSkin swaps in
   // whatever the fighter wears: ash, slate, marble, black glass, gold leaf.
   // Every deck's maps are shared per style, so a skin change never uploads.
-  const look = deckLook('charred');
+  const house = streetDecks() ? 'iron' : 'charred';
+  const look = deckLook(house);
   const slabMat = new MeshStandardMaterial({
     color: look.color,
     map: look.map,
@@ -351,7 +348,7 @@ export function makePlatform(color: number, groupScale = 1): Group {
   });
   slabMat.envMapIntensity = look.envMapIntensity;
   slabMat.userData.role = 'slab';
-  slabMat.userData.deck = 'charred';
+  slabMat.userData.deck = house;
   const slab = new Mesh(octagonSlab(OCTAGON_VERTICES, PLATFORM.thickness), slabMat);
   // Top face at the floor line, body glowing faintly below. NB the extrude
   // BEVEL overhangs both ends, so the actual top face sits at +bevel (0.015)
@@ -623,6 +620,13 @@ export function applyArenaLayout(scene: Object3D): void {
   if (pit) pit.visible = app.arcade === 'raid';
 }
 
+let foeStage: Group | null = null;
+/** Show or hold back everyone else's ground (the opponents' pads, the raid
+ *  pit) as a whole — their own visibility rules still apply underneath. */
+export function setFoeStageShown(on: boolean): void {
+  if (foeStage && foeStage.visible !== on) foeStage.visible = on;
+}
+
 export function buildArena(world: World): Object3D {
   const scene = world.scene;
 
@@ -634,6 +638,14 @@ export function buildArena(world: World): Object3D {
   mine.name = 'player-platform';
   arena.add(mine);
 
+  // Everyone else's ground — the other fighters' pads and the raid pit — hangs
+  // off one group, so a site can hold it back while it isn't the fight's yet
+  // (setFoeStageShown: the neon district's backstreet, mid-crossing).
+  const foes = new Group();
+  foes.name = 'foe-stage';
+  arena.add(foes);
+  foeStage = foes;
+
   // The other fighters' pedestals — same shape, recoloured/placed per layout by
   // applyArenaLayout. Built once at the MAX roster size; spare slots stay hidden.
   for (let slot = 1; slot <= MAX_OPPONENTS; slot++) {
@@ -641,7 +653,7 @@ export function buildArena(world: World): Object3D {
     pad.name = platformName(slot);
     pad.position.set(0, 0, -ARENA_GAP);
     pad.visible = false;
-    arena.add(pad);
+    foes.add(pad);
   }
 
   // The RAID pit pedestal — the titan's own ground at the arc's focus, worn in
@@ -654,7 +666,7 @@ export function buildArena(world: World): Object3D {
   pit.scale.set(2.4, 1, 2.4);
   pit.visible = false;
   setPlatformHazard(pit, true); // the pit is only ever a titan's ground
-  arena.add(pit);
+  foes.add(pit);
 
   // "FIRE FIGHT" signage hung high behind the opponent.
   createTitleBanner(scene);

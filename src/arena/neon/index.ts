@@ -52,6 +52,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { Traffic, BACKSTREET_LANES, PLAZA_LANES } from './traffic.js';
 import { setStageRaised, STAGE_RAISE } from '../arena.js';
+import { setStreetDecks } from '../../avatar/skins.js';
 
 export type NeonSite = 'backstreet' | 'plaza';
 
@@ -183,6 +184,8 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
     sites.backstreet.visible = site === 'backstreet';
     sites.plaza.visible = site === 'plaza';
     setStageRaised(shown && site === 'plaza');
+    // The district's road: the house decks are laid as its cast-iron plate.
+    setStreetDecks(shown);
   };
   apply();
 

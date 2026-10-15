@@ -33,7 +33,6 @@ function playing(): boolean {
 
 function tap(): AnalyserNode | null {
   if (analyser) return analyser;
-  if (!playing()) return null;
   const bus = musicBus();
   if (!bus) return null;
   analyser = bus.context.createAnalyser();
@@ -46,11 +45,12 @@ function tap(): AnalyserNode | null {
 
 /**
  * Fill `out` (0..1 per band, bass first). Returns true when the bands are
- * the record's own, false when they were synthesised from `beat`.
+ * the music's own, false when they were synthesised from `beat`. `live`
+ * says music is on the bus that isn't a record (VOIDSTEP's live kit).
  */
-export function readBands(out: Float32Array, beat: number): boolean {
+export function readBands(out: Float32Array, beat: number, live = false): boolean {
   const n = out.length;
-  const a = playing() ? tap() : null;
+  const a = live || playing() ? tap() : null;
   if (a && fft) {
     a.getFloatFrequencyData(fft);
     const hzPerBin = a.context.sampleRate / a.fftSize;

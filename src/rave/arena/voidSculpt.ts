@@ -162,7 +162,7 @@ let horizon: CanvasTexture | null = null;
 
 /** The neon horizon the obsidian reflects: black, a hot line at the
  *  horizon, magenta and cyan bands above it, a few cold verticals. */
-function horizonEnv(): CanvasTexture {
+export function horizonEnv(): CanvasTexture {
   if (horizon) return horizon;
   const W = 512;
   const H = 256;
