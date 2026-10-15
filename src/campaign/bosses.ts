@@ -163,7 +163,7 @@ export interface BossDef {
    */
   grammar?: Partial<Record<import('./grammar.js').GrammarKind, number>>;
   /** Seconds per grammar beat — this titan's pulse; every cascade (twin
-   *  bounces, wave marches, recital steps, the donut's one-two) steps on
+   *  bounces, wave marches, trident blows, the donut's one-two) steps on
    *  multiples of it. Defaults to 0.5. */
   beat?: number;
   /** Telegraph charge (seconds) for grammar moves — the read length. The
@@ -301,11 +301,9 @@ export const BOSSES: BossDef[] = [
     enrageAt: 0.5,
     weakPattern: 'crown',
     platform: 'blazing',
-    // The king learned it all — and being the king, he TEACHES: THE RECITAL
-    // is his memory test, the wave his procession, and once in a blazing
-    // night the COMBINATION (duckdonut) closes the show on the beat.
-    // THE RECITAL was cut from the bill after a night on it (the machinery
-    // stays in grammar.ts for the check and for a later bill).
+    // The king learned it all: the trident, the wave his procession, and
+    // once in a blazing night the COMBINATION (duckdonut) closes the show
+    // on the beat.
     grammar: { wave: 3, donut: 2, cross: 3, duckdonut: 0.4, trident: 3 },
     beat: 0.46,
     grammarCharge: 1.9,

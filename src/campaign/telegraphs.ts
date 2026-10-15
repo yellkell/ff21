@@ -13,7 +13,7 @@
  * shapes the titans learned from the rave (gate, donut, X, rail, lane,
  * seesaw/surge, nova, sweep, the trident's quarters) ARE the rave's
  * factories; what lives here is only what the rave has no word for — the
- * slam's disc, THE LESSON's marks — cut from the same kit.
+ * slam's disc — cut from the same kit.
  *
  * Every group is placed relative to its DECK (CampaignSystem.deckOf: a
  * stand-in on the seat's platform frame), which is what makes the hatch,
@@ -23,7 +23,7 @@
  * keeps its own look.
  */
 
-import { Mesh, PlaneGeometry, type ShaderMaterial, Vector2 } from 'three';
+import { Mesh, PlaneGeometry } from 'three';
 import { COMMON, makeTelegraph, quadTelegraph, warnMat, type Telegraph } from '../rave/choreo/telegraphs.js';
 
 export {
@@ -60,37 +60,6 @@ const CIRCLE_FRAG = /* glsl */ `
     line += hair(abs(r - front)) * 0.7 * (1.0 - landed()) * inside;
     line += inside * deckRim(vDeck) * 0.75;
     gl_FragColor = ink(wash, line) * octMask(vDeck);
-  }
-`;
-
-/**
- * THE LESSON's mark: one quarter of the deck, outlined in neon and lit
- * while its step is taught, its STEP NUMBER a row of dots. Instruction,
- * not danger — so it never wears the heat ramp: a MOVE step is the TEACH
- * green, a HOLD the blue of "stay" with a ring round the dots. Drawn in
- * the kit's ink (hairline + halo, metres), clipped to the deck. uLit is
- * how brightly the quarter is lit right now (the factory drives it step
- * by step), uHold whether the lit step is a hold, uOrd its number.
- */
-const MARK_FRAG = /* glsl */ `
-  ${COMMON}
-  uniform float uLit, uHold, uOrd;
-  uniform vec2 uSize;
-  void main(){
-    vec3 col = mix(vec3(0.62, 1.0, 0.70), vec3(0.45, 0.62, 1.0), uHold);
-    vec2 m = vUv * uSize;
-    vec2 c = uSize * 0.5;
-    float e = min(min(m.x, uSize.x - m.x), min(m.y, uSize.y - m.y));
-    float wash = 0.08 + hatch(vDeck) * 0.05;
-    float line = neon(abs(e - 0.05));
-    for (int i = 0; i < 6; i++) {
-      if (float(i) >= uOrd) break;
-      vec2 at = c + vec2((float(i) - (uOrd - 1.0) * 0.5) * 0.1, 0.0);
-      line += 1.0 - smoothstep(0.026, 0.038, length(m - at));
-    }
-    line += neon(abs(length(m - c) - 0.26)) * uHold;
-    vec3 rgb = col * wash + mix(col, HOT, 0.45) * line;
-    gl_FragColor = vec4(rgb * uLit * pulse() * octMask(vDeck), 1.0);
   }
 `;
 
@@ -161,70 +130,8 @@ export function circleTelegraph(radius: number): Telegraph {
  */
 export { beamTelegraph as laneTelegraph } from '../rave/choreo/telegraphs.js';
 
-/** THE RECITAL's and THE TRIDENT's quarter lines — the split deck in
+/** THE TRIDENT's quarter lines — the split deck in
  *  chalk, lit for the whole move: where the split is, never which side. */
 export function quarterTelegraph(halfWidth: number, halfDepth: number): Telegraph {
   return quadTelegraph(halfWidth, halfDepth, 0, true);
-}
-
-/**
- * THE LESSON: the four quarters, lit ONE AT A TIME as the pattern is
- * taught — step i lights quarter pattern[i] for its slot of the charge
- * (`stepSecs` each, the slots running from the start of `chargeSecs`),
- * green for a move, blue with a ring for a hold, its number in dots. When
- * the lesson is over (fill past the slots, and all of the recital) every
- * quarter is dark: from then on the pattern lives in your ear. Place the
- * group at the deck centre on the floor.
- */
-export function recitalMarksTelegraph(
-  pattern: readonly number[],
-  holds: readonly boolean[],
-  halfWidth: number,
-  halfDepth: number,
-  stepSecs: number,
-  chargeSecs: number,
-): Telegraph {
-  const meshes: Mesh[] = [];
-  const mats: ShaderMaterial[] = [];
-  const w = halfWidth * 0.92;
-  const d = halfDepth * 0.92;
-  for (let corner = 0; corner < 4; corner++) {
-    const mat = warnMat(MARK_FRAG, {
-      uLit: { value: 0 },
-      uHold: { value: 0 },
-      uOrd: { value: 0 },
-      uSize: { value: new Vector2(w, d) },
-    });
-    const pane = new Mesh(new PlaneGeometry(w, d), mat);
-    pane.rotation.x = -Math.PI / 2;
-    pane.position.set(((corner & 1 ? 1 : -1) * halfWidth) / 2, 0, ((corner & 2 ? 1 : -1) * halfDepth) / 2);
-    meshes.push(pane);
-    mats.push(mat);
-  }
-  const base = makeTelegraph(meshes, mats);
-  return {
-    ...base,
-    update(fill, time) {
-      base.update(fill, time);
-      const t = fill * chargeSecs;
-      const i = Math.floor(t / Math.max(0.001, stepSecs));
-      const inStep = t - i * stepSecs;
-      // In, hold, out within the slot — a beat of dark between steps so
-      // two holds on one quarter still read as two.
-      const k = inStep / stepSecs;
-      const lit = fill < 1 && i < pattern.length ? Math.min(1, k / 0.12) * (1 - smoothstep(0.78, 0.95, k)) : 0;
-      for (let corner = 0; corner < 4; corner++) {
-        const u = mats[corner].uniforms;
-        const on = i < pattern.length && pattern[i] === corner;
-        u.uLit.value = on ? lit : 0;
-        u.uHold.value = on && holds[i] ? 1 : 0;
-        u.uOrd.value = on ? i + 1 : 0;
-      }
-    },
-  };
-}
-
-function smoothstep(a: number, b: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
 }

@@ -2,7 +2,7 @@
 <!-- DEV-ONLY harness: renders THE STAGE DECK (the wood platform) with a
      campaign titan's attack on it, for screenshots — the floor marks and
      strikes exactly as CampaignSystem builds them (RAVE RAID's danger kit).
-     ?shape=slam|beam|sweep|nova|seesaw|surge|gate|row|donut|x|rail|lane|trident|recital
+     ?shape=slam|beam|sweep|nova|seesaw|surge|gate|row|donut|x|rail|lane|trident
      picks the attack (&form=0|1|2 for the trident); ?fill=0.7 freezes the
      charge — 1..2 is the landing's afterburn; ?strike=0.12 fires the
      landing and freezes that many seconds after it.
@@ -32,12 +32,10 @@
         quadTelegraph,
         quarterTelegraph,
         railTelegraph,
-        recitalMarksTelegraph,
         sweepTelegraph,
         xTelegraph,
       } from '/src/campaign/telegraphs.ts';
       import { StrikeFx } from '/src/rave/choreo/strikes.ts';
-      import { RecitalBlockfall } from '/src/campaign/blockfall.ts';
       import { CAMPAIGN, GRAMMAR, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '/src/config.ts';
 
       const params = new URLSearchParams(location.search);
@@ -71,7 +69,6 @@
       const W = OCTAGON_HALF_WIDTH, D = OCTAGON_HALF_DEPTH, Y = CAMPAIGN.decalY;
       const tgs = [];
       const dressing = [];
-      const blocks = [];
       const put = (tg, x = 0, y = Y, z = 0, yaw = 0, list = tgs) => {
         tg.group.position.set(x, y, z);
         tg.group.rotation.y = yaw;
@@ -123,11 +120,6 @@
         put(quarterTelegraph(W, D), 0, Y, 0, 0, dressing);
         put(quadTelegraph(W, D, hit, false));
         fire = () => fx.trident(deck, hit, form);
-      } else if (shape === 'recital') {
-        put(quarterTelegraph(W, D), 0, Y, 0, 0, dressing);
-        put(recitalMarksTelegraph([0, 3, 3, 1], [false, false, true, false], W, D, 1, 4), 0, Y, 0, 0, dressing);
-        // Step one's blocks already falling on the three unlearned corners.
-        blocks.push(new RecitalBlockfall(deck, 0, 6, 5.4, 7, 0));
       }
 
       const camera = new PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.05, 40);
@@ -151,7 +143,6 @@
         const fill = strikeAt !== null ? 1 + Math.min(1, strikeAt / AFTERBURN_SEC) : fillAt;
         for (const t of tgs) t.update(fill, time + frames * 1e-4);
         for (const t of dressing) t.update(Math.min(fillAt, 0.999), time + frames * 1e-4);
-        for (const b of blocks) b.update(Math.min(5.9, 0.6 + fillAt * 5.3), dt);
         renderer.render(scene, camera);
         document.title = `deck ${shape} f${frames}`;
         if (frames > 3) window.__ready = true;

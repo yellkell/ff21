@@ -400,8 +400,8 @@ const BLADE_FRAG = /* glsl */ `
 type Uniforms = Record<string, { value: unknown }>;
 
 /** A danger-kit material: `frag` built on COMMON, drawn additive over the
- *  deck. Exported with makeTelegraph so the campaign's own shapes (the
- *  titans' slam disc, THE LESSON's marks) are cut from the same cloth. */
+ *  deck. Exported with makeTelegraph so the campaign's own shape (the
+ *  titans' slam disc) is cut from the same cloth. */
 export function warnMat(frag: string, extra: Uniforms = {}): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: { uFill: { value: 0 }, uTime: { value: 0 }, uPlace: { value: new Matrix4() }, ...extra },

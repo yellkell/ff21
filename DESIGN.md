@@ -278,14 +278,14 @@ What's new: **the move grammar from RAVE RAID.** The titans' attack roster
 grows from FF1's five kinds (slam/sweep/beam/volley/nova) to the full
 RAVE RAID vocabulary, ported from `dance/src/config.ts` (`MoveKind`,
 `MOVES`, `CHOREO`), `choreo/setlist.ts`, `choreo/telegraphs.ts`,
-`choreo/strikes.ts`, `choreo/blockfall.ts`:
+`choreo/strikes.ts`:
 
 | New move | On your platform | The answer |
 | --- | --- | --- |
 | **gate** | everything burns but one band | stand in the gap |
 | **cross / THE TRAP** | rails ahead/behind, both at once | step off the strip / squeeze the band |
 | **donut** | center lane, then all-but-center | step out, run back in |
-| **THE RECITAL** | the boss *teaches* a pattern of quarters, a note each, then calls it by ear alone | remember, listen, commit |
+| **THE TRIDENT** | the weapon's colour is the pattern; pairs of quarters burn, blow after blow | read the weapon, hop on every blow |
 | **wave / THE LONG WAVE** | marching strips with a dark exit that turns | travel with the march |
 | **seesaw / surge** | half-court cascades (already in FF1 as halves — upgraded to RR's chained cascades) | cross on the beat |
 | **duckdonut** | sweep + donut on one beat | middle AND duck |
@@ -303,9 +303,9 @@ keeps its soul and gains the grammar subset that extends it — CHROMEHOOK the
 scrapyard **gate** (+ slotted lanes), PISTONKAISER the **wave** (its
 drumline, marched deck-wide) + the surge, VULTURE the **crossfire** (rails,
 THE TRAP, the lattice) and **THE X**, JUGGERNAUT closing walls (**row
-gates + the donut's rim**), and GOLIATH — the king teaches — **THE
-RECITAL**, the wave as procession, the donut, and once in a blazing night
-the **duckdonut**. Vocabulary is act-gated (`GRAMMAR_ACT_MIN`): an EASY
+gates + the donut's rim**), and GOLIATH — the king — **THE TRIDENT**,
+the wave as procession, the donut, and once in a blazing night the
+**duckdonut**. Vocabulary is act-gated (`GRAMMAR_ACT_MIN`): an EASY
 bout stays the fight it always was; the hard tiers meet the whole grammar.
 `volley` remains the one blockable attack (the parry law is FF1's soul and
 stays); everything else is read-and-move.
@@ -351,14 +351,14 @@ sweep's SCYTHE, the beam's CANNON (one arm locked at you, the other hand
 bracing its elbow), the volley's LAUNCHER, the nova's COIL, the seesaw's
 TILT (a balance beam tipping toward the flood), the surge's SHOVE. THE
 RECITAL is CONDUCTED — forearms up, a baton flick on every cue, a palm for
-a hold — and never pointed at.
+a hold — and never pointed at. *(Retired in the fifth pass: no routine,
+ever.)*
 **SHIPPED (fourth pass — THE DANGER KIT on the titans' decks)**: the
 campaign's floor marks and platform strikes now meet RAVE RAID's standard
 (`rave/choreo/telegraphs.ts`, `strikes.ts`) — they ARE the rave's, not a
 copy. `campaign/telegraphs.ts` re-exports the rave's shapes (gate, donut,
 X, rail, lane, seesaw/surge, nova, sweep, the trident's quarters) and cuts
-the two it has no word for — the slam's disc, THE LESSON's marks — from the
-same kit: one heat ramp (amber charging, danger red arriving, white-hot on
+the one it has no word for — the slam's disc — from the same kit: one heat ramp (amber charging, danger red arriving, white-hot on
 the landing), neon ink at constant width, one hazard hatch in deck space,
 every mark clipped to the octagon with the deck's rim burning where it
 crosses doomed ground. Every landed mark now burns out in the AFTERBURN
@@ -368,12 +368,18 @@ platform. The hits are the rave's sheets of light (`StrikeFx`) — beam
 walls (the visor's column above them, in heat), rails, gate walls, the
 donut closing in, the nova's shock ring, the tide, the trident's bolts, the
 sweep's curtain (THE DELIVERY's haft still rides to its lip); the slam's
-fist stays the titan's own. THE RECITAL's blocks heat amber → red as they
-fall and crush white-hot. The sweep's mark is the rave's — danger in the
+fist stays the titan's own. The sweep's mark is the rave's — danger in the
 air, floor unpainted — and THE TRIDENT's floor stays dark but for the
 chalk quarter lines, its quarters igniting only as each blow lands: read
 the weapon, not the floor. `deck-preview.html` shows every attack, charge,
 afterburn and strike.
+**SHIPPED (fifth pass — NO ROUTINE, EVER)**: RAVE RAID retired THE ROUTINE
+for THE TRIDENT, and the campaign follows it all the way: THE RECITAL, its
+LESSON marks, its falling blocks (`campaign/blockfall.ts`), its notes
+(`sfx.recitalNote`), the `quad` zone, the swept-recital coin, and the
+TEACH and CONDUCT gestures are gone from the code, not just the bill.
+GOLIATH's memory test is the trident. `check:grammar` fails if a routine
+ever comes back into the book.
 
 Raid escalation carries over unchanged for the classic kinds (solo-target
 → two marks → whole squad, DECREE-style shared bearings, the resurrection
