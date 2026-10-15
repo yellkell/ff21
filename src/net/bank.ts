@@ -6,14 +6,13 @@
  * of that is somebody else's word, never the client's:
  *
  *   1. The headset asks THE ROOM SERVER's /bank (server/bank.mjs) for a
- *      CHECKOUT, signed with its Firebase ID token so the server knows
- *      which uid is buying. The server opens a Stripe Checkout session
- *      and hands back its URL — and a SHORT link to it, because a Stripe
- *      URL is four hundred characters and a QR code the panel can draw
- *      holds two hundred.
- *   2. The panel shows the short link as a QR. You pay on your phone (or
- *      OPEN ON THIS DEVICE, for a flat-screen session). Stripe takes the
- *      card; this code never sees a digit of it.
+ *      PAY CODE, signed with its Firebase ID token so the server knows
+ *      which uid is buying. The code is six letters, and stands for this
+ *      uid at the bank (a QR inside a headset can't be scanned, and a
+ *      headset can't hand anyone a link).
+ *   2. You type it at yellkell.com/support on your phone or computer,
+ *      pick a pack and pay there (or PAY THROUGH YOUR HEADSET, code filled
+ *      in). Stripe takes the card; this code never sees a digit of it.
  *   3. Stripe tells the server it was paid (a signed webhook). The server
  *      writes the coins into the LEDGER — `bank/{uid}` in Firestore, a
  *      collection no client can write — keyed on the session so a
@@ -52,12 +51,12 @@ export interface CoinPack {
 export type BankMode = 'live' | 'test' | 'dev' | '';
 
 export interface Checkout {
-  /** The session id (Stripe's, or a dev stand-in). */
-  id: string;
-  /** The full checkout URL — what OPEN ON THIS DEVICE opens. */
+  /** The six letters to type on the pay page. */
+  code: string;
+  /** The pay page, as the board writes it (yellkell.com/support). */
+  page: string;
+  /** The pay page with the code filled in — what PAY THROUGH YOUR HEADSET opens. */
   url: string;
-  /** The short link the QR carries. */
-  short: string;
   pack: CoinPack;
   /** performance.now() when it opened. */
   at: number;
@@ -238,20 +237,21 @@ function stopPolling(): void {
   pollTimer = null;
 }
 
-interface CheckoutReply {
-  id: string;
+interface PayCodeReply {
+  code: string;
+  page: string;
   url: string;
-  short: string;
   pack: CoinPack;
 }
 
-/** Open a checkout for a pack: the board switches to the QR the moment
- *  this resolves (or says what went wrong). One at a time. */
+/** Ask for a pay code for a pack (the pay page can change the pack): the
+ *  board switches to the code the moment this resolves (or says what went
+ *  wrong). One at a time. */
 export async function startCheckout(packId: string): Promise<void> {
   const pack = bank.packs.find((p) => p.id === packId);
   if (!pack) return;
   if (bank.checkout && (bank.checkout.state === 'opening' || bank.checkout.state === 'waiting')) return;
-  const co: Checkout = { id: '', url: '', short: '', pack, at: performance.now(), state: 'opening', paid: 0, note: '' };
+  const co: Checkout = { code: '', page: '', url: '', pack, at: performance.now(), state: 'opening', paid: 0, note: '' };
   bank.checkout = co;
   bump();
   const who = await identity();
@@ -262,15 +262,15 @@ export async function startCheckout(packId: string): Promise<void> {
     return;
   }
   try {
-    const reply = await call<CheckoutReply>('/checkout', {
+    const reply = await call<PayCodeReply>('/code', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...who },
       body: JSON.stringify({ pack: packId }),
     });
-    if (!reply?.url) throw new Error('no checkout');
-    co.id = reply.id;
+    if (!reply?.code) throw new Error('no pay code');
+    co.code = reply.code;
+    co.page = reply.page;
     co.url = reply.url;
-    co.short = reply.short || reply.url;
     co.pack = reply.pack ?? pack;
     co.state = 'waiting';
     stopPolling();
@@ -312,7 +312,7 @@ export function cancelCheckout(): void {
   bump();
 }
 
-/** OPEN ON THIS DEVICE: a new tab on the checkout. In an immersive session
+/** PAY THROUGH YOUR HEADSET: a new tab on the pay page, code filled in. In an immersive session
  *  the browser shows it when you take the headset off; on a flat screen it
  *  is just a tab. Returns false when the browser refused. */
 export function openCheckout(): boolean {

@@ -76,3 +76,7 @@ services:
       # the Stripe dashboard — Stripe refuses the flag until then.
       - key: BANK_MANAGED
         sync: false
+      # Where pay codes are typed (default https://yellkell.com/support).
+      # Stripe sends the buyer back there after paying.
+      - key: PAY_PAGE
+        sync: false

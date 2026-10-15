@@ -346,7 +346,15 @@ carried over verbatim: everything in it still applies to this code.
   laptop's fake-PAY dev mode in public. `public/terms.html` carries the terms of purchase
   (virtual currency, no cash value, non-refundable once delivered),
   `public/paid.html` is where Stripe lands you after paying, and the
-  privacy page says what the ledger keeps. Probe: `npm run check:bank`
+  privacy page says what the ledger keeps. **PAY CODES** — a QR inside a
+  headset can't be scanned, so tapping a pack shows a six-letter code
+  and `yellkell.com/support` (`PAY_PAGE`); the buyer types it there on a
+  phone or computer, picks a pack and pays (`/bank/code`, `/code/<CODE>`,
+  `/pay`, `/done`). The page is `site/support.html` — upload it to
+  Hostinger as `public_html/support.html`; it talks to
+  `ff2-room.onrender.com/bank` (on localhost, the dev room server on
+  :8787). Every checkout carries `metadata.app = 'ff2'`, and the webhook
+  ignores sessions another game on the same Stripe account opened. Probe: `npm run check:bank`
   walks the whole loop against a dev-mode server with no money in it;
   `--headset` (with `npm run dev` up) drives the STORE's board too.
   **THE CLOUD WALLET** (`src/net/walletSync.ts`): the coins and the
