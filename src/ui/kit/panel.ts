@@ -36,6 +36,7 @@ import {
   SRGBColorSpace,
 } from 'three';
 import { font, onFontsReady } from './fonts.js';
+import { ACCENT_RGB, HOLO_HOT, holoGlass } from './holo.js';
 
 export interface PanelButton {
   id: string;
@@ -86,12 +87,9 @@ export interface PanelOpts {
   bare?: boolean;
 }
 
-/** The accent as an "r,g,b" triple, for the few places that need it at an
- *  arbitrary alpha (press flashes, selection rings). */
-export const ACCENT_RGB = '63,242,255';
-/** The holo screens' second tube colour — decoration only (corner brackets,
- *  the scan line), never selection or primacy. */
-export const HOLO_HOT = 'rgba(255,61,166,0.85)';
+// The accent's triple and the holo's second tube live with the glass they
+// paint (ui/kit/holo.ts); re-exported so callers keep one import.
+export { ACCENT_RGB, HOLO_HOT };
 
 export const KIT = {
   /* Surfaces — HOLO GLASS: a dark, see-through blue-black pane, so the
@@ -341,69 +339,9 @@ export class Panel {
       return;
     }
 
-    // HOLO GLASS: a see-through pane, a cool tint pooling at the top edge.
-    g.beginPath();
-    g.roundRect(6, 6, W - 12, H - 12, 22);
-    g.fillStyle = KIT.panel;
-    g.fill();
-    g.save();
-    g.clip();
-    const tint = g.createLinearGradient(0, 6, 0, H);
-    tint.addColorStop(0, 'rgba(60,200,255,0.10)');
-    tint.addColorStop(0.35, 'rgba(60,200,255,0.03)');
-    tint.addColorStop(1, 'rgba(255,61,166,0.05)');
-    g.fillStyle = tint;
-    g.fillRect(6, 6, W - 12, H - 12);
-    // Scanlines — the tell of an emissive screen, faint enough to read through.
-    g.fillStyle = 'rgba(150,235,255,0.035)';
-    for (let y = 8; y < H - 6; y += 4) g.fillRect(6, y, W - 12, 1);
-    // A diagonal holo sheen across the upper third.
-    const sheen = g.createLinearGradient(0, 0, W * 0.6, H * 0.5);
-    sheen.addColorStop(0, 'rgba(255,255,255,0.07)');
-    sheen.addColorStop(0.45, 'rgba(255,255,255,0.0)');
-    g.fillStyle = sheen;
-    g.fillRect(6, 6, W - 12, H * 0.5);
-    g.restore();
-
-    // Lit edge: a soft cyan bloom, then a crisp inner tube.
-    g.save();
-    g.shadowColor = `rgba(${ACCENT_RGB},0.8)`;
-    g.shadowBlur = 16;
-    g.lineWidth = 2.5;
-    g.strokeStyle = `rgba(${ACCENT_RGB},0.55)`;
-    g.stroke();
-    g.restore();
-    g.beginPath();
-    g.roundRect(14, 14, W - 28, H - 28, 16);
-    g.lineWidth = 1;
-    g.strokeStyle = KIT.lineFaint;
-    g.stroke();
-    // Top light bar — the screen's "on" strip.
-    const bar = g.createLinearGradient(W * 0.2, 0, W * 0.8, 0);
-    bar.addColorStop(0, `rgba(${ACCENT_RGB},0)`);
-    bar.addColorStop(0.5, `rgba(${ACCENT_RGB},0.9)`);
-    bar.addColorStop(1, `rgba(${ACCENT_RGB},0)`);
-    g.fillStyle = bar;
-    g.fillRect(W * 0.2, 7, W * 0.6, 3);
-
-    // Corner brackets — magenta tube on all four corners, the holo mark.
-    g.save();
-    g.strokeStyle = HOLO_HOT;
-    g.shadowColor = HOLO_HOT;
-    g.shadowBlur = 10;
-    g.lineWidth = 3;
-    const arm = 30;
-    const k = 20;
-    g.beginPath();
-    g.moveTo(k + arm, k); g.lineTo(k, k); g.lineTo(k, k + arm);
-    g.moveTo(W - k - arm, k); g.lineTo(W - k, k); g.lineTo(W - k, k + arm);
-    g.moveTo(k + arm, H - k); g.lineTo(k, H - k); g.lineTo(k, H - k - arm);
-    g.moveTo(W - k - arm, H - k); g.lineTo(W - k, H - k); g.lineTo(W - k, H - k - arm);
-    g.stroke();
-    g.restore();
-    // Tiny readout ticks along the bottom edge.
-    g.fillStyle = KIT.lineFaint;
-    for (let x = 60; x < W - 60; x += 18) g.fillRect(x, H - 24, 2, x % 90 === 60 % 90 ? 8 : 4);
+    // HOLO GLASS: the see-through pane, its lit edge, light bar, magenta
+    // corner brackets and readout ticks (shared with the match UI).
+    holoGlass(g, 6, 6, W - 12, H - 12, { fill: KIT.panel });
 
     // THE TAB STRIP: when a face carries tabs they own the title band — a
     // faint baseline the whole width, the brand (title) left-aligned as a

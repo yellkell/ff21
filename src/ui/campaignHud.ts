@@ -8,8 +8,11 @@
  *  - a big centre TITLE for the beats (WARNING · the name reveal · FIGHT ·
  *    TITAN FELLED · SCRAPPED), one optional sub-line, nothing else.
  *
- * Everything is a transparent canvas texture — glowing stencil type floating
- * over your passthrough room, not a billboard.
+ * Everything is a transparent canvas texture in the neon district's own
+ * hand (ui/kit/holo.ts), the same one the fight cards and the menus use:
+ * Rajdhani set in GLITCH type (a lit word on a cyan / magenta chromatic
+ * split) and bars of skewed neon cells — signage hanging in the street,
+ * not a billboard.
  */
 
 import {
@@ -22,7 +25,10 @@ import {
   type Scene,
 } from 'three';
 import { ARENA_GAP } from '../config.js';
-import { UI, segmentBar, stencilFont } from './industrial.js';
+import { UI } from './industrial.js';
+import { font, fontsReady } from './kit/fonts.js';
+import { KIT } from './kit/panel.js';
+import { glitchText, neonBar, neonCell } from './kit/holo.js';
 import { countdownArt } from './countdownArt.js';
 import { drawContentPlate } from './plateArt.js';
 
@@ -48,14 +54,31 @@ export interface CampaignHud {
   title(text: string, sub: string, accent?: string): void;
 }
 
-/** Set the stencil font at `px`, shrinking until `text` fits `maxW`. */
-function fitStencil(ctx: CanvasRenderingContext2D, text: string, px: number, maxW: number): void {
+/** The largest px (≤ `px`, ≥ 24) at which `text` fits `maxW` in this weight. */
+function fitType(ctx: CanvasRenderingContext2D, text: string, px: number, maxW: number, track: number, weight: 600 | 700 = 700): number {
   let size = px;
-  ctx.font = stencilFont(size);
-  while (size > 24 && ctx.measureText(text).width > maxW) {
+  for (;;) {
+    ctx.font = font(weight, size);
+    ctx.letterSpacing = `${track}px`;
+    const fits = ctx.measureText(text).width <= maxW;
+    ctx.letterSpacing = '0px';
+    if (fits || size <= 24) return size;
     size -= 4;
-    ctx.font = stencilFont(size);
   }
+}
+
+/** One line of Rajdhani, tracked, with a dark drop so it reads over a lit street. */
+function line(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, weight: 600 | 700, px: number, colour: string, track: number, align: CanvasTextAlign = 'center'): void {
+  ctx.save();
+  ctx.font = font(weight, px);
+  ctx.letterSpacing = `${track}px`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = colour;
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
 function makeText(scene: Scene, w: number, h: number, meters: number): TextPlane {
@@ -115,22 +138,23 @@ export function createCampaignHud(scene: Scene): CampaignHud {
     },
 
     setBoss(bossName, accent, clock) {
-      const key = `${bossName}|${accent}|${clock}`;
+      const key = `${bossName}|${accent}|${clock}|${fontsReady() ? 1 : 0}`;
       if (key === name.key) return;
       name.key = key;
       const { ctx, w, h } = name;
       ctx.clearRect(0, 0, w, h);
-      fitStencil(ctx, bossName, 64, w - 60);
-      ctx.fillStyle = accent;
-      ctx.shadowColor = accent;
-      ctx.shadowBlur = 26;
-      ctx.fillText(bossName, w / 2, h / 2 - (clock ? 14 : 0));
-      ctx.shadowBlur = 0;
-      if (clock) {
-        ctx.font = '700 34px system-ui, sans-serif';
-        ctx.fillStyle = UI.text;
-        ctx.fillText(clock, w / 2, h - 24);
-      }
+      // The name in the titan's colour, lit, on the chromatic split, with a
+      // skewed neon cell either side — a sign hung over the gap.
+      const px = fitType(ctx, bossName, 64, w - 200, 10);
+      const y = h / 2 - (clock ? 14 : 0);
+      glitchText(ctx, bossName, w / 2, y, px, accent, { track: 10, ink: accent });
+      ctx.font = font(700, px);
+      ctx.letterSpacing = '10px';
+      const half = ctx.measureText(bossName).width / 2;
+      ctx.letterSpacing = '0px';
+      neonCell(ctx, w / 2 - half - 52, y - 12, 30, 24, true, accent);
+      neonCell(ctx, w / 2 + half + 18, y - 12, 30, 24, true, accent);
+      if (clock) line(ctx, clock, w / 2, h - 22, 600, 30, KIT.dim, 4);
       name.tex.needsUpdate = true;
     },
 
@@ -141,7 +165,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         bossBar.key = key;
         const { ctx, w, h } = bossBar;
         ctx.clearRect(0, 0, w, h);
-        segmentBar(ctx, 2, 6, w - 4, h - 12, bossFrac, accent);
+        neonBar(ctx, 8, 8, w - 16, h - 16, bossFrac, accent, 24, 4);
         bossBar.tex.needsUpdate = true;
       }
       const pkey = String(Math.round(playerFrac * 200));
@@ -149,7 +173,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         playerBar.key = pkey;
         const { ctx, w, h } = playerBar;
         ctx.clearRect(0, 0, w, h);
-        segmentBar(ctx, 2, 6, w - 4, h - 12, playerFrac, UI.emberBright);
+        neonBar(ctx, 8, 8, w - 16, h - 16, playerFrac, UI.emberBright, 16, 4);
         playerBar.tex.needsUpdate = true;
       }
     },
@@ -160,7 +184,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         squad.key = '';
         return;
       }
-      const key = rows.map((r) => `${r.name}|${Math.round(r.frac * 100)}`).join(';');
+      const key = `${rows.map((r) => `${r.name}|${Math.round(r.frac * 100)}`).join(';')}|${fontsReady() ? 1 : 0}`;
       if (key === squad.key) return;
       squad.key = key;
       const { ctx, w } = squad;
@@ -168,25 +192,19 @@ export function createCampaignHud(scene: Scene): CampaignHud {
       rows.slice(0, 4).forEach((r, i) => {
         const y = 18 + i * 72;
         const down = r.frac <= 0;
-        ctx.textAlign = 'left';
-        ctx.font = '700 26px system-ui, sans-serif';
-        ctx.fillStyle = down ? 'rgba(232,53,42,0.9)' : UI.text;
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 8;
-        ctx.fillText(down ? `${r.name} · DOWN` : r.name, 8, y);
-        ctx.shadowBlur = 0;
-        segmentBar(ctx, 8, y + 14, w - 16, 20, Math.max(0, r.frac), down ? UI.danger : UI.emberBright);
+        line(ctx, down ? `${r.name} · DOWN` : r.name, 10, y, 600, 26, down ? KIT.danger : KIT.text, 2, 'left');
+        neonBar(ctx, 10, y + 16, w - 20, 18, Math.max(0, r.frac), down ? KIT.danger : UI.emberBright, 14, 3);
       });
       squad.tex.needsUpdate = true;
     },
 
     title(text, sub, accent = UI.emberBright) {
       // The FIGHT beat borrows the ring-countdown's neon FIGHT plate — the same
-      // art regular matches show — instead of plain stencil text. Falls back to
-      // the stencil word until the PNG has decoded (the decoded flag rides the
+      // art regular matches show — instead of plain glitch type. Falls back to
+      // the glitch word until the PNG has decoded (the decoded flag rides the
       // key, so a re-call upgrades text → art the instant it's ready).
       const fightArt = text === 'FIGHT' && !sub ? countdownArt('FIGHT') : null;
-      const key = `${text}|${sub}|${accent}|${fightArt ? 'art' : 'txt'}`;
+      const key = `${text}|${sub}|${accent}|${fightArt ? 'art' : 'txt'}|${fontsReady() ? 1 : 0}`;
       if (key === centre.key) return;
       centre.key = key;
       const { ctx, w, h } = centre;
@@ -195,23 +213,10 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         // Size the visible FIGHT glyph to ~⅔ the canvas height, centred.
         drawContentPlate(ctx, fightArt, w, h, Math.round(h * 0.66), 20);
       } else if (text) {
-        fitStencil(ctx, text, 120, w - 80);
-        const grad = ctx.createLinearGradient(0, h / 2 - 70, 0, h / 2 + 70);
-        grad.addColorStop(0, '#fff3cf');
-        grad.addColorStop(1, accent);
-        ctx.fillStyle = grad;
-        ctx.shadowColor = accent;
-        ctx.shadowBlur = 34;
-        ctx.fillText(text, w / 2, h / 2 - (sub ? 30 : 0));
-        ctx.shadowBlur = 0;
-        if (sub) {
-          ctx.font = '700 44px system-ui, sans-serif';
-          ctx.fillStyle = UI.text;
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = 10;
-          ctx.fillText(sub, w / 2, h / 2 + 78);
-          ctx.shadowBlur = 0;
-        }
+        // GLITCH type: the beat in white, lit by its accent, on the split.
+        const px = fitType(ctx, text, 120, w - 80, 10);
+        glitchText(ctx, text, w / 2, h / 2 - (sub ? 30 : 0), px, accent, { track: 10 });
+        if (sub) line(ctx, sub, w / 2, h / 2 + 78, 600, 42, KIT.dim, 6);
       }
       centre.tex.needsUpdate = true;
     },
