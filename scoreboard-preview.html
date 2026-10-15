@@ -23,7 +23,7 @@
       const fov = Number(new URLSearchParams(location.search).get('fov') ?? 30);
       const camera = new PerspectiveCamera(fov, innerWidth / innerHeight, 0.05, 50);
       camera.position.set(0, 1.62, 0);
-      camera.lookAt(0, mode === '2v2' ? 2.5 : 2.35, -4.1);
+      camera.lookAt(0, mode === '2v2' ? 3.1 : 2.95, -4.1);
 
       const board = createScoreboard(scene);
       const EMBER = '#ff7a18';
