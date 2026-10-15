@@ -258,9 +258,11 @@ interface Strike {
   dispose(): void;
 }
 
-/** The earned decks' BRAND on the boards (BLAZING's flame tongue,
- *  TIDEBREAKER's gel drop) — separate from their rail/crown/pool furniture. */
-const DECK_BRAND = new Set(['blazing-emblem', 'blazing-emblem-core', 'tide-emblem']);
+/** Everything the earned decks lay ON the boards (BLAZING's flame tongue,
+ *  TIDEBREAKER's gel drop, pool and ripples) — separate from the accents
+ *  round the outside (the burning rail and flame crowns, the crests and
+ *  drips), which a titan's ground keeps. */
+const DECK_BRAND = new Set(['blazing-emblem', 'blazing-emblem-core', 'tide-emblem', 'tide-pool', 'tide-ring']);
 function showDeckBrand(pad: Object3D, on: boolean): void {
   pad.traverse((o) => {
     if (DECK_BRAND.has(o.userData?.fxRole as string)) o.visible = on;
@@ -1113,11 +1115,15 @@ export class CampaignSystem extends createSystem({
       const pad = this.scene.getObjectByName(this.raid() ? 'raid-boss-platform' : platformName(1));
       if (pad) {
         const deck = this.def.platform;
-        applyPlatformSkin(pad, deck ? platformSkin(deck) : OPPONENT_DEFAULT_PLATFORM);
-        // The titan's ground keeps its living furniture (GOLIATH's burning
-        // rail and flame crown, GOOPLIATH's pool and crests) but not the
-        // trophy BRAND laid on the deck — that mark belongs to a player who
-        // earned the pad, not to the boss standing on it.
+        // No timber under GOLIATH or GOOPLIATH: their ground is the plain street
+        // cover (the iron manhole plate) wearing only the skin's outside
+        // accents — its tube, trim and rim FX. The skin's own boards (BLAZING's
+        // charred oak) stay the player's trophy.
+        applyPlatformSkin(pad, deck ? { ...platformSkin(deck), deck: 'iron' } : OPPONENT_DEFAULT_PLATFORM);
+        // The titan's ground keeps its living furniture round the edge
+        // (GOLIATH's burning rail and flame crown, GOOPLIATH's crests and
+        // drips) but nothing laid on the cover — the trophy BRAND belongs to
+        // a player who earned the pad, and the pool would hide the plate.
         showDeckBrand(pad, false);
         // No signature deck? Fall back to the house tint the pit has always
         // worn. (The skin pass above is still what clears a stale ornament.)
