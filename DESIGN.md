@@ -709,10 +709,15 @@ hosting targets.
   relay's public club floor, then to a dark test card. The relay ranks
   people over raids over solo bouts and expires a silent channel in six
   seconds. The Discord bot announces LIVE / FINAL for online matches.
-- **THE LOOK**: the page wears RAVE RAID's stats-page surface language
-  (near-black glass, corner brackets, the rail and its eased marker,
-  Rajdhani) with FIRE FIGHT's hazard amber as the accent; each face swaps
-  the accent and the floor's pools rather than the layout.
+- **THE LOOK**: a night-city HUD — blue-black glass, cyan hairlines,
+  frames chamfered top-left and bottom-right with the accent's corner
+  brackets on the other two, a neon grid floor and scanlines behind the
+  glass (never across a word), and the rail with its eased marker. Type
+  splits by job: Orbitron for signage, Rajdhani for names and prose,
+  JetBrains Mono for every number and label. FIRE FIGHT's hazard amber is
+  the accent; each face swaps the accent, the grid and the floor's pools
+  rather than the layout. Motion keeps the panel kit's constants, and
+  reduced-motion stills the grid, the glitch and the cursor.
 - **SPEEDRUN** is what the GAUNTLET board is called now, and it is three
   boards rather than one — `ff2-speedrun-{normal,hard,blazing}-time` —
   because a board is a per-uid ratchet and one board would keep only your

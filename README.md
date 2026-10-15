@@ -390,11 +390,12 @@ carried over verbatim: everything in it still applies to this code.
   renders the three sites, the far raider's spot from the origin, and
   close-ups of a cactus, a boulder and a mesa (`env-preview.html` takes
   `?focus=`, `?cam=`/`?look=` and `?seat=` now).
-- `public/stats.html` — **THE WORLDWIDE LEADERBOARD**, rebuilt on RAVE
-  RAID's stats-page surface language (near-black glass, corner brackets,
-  the rail with its eased marker, Rajdhani) with FIRE FIGHT's hazard amber
-  as the accent. Three faces on one rail, each swapping the accent and the
-  pools on the floor:
+- `public/stats.html` — **THE WORLDWIDE LEADERBOARD**, in a night-city
+  HUD skin (blue-black glass, cyan hairlines, chamfered frames with lit
+  corner brackets, a neon grid floor, the rail with its eased marker;
+  Orbitron signage, Rajdhani names, JetBrains Mono readouts) with FIRE
+  FIGHT's hazard amber as the accent. Three faces on one rail, each
+  swapping the accent, the grid and the pools on the floor:
   - **FIRE FIGHT** — RANKED · XP · AIM · 2V2 · FFA read off `players`
     docs; **SPEEDRUN** (what GAUNTLET is called now) · RAID · GOOPLIATH
     read off `boards/{board}/rows`. SPEEDRUN carries a difficulty
