@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.yellkell.firefight",
+      "sha256_cert_fingerprints": [
+        "E0:A0:07:5A:3E:C0:5E:26:79:7E:4D:48:FD:A2:26:8D:AE:49:17:EA:4B:DE:8A:5F:B1:D2:CD:61:44:60:62:88"
+      ]
+    }
+  }
+]

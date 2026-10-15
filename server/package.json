@@ -1,0 +1,15 @@
+{
+  "name": "fire-fight-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "room.mjs",
+  "scripts": {
+    "start": "node room.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.4.0",
+    "stripe": "^22.6.2",
+    "ws": "^8.18.0"
+  }
+}

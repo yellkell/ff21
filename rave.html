@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>RAVE RAID · Fire Fight 2</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🪩%3C/text%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #07060d;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      #scene-container {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        background:
+          radial-gradient(circle at 30% 20%, rgba(255, 42, 213, 0.18), transparent 30rem),
+          radial-gradient(circle at 75% 70%, rgba(54, 224, 90, 0.16), transparent 26rem),
+          linear-gradient(135deg, #05040a 0%, #0c0817 52%, #071307 100%);
+      }
+      /* The landing: the marquee over a strobing dancefloor of light pools.
+         One button. The rave is on the other side of it. */
+      .landing {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(22px, 5vh, 44px);
+        padding: clamp(16px, 5vw, 48px);
+        box-sizing: border-box;
+        background: #030308;
+        transition:
+          opacity 220ms ease,
+          visibility 220ms ease;
+        overflow: hidden;
+      }
+      body.app-entered .landing {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      /* Sweeping disco pools on the landing floor. */
+      .landing::before,
+      .landing::after {
+        content: '';
+        position: absolute;
+        inset: -20%;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 20% 30%, rgba(255, 42, 213, 0.2), transparent 24rem),
+          radial-gradient(circle at 80% 25%, rgba(79, 183, 255, 0.16), transparent 22rem),
+          radial-gradient(circle at 60% 80%, rgba(54, 224, 90, 0.18), transparent 26rem);
+        animation: sweep 11s linear infinite;
+        filter: blur(10px);
+      }
+      .landing::after {
+        background:
+          radial-gradient(circle at 70% 65%, rgba(255, 176, 0, 0.12), transparent 20rem),
+          radial-gradient(circle at 30% 75%, rgba(176, 107, 255, 0.16), transparent 24rem);
+        animation-duration: 17s;
+        animation-direction: reverse;
+      }
+      @keyframes sweep {
+        from {
+          transform: rotate(0deg) scale(1.05);
+        }
+        to {
+          transform: rotate(360deg) scale(1.05);
+        }
+      }
+      .landing__title {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        line-height: 0.92;
+        user-select: none;
+      }
+      .landing__rave,
+      .landing__raidword {
+        display: block;
+        font-family: 'Arial Black', 'Arial Narrow', system-ui, sans-serif;
+        font-weight: 900;
+        font-size: clamp(72px, 18vw, 210px);
+        letter-spacing: 0.04em;
+        text-indent: 0.04em;
+      }
+      /* RAVE: goo-green face with a magenta chromatic ghost — the two house
+         colours split like stage light through a prism. */
+      .landing__rave {
+        color: #b9ffc4;
+        text-shadow:
+          -5px 0 0 rgba(255, 42, 213, 0.55),
+          5px 0 0 rgba(79, 183, 255, 0.45),
+          0 0 22px rgba(54, 224, 90, 0.95),
+          0 0 70px rgba(54, 224, 90, 0.5),
+          0 6px 0 rgba(10, 46, 24, 0.9);
+        animation: throb 1.875s ease-in-out infinite; /* two bars at 128 BPM */
+      }
+      .landing__raidword {
+        color: #ffd9f6;
+        text-shadow:
+          -5px 0 0 rgba(54, 224, 90, 0.5),
+          5px 0 0 rgba(176, 107, 255, 0.5),
+          0 0 22px rgba(255, 42, 213, 0.95),
+          0 0 70px rgba(255, 42, 213, 0.55),
+          0 6px 0 rgba(66, 6, 52, 0.95);
+        animation: throb 1.875s ease-in-out infinite;
+        animation-delay: 0.234s; /* half a beat behind — they trade the kick */
+      }
+      @keyframes throb {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        6% {
+          transform: scale(1.045) skewX(-1deg);
+        }
+        12% {
+          transform: scale(0.99);
+        }
+      }
+      #enter-vr {
+        position: relative;
+        z-index: 1;
+        appearance: none;
+        border: 2px solid rgba(255, 42, 213, 0.8);
+        border-radius: 999px;
+        padding: 16px 44px;
+        font-family: 'Arial Black', system-ui, sans-serif;
+        font-weight: 900;
+        font-size: clamp(16px, 2.4vw, 22px);
+        letter-spacing: 0.18em;
+        text-indent: 0.18em;
+        color: #ffd9f6;
+        background: rgba(24, 6, 24, 0.72);
+        cursor: pointer;
+        box-shadow:
+          0 0 22px rgba(255, 42, 213, 0.45),
+          inset 0 0 18px rgba(255, 42, 213, 0.18);
+        transition:
+          transform 120ms ease,
+          box-shadow 120ms ease;
+      }
+      #enter-vr:hover:not([disabled]) {
+        transform: scale(1.045);
+        box-shadow:
+          0 0 34px rgba(255, 42, 213, 0.7),
+          inset 0 0 22px rgba(255, 42, 213, 0.3);
+      }
+      #enter-vr[disabled] {
+        opacity: 0.45;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <div class="landing">
+      <div class="landing__title">
+        <span class="landing__rave">RAVE</span>
+        <span class="landing__raidword">RAID</span>
+      </div>
+      <button id="enter-vr">ENTER THE RAVE</button>
+    </div>
+    <script type="module" src="/src/rave/main.ts"></script>
+  </body>
+</html>

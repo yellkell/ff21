@@ -1,0 +1,198 @@
+{
+  "_doc": "THE CLUB, neon district edition: the ONE layout both the Blender build (blendercyber/scripts/v2/build_club.py) and the game (club/config.ts) read. Metres, world space, three.js frame: +x east, +z south, origin = spawn at the dance floor's south edge facing the stage (-z).",
+  "halfW": 12,
+  "minZ": -12.5,
+  "maxZ": 6,
+  "ceilH": 3.6,
+  "domeH": 5.6,
+  "roomCeilH": 2.7,
+  "floor": {
+    "x": 0,
+    "z": -4.2,
+    "r": 4.3,
+    "tiles": {
+      "_doc": "LED tile floor: a centre disc then `rings` concentric bands out to `edge`; ring i has 4*round(2*pi*rMid/tile/4) sectors. build_club.py frames it, club/ledFloor.ts lights it.",
+      "r0": 0.55,
+      "edge": 4.16,
+      "rings": 8,
+      "tile": 0.5
+    }
+  },
+  "cctv": {
+    "eye": {
+      "x": 6.2,
+      "y": 3.25,
+      "z": 0.6
+    },
+    "look": {
+      "x": 0,
+      "y": 1.3,
+      "z": -5.0
+    }
+  },
+  "spawn": {
+    "x": 0,
+    "z": 0
+  },
+  "stage": {
+    "z": -9.4,
+    "r": 3.2,
+    "h": 0.55,
+    "desk": {
+      "z": -8.35,
+      "halfW": 1.35,
+      "halfD": 0.38,
+      "top": 1.6
+    },
+    "ledWall": {
+      "z": -9.75,
+      "halfW": 6.4,
+      "top": 5.4
+    }
+  },
+  "bar": {
+    "x": 8.4,
+    "z0": -7.4,
+    "z1": 0.4,
+    "top": 1.1,
+    "depth": 0.65,
+    "backX": 11.55
+  },
+  "boothX": -10.2,
+  "boothZs": [
+    -6.4,
+    -3.4,
+    -0.4
+  ],
+  "pods": {
+    "minX": -12,
+    "frontX": -9.0,
+    "minZ": -7.9,
+    "maxZ": 1.1,
+    "dividers": [
+      -4.9,
+      -1.9
+    ]
+  },
+  "entrance": {
+    "_doc": "The way out: a closed pair of club doors in a lit portal on the south wall (no stairs). halfW = the portal opening; the leaves fill it inside the jambs.",
+    "halfW": 1.1,
+    "h": 2.7,
+    "depth": 0.32,
+    "leafH": 2.55,
+    "landingZ": 4.4
+  },
+  "quiet": {
+    "minX": -12,
+    "maxX": -6.4,
+    "minZ": 1.8,
+    "maxZ": 6,
+    "doorX0": -8.0,
+    "doorX1": -6.8,
+    "doorWall": "north",
+    "table": {
+      "x": -9.6,
+      "z": 4.0,
+      "half": 0.35,
+      "y": 0.36
+    },
+    "window": {
+      "z0": 2.9,
+      "z1": 5.1,
+      "sill": 0.7,
+      "top": 2.1
+    },
+    "lamp": {
+      "x": -11.2,
+      "z": 2.4
+    }
+  },
+  "arcade": {
+    "minX": 6.4,
+    "maxX": 12,
+    "minZ": 1.8,
+    "maxZ": 6,
+    "doorX0": 6.8,
+    "doorX1": 8.0,
+    "doorWall": "north",
+    "octagon": {
+      "x": 8.6,
+      "z": 5.55,
+      "yaw": 3.14159265
+    },
+    "board": {
+      "x": 11.88,
+      "y": 1.55,
+      "z": 3.6,
+      "yaw": -1.5707963
+    },
+    "decor": [
+      {
+        "x": 9.55,
+        "kind": "a"
+      },
+      {
+        "x": 10.45,
+        "kind": "b"
+      },
+      {
+        "x": 11.35,
+        "kind": "c"
+      }
+    ]
+  },
+  "mirror": {
+    "x": 9.6,
+    "w": 3.6,
+    "h": 2.6,
+    "baseY": 0.1,
+    "range": 3.6,
+    "reflectRange": 3.4,
+    "maxFigures": 8,
+    "bay": {
+      "minX": 7.2,
+      "maxX": 12,
+      "maxZ": -8.6
+    }
+  },
+  "step": {
+    "minX": -12,
+    "maxX": -7.2,
+    "minZ": -12.5,
+    "maxZ": -8.6,
+    "doorX0": -10.2,
+    "doorX1": -9.0,
+    "doorWall": "south",
+    "portalX": -9.6,
+    "portalZ": -12.2,
+    "portalW": 1.5,
+    "portalH": 2.2,
+    "reach": 0.62,
+    "facing": -1
+  },
+  "chandelier": {
+    "y": 3.95,
+    "rings": [
+      {
+        "r": 0.55,
+        "speed": 0.21
+      },
+      {
+        "r": 0.95,
+        "speed": -0.14
+      },
+      {
+        "r": 1.4,
+        "speed": 0.09
+      },
+      {
+        "r": 1.9,
+        "speed": -0.06
+      },
+      {
+        "r": 2.45,
+        "speed": 0.035
+      }
+    ]
+  }
+}

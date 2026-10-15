@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- DEV-ONLY harness: renders THE STAGE DECK (the wood platform) with a
+     grammar telegraph charging on it, for screenshots. ?shape=gate|donut|
+     x|routine|rail|lane picks the telegraph; ?fill=0.7 freezes the charge.
+     Not part of the game; never ship or link this page. -->
+<html>
+  <body style="margin:0; background:#14100d">
+    <script type="module">
+      import {
+        Color,
+        DirectionalLight,
+        HemisphereLight,
+        PerspectiveCamera,
+        Scene,
+        WebGLRenderer,
+      } from 'three';
+      import { makePlatform } from '/src/arena/arena.ts';
+      import {
+        donutTelegraph,
+        gateTelegraph,
+        laneTelegraph,
+        quarterTelegraph,
+        railTelegraph,
+        routineMarksTelegraph,
+        xTelegraph,
+      } from '/src/campaign/telegraphs.ts';
+      import { RoutineBlockfall } from '/src/campaign/blockfall.ts';
+      import { GRAMMAR, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '/src/config.ts';
+
+      const params = new URLSearchParams(location.search);
+      const shape = params.get('shape') ?? 'gate';
+      const fillAt = Number(params.get('fill') ?? 0.7);
+
+      const scene = new Scene();
+      scene.background = new Color(0x14100d);
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      document.body.appendChild(renderer.domElement);
+      // The arena's warm dusk lamps, approximated — no PMREM: the wood is
+      // deliberately lit by lights, not environment.
+      scene.add(new HemisphereLight(0x8a93b8, 0x241a12, 0.55));
+      const key = new DirectionalLight(0xffd9a8, 2.2);
+      key.position.set(1.6, 3.2, 2.2);
+      scene.add(key);
+      const rim = new DirectionalLight(0x7a90ff, 0.5);
+      rim.position.set(-2.2, 2.0, -2.4);
+      scene.add(rim);
+
+      const pad = makePlatform(0xff7a18);
+      scene.add(pad);
+
+      const tgs = [];
+      const blocks = [];
+      if (shape === 'gate') {
+        tgs.push(gateTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, 0.4, 0.3, 0));
+      } else if (shape === 'donut') {
+        tgs.push(donutTelegraph(GRAMMAR.donutRadius, GRAMMAR.donutInnerR));
+      } else if (shape === 'x') {
+        tgs.push(xTelegraph(GRAMMAR.laneXHalfW));
+      } else if (shape === 'rail') {
+        tgs.push(railTelegraph(GRAMMAR.railHalfDepth, OCTAGON_HALF_WIDTH * 2 + 0.6, 1));
+        tgs[0].group.position.z = -0.3;
+      } else if (shape === 'lane') {
+        tgs.push(laneTelegraph(GRAMMAR.laneHalfWidth, OCTAGON_HALF_DEPTH * 2 + 0.6));
+        tgs[0].group.position.x = 0.42;
+      } else if (shape === 'routine') {
+        tgs.push(quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH));
+        tgs.push(routineMarksTelegraph([0, 3, 1], OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH));
+        // Step one's blocks already falling on the three unlearned corners.
+        blocks.push(new RoutineBlockfall(scene, 0, 6, 5.4, 7, 0));
+      }
+      for (const t of tgs) {
+        t.group.position.y += 0.05;
+        scene.add(t.group);
+      }
+
+      const camera = new PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.05, 40);
+      camera.position.set(0.0, 2.35, 2.9);
+      camera.lookAt(0, -0.15, -0.1);
+
+      let time = 0;
+      let frames = 0;
+      renderer.setAnimationLoop(() => {
+        time += 1 / 60;
+        frames += 1;
+        for (const t of tgs) t.update(fillAt, time);
+        for (const b of blocks) b.update(Math.min(5.9, time * 2.2), 1 / 60);
+        renderer.render(scene, camera);
+        document.title = `deck ${shape} f${frames}`;
+      });
+    </script>
+  </body>
+</html>

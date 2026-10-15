@@ -1,0 +1,348 @@
+rules_version = '2';
+
+/**
+ * FIRE FIGHT 2 — the one Firestore behind ff2.web.app.
+ *
+ * Everything the three faces of the app need lives here: FIRE FIGHT 2, RAVE
+ * RAID folded in as a mode, and the social club/pub that launches both. The
+ * old arrangement was three projects and a lot of `if true`; this is one
+ * project where every write has to prove who it belongs to.
+ *
+ * IDENTITY is Firebase ANONYMOUS AUTH. No sign-in screen — the client calls
+ * signInAnonymously() on first contact and keeps the uid in IndexedDB, so a
+ * headset is the same player across sessions. The uid is what makes these
+ * rules possible: a document named after you can only be written by you, and
+ * that is checked here, not asked politely of the client.
+ *
+ * WHAT THIS CANNOT DO: the client still computes its own scores, so a
+ * determined cheater can post a fake number under their OWN name. The rules
+ * bound the damage — right shape, sane range, one row each, and a score that
+ * may only improve — but they cannot make a client honest. Moving submission
+ * behind the relay is the fix if a board ever matters enough to attack.
+ *
+ * HIGH-FREQUENCY TRAFFIC IS NOT HERE. Poses (10 Hz) and voice ride the Render
+ * relay and peer-to-peer WebRTC; Firestore bills per document read and would
+ * be both ruinous and slow for that. What lives here is the spine: who you
+ * are, what you have done, who is around, and the handshakes that introduce
+ * two headsets to each other.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ── helpers ──────────────────────────────────────────────────────── */
+
+    // Anonymous still counts as signed in — that is the whole point.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The document is named after the caller, so the caller owns it.
+    function mine(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function str(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    function num(v, lo, hi) {
+      return v is number && v >= lo && v <= hi;
+    }
+
+    // Every mutable document carries a client clock. It is not trusted for
+    // ordering (a client can lie), only for TTL sweeps and staleness display.
+    function stamped() {
+      return request.resource.data.at is number;
+    }
+
+    /* ── players — one profile per anonymous uid ──────────────────────── */
+    // Readable by everyone: the boards show names, the club shows who is in
+    // the room, and a profile card opens when you click a row. Writable only
+    // by its owner. Deletion is off — a row vanishing would orphan board
+    // entries and break the "click a name" path.
+
+    // A profile is written with `merge: true` from a dozen different places —
+    // a finished bout banks ladder points, a rename lands, inactivity decay
+    // applies lazily on load. `request.resource.data` on a merge is the whole
+    // MERGED document, so a field is checked whenever it is present and left
+    // alone when it isn't; demanding the full set on every write would deny
+    // the very first one, which legitimately carries only a field or two.
+    function optionalNum(field, lo, hi) {
+      return !(field in request.resource.data) || num(request.resource.data[field], lo, hi);
+    }
+
+    // THE CLOUD LOCKER: a list of owned ids, capped. The client writes what
+    // it owns (net/walletSync.ts); a cosmetics inventory a client can write
+    // is a cosmetics inventory a client can pad, which is exactly as true of
+    // the localStorage it mirrors — the point is a cleared browser or a new
+    // headset getting it BACK, not a court proving who owns what.
+    function optionalIds(field, max) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is list && request.resource.data[field].size() <= max);
+    }
+
+    match /players/{uid} {
+      allow read: if true;
+
+      allow create, update: if mine(uid)
+        && str(request.resource.data.name, 16)
+        && stamped()
+        && optionalNum('xp', 0, 100000000)
+        && optionalNum('score', -100000, 100000000)
+        && optionalNum('coins', 0, 100000000)
+        && optionalNum('walletAt', 0, 100000000000000)
+        && optionalIds('ownedPlatforms', 64)
+        && optionalIds('ownedGear', 64)
+        && optionalIds('ownedAvatars', 16)
+        && optionalNum('elo', 0, 100000);
+
+      allow delete: if false;
+    }
+
+    /* ── boards — one row per player per board ────────────────────────── */
+    // `boards/{board}/rows/{uid}`. One document per player per board, so a
+    // board is a table of PERSONAL BESTS rather than a log: nobody can flood
+    // a chart with fifty entries, a better run overwrites its own row, and
+    // the rules prove ownership from the document's own name.
+    //
+    // DIRECTION IS IN THE BOARD ID. A board whose id ends in `-time` is a
+    // race and ranks LOW to high; everything else ranks high to low. That
+    // convention lets one rule enforce the ratchet on every board without a
+    // lookup, and it is the reason board ids are spelled out rather than
+    // generated:
+    //
+    //   ff2-ranked                the 1v1 ladder            (high wins)
+    //   ff2-aim                   aim training              (high wins)
+    //   ff2-speedrun-<tier>-time  the titan run, per tier   (low wins)
+    //   ff2-raid-<tier>-time      raid clear, per tier      (low wins)
+    //   ff2-goopliath-<tier>-time GOOPLIATH felled, per tier(low wins)
+    //   ff2-<run>-<tier>-hc-time  the same, HARDCORE runs   (low wins)
+    //   ff2-raid-time             raid clear, any tier      (low wins)
+    //   ff2-goopliath-time        GOOPLIATH, any tier       (low wins)
+    //   rave-<track>-<difficulty> one chart per difficulty  (high wins)
+    //   pub-octahunt              the arcade cabinet        (high wins)
+
+    function isTimeBoard(board) {
+      return board.matches('.*-time');
+    }
+
+    function validRow(board) {
+      return str(request.resource.data.name, 16)
+        && (isTimeBoard(board)
+              ? num(request.resource.data.value, 0.001, 86400)
+              : num(request.resource.data.value, 0, 5000000))
+        && stamped();
+    }
+
+    // A replacement row must BEAT the row it replaces. The ratchet is
+    // server-side, not a favour the client does us.
+    function improves(board) {
+      return isTimeBoard(board)
+        ? request.resource.data.value < resource.data.value
+        : request.resource.data.value > resource.data.value;
+    }
+
+    match /boards/{board}/rows/{uid} {
+      allow read: if true;
+      allow create: if mine(uid) && validRow(board);
+      allow update: if mine(uid) && validRow(board) && improves(board);
+      allow delete: if false;
+    }
+
+    /* ── bouts — THE TAPE, one document per recorded bout ─────────────── */
+    // What stats.html's LAB reads (src/net/telemetry.ts): the heatmap grids
+    // of where a fighter stood, threw from and was hit; the timed
+    // play-by-play; the rounds. Unlike a board this IS a log — every bout is
+    // its own document, because the whole point is the spread across many
+    // of them — so it is append-only and capped hard on shape.
+    //
+    // The author is a field rather than the document name: a player writes
+    // many of these, so the name is Firestore's own id and `uid` says whose
+    // it is. Signed in and honest about who you are is the boundary; the
+    // caps are what stop a client parking a novel in the collection.
+    //
+    // AND EVERY TAPE IS LEASED. This is the only collection here that grows
+    // without bound — a board is one row per player however often they play;
+    // a tape is a new document every bout — so `expiresAt` is required, the
+    // reader filters on it, and any signed-in player may bin one that has
+    // already lapsed. That is precisely what a TTL policy would do, and TTL
+    // needs Blaze; this project is on Spark, so the clients sweep (see
+    // net/leaderboard.ts sweepBouts, and the same arrangement on presence).
+    // An author may always bin their own, lapsed or not.
+    match /bouts/{bout} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.v == 1
+        && str(request.resource.data.kind, 16)
+        && str(request.resource.data.name, 16)
+        && request.resource.data.names is list
+        && request.resource.data.names.size() <= 6
+        && request.resource.data.ev is list
+        && request.resource.data.ev.size() <= 600
+        && request.resource.data.grid is map
+        && request.resource.data.att is map
+        && num(request.resource.data.dur, 0, 86400)
+        && leased()
+        && stamped();
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.uid == request.auth.uid
+            || !(resource.data.expiresAt is timestamp)
+            || resource.data.expiresAt < request.time);
+    }
+
+    /* ── rooms — every lobby in the game, in one collection ───────────── */
+    // This replaces the five that grew apart on the old project (`lobbies`,
+    // `privateLobbies`, `rankedRooms`, `arcadeRooms`, `privateRooms`). They
+    // had identical shapes and identical rules; what actually differed was
+    // two fields. So: one collection, `mode` and `visibility` as fields.
+    //
+    //   mode        'duel' | 'ranked' | 'arcade' | 'raid' | 'rave' | 'pub'
+    //   visibility  'public'  — listed in the room browser
+    //               'private' — reached by its 5-digit code, which IS the id
+    //
+    // A room is NOT owner-locked, and it cannot be: joining means writing
+    // your seat into somebody else's document, and either side may close a
+    // dead room. Signed-in plus a shape check is the honest boundary here.
+    // `expiresAt` is required so a Firestore TTL policy on that field can
+    // sweep abandoned rooms — without it a crashed host leaks a room for ever.
+    //
+    // AND IT MUST BE A TIMESTAMP. A TTL policy only ever acts on a timestamp
+    // field: aim one at a number and Firestore accepts the policy, shows it as
+    // active, and sweeps nothing, silently, for ever. That is the worst kind of
+    // failure — the thing that was supposed to stop rooms leaking looks like it
+    // is working. So the type is checked here, where a bad write is refused
+    // outright rather than accumulating until a scan window fills with ghosts.
+
+    function leased() {
+      return request.resource.data.expiresAt is timestamp;
+    }
+
+    function validRoom() {
+      return request.resource.data.mode in ['duel', 'ranked', 'arcade', 'raid', 'rave', 'pub']
+        && request.resource.data.visibility in ['public', 'private']
+        && str(request.resource.data.host, 128)
+        && leased()
+        && stamped();
+    }
+
+    match /rooms/{room} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && validRoom();
+      allow delete: if signedIn();
+
+      // WebRTC introductions: one doc per pair of seats, ICE candidates
+      // underneath. Both halves of a handshake write to the same place, so
+      // this is deliberately open to any signed-in caller. The payloads are
+      // SDP and ICE — useless to anyone not already in the room.
+      match /sig/{pair} {
+        allow read, write: if signedIn();
+        match /{document=**} {
+          allow read, write: if signedIn();
+        }
+      }
+    }
+
+    /* ── presence — who is around, and where ──────────────────────────── */
+    // The social layer's heartbeat: one doc per player, rewritten as you move
+    // between the club, the pub, the arena and a rave set. Owner-writable,
+    // world-readable, and TTL-swept on `expiresAt` (a timestamp — see the note
+    // on rooms above) so a headset that drops off the network stops haunting
+    // the room a minute later.
+
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow create, update: if mine(uid)
+        && request.resource.data.where in ['club', 'pub', 'arena', 'rave', 'menu']
+        && str(request.resource.data.name, 16)
+        && leased()
+        && stamped();
+
+      // YOUR OWN record — or ANY record that has already expired.
+      //
+      // Sweeping an expired record is not a privileged act: it is exactly what
+      // a TTL policy would have done, and TTL requires a billing plan. This
+      // project is on Spark, so the clients sweep instead, which is the same
+      // arrangement the duel lobbies have always had (webrtcTransport reaps
+      // ghosts it scans past). Nothing is lost — an expired record is one no
+      // reader will show either way.
+      //
+      // A lease that isn't a timestamp at all is also fair game. New writes
+      // cannot produce one (`leased()` above forbids it), so in practice this
+      // reaches exactly the records written before the lease was a timestamp —
+      // which no TTL policy could ever have swept, since it would not have
+      // recognised the field.
+      allow delete: if mine(uid)
+        || (signedIn()
+            && (!(resource.data.expiresAt is timestamp) || resource.data.expiresAt < request.time));
+    }
+
+    /* ── bank — THE LEDGER of coins bought for money ──────────────────── */
+    // Written ONLY by THE ROOM SERVER's /bank with admin credentials
+    // (server/bank.mjs), which these rules do not bind: `credit` is what
+    // Stripe has been paid for, `claimed` what the headset has collected,
+    // and one receipt per checkout session is what makes a replayed
+    // webhook credit nothing twice. A player may READ their own — the
+    // number is theirs to see — and nobody may write from a client,
+    // because a wallet a client can write is a wallet a client can print.
+
+    match /bank/{uid} {
+      allow read: if mine(uid);
+      allow write: if false;
+
+      match /receipts/{receipt} {
+        allow read: if mine(uid);
+        allow write: if false;
+      }
+    }
+
+    /* ── probes — the device clock-skew measurement ───────────────────── */
+    // One throwaway document per player, written with a serverTimestamp() and
+    // read straight back from the server so the stamp is resolved; the
+    // difference is how wrong this headset's clock is (see net/serverClock.ts).
+    //
+    // It needs a place of its own. The probe used to be written into the
+    // matchmaking collection as a fake lobby marked `open: false` — invisible
+    // to the queue, but a room-shaped document in the rooms collection all the
+    // same, and one that now could not satisfy the room rules without lying
+    // about being a room. Its own door is cheaper than a shape it doesn't fit.
+
+    match /probes/{uid} {
+      allow read, write: if mine(uid);
+    }
+
+    /* ── gazette — the paper the lobby reads ──────────────────────────── */
+    // Written by the scheduled generator with admin credentials, which are
+    // not bound by these rules. From a client it is read-only: the front page
+    // is not a thing a player gets to edit.
+
+    match /gazette/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    /* ── reports — the settings-menu report box ───────────────────────── */
+    // Players may FILE a report and nothing else. No read, no edit, no
+    // delete from any client, so what someone reports stays between them and
+    // the console.
+
+    match /reports/{report} {
+      allow create: if signedIn()
+        && str(request.resource.data.text, 200)
+        && str(request.resource.data.from, 64)
+        && request.auth.uid == request.resource.data.uid;
+      allow read, update, delete: if false;
+    }
+
+    /* ── everything else is closed ────────────────────────────────────── */
+    // A collection nobody wrote a rule for is a collection nobody may touch.
+    // The old project defaulted the other way and grew four undocumented
+    // collections; this one will not.
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

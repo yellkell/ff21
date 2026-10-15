@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- DEV-ONLY harness: lands fireball hits on a stand-in body in front of a
+     camera, for screenshots and a program-count check (a landed hit must
+     never compile a shader). Not part of the game; never ship or link it.
+     ?team=0|1  ?scale=1  ?t=<seconds after the hit to freeze on>
+     ?loop=1 keeps punching (watch window.__programs stay flat). -->
+<html>
+  <body style="margin:0; background:#0b0a0f">
+    <script type="module">
+      import {
+        Color, PerspectiveCamera, Scene, WebGLRenderer, SRGBColorSpace, Vector3,
+        Mesh, CapsuleGeometry, SphereGeometry, MeshStandardMaterial, HemisphereLight, DirectionalLight,
+      } from 'three';
+      import { initFirePools, updateFirePools } from '/src/fx/fire.ts';
+      import { initImpactFx, updateImpactFx, spawnFireImpact, spawnDamagePopup } from '/src/fx/effects.ts';
+
+      const q = new URLSearchParams(location.search);
+      const team = Number(q.get('team') ?? 0);
+      const scale = Number(q.get('scale') ?? 1);
+      const freeze = q.has('t') ? Number(q.get('t')) : null;
+      const dmg = Number(q.get('dmg') ?? 20);
+
+      const scene = new Scene();
+      scene.background = new Color(0x120f16);
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.outputColorSpace = SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+      const camera = new PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 50);
+      camera.position.set(0, 1.5, 0);
+      camera.lookAt(0, 1.45, -2.2);
+      scene.add(new HemisphereLight(0x8899bb, 0x201810, 0.9));
+      const sun = new DirectionalLight(0xffe0c0, 1.4);
+      sun.position.set(2, 4, 2);
+      scene.add(sun);
+
+      // A stand-in rival: torso + head.
+      const skin = new MeshStandardMaterial({ color: 0x2a2f3a, roughness: 0.6, metalness: 0.4 });
+      const body = new Mesh(new CapsuleGeometry(0.2, 0.5, 6, 16), skin);
+      body.position.set(0, 1.15, -2.4);
+      const head = new Mesh(new SphereGeometry(0.13, 20, 14), skin);
+      head.position.set(0, 1.68, -2.4);
+      scene.add(body, head);
+
+      initFirePools(scene);
+      initImpactFx(scene);
+      const world = null; // the spawners ignore it
+      const hitAt = new Vector3(0.05, 1.35, -2.08); // on the chest's skin, as a ball meets a hitbox
+      const travel = new Vector3(0.1, 0.05, -1); // thrown from the camera
+
+      const step = 1 / 72;
+      const tick = () => {
+        updateFirePools(step);
+        updateImpactFx(step, camera);
+        renderer.render(scene, camera);
+      };
+      const land = () => {
+        spawnFireImpact(world, hitAt, team, scale, travel);
+        spawnDamagePopup(world, hitAt, dmg);
+      };
+
+      // Warm a few frames so every pool has drawn once, then count programs.
+      for (let i = 0; i < 4; i++) tick();
+      window.__programsBefore = renderer.info.programs.length;
+
+      if (freeze !== null) {
+        land();
+        for (let t = 0; t < freeze; t += step) tick();
+        window.__programs = renderer.info.programs.length;
+        window.__ready = true;
+      } else {
+        let since = 0;
+        let hits = 0;
+        const loop = () => {
+          since += step;
+          if (since > 0.9) {
+            since = 0;
+            land();
+            hits++;
+          }
+          tick();
+          window.__programs = renderer.info.programs.length;
+          window.__hits = hits;
+          requestAnimationFrame(loop);
+        };
+        loop();
+        window.__ready = true;
+      }
+    </script>
+  </body>
+</html>

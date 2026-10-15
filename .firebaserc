@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "flappy-ff9f6"
+  },
+  "targets": {
+    "flappy-ff9f6": {
+      "hosting": {
+        "ff2": [
+          "ff2"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- DEV-ONLY harness: renders the arcade titans for screenshots.
+     Not part of the game; never ship or link this page.
+     ?t=0..4 one titan (RUSTHOOK … GOLIATH), default the whole line-up.
+     ?yaw=radians turns them; ?close=1 frames the head and chest. -->
+<html>
+  <body style="margin:0; background:#0d0c12">
+    <script type="module">
+      import {
+        Color,
+        DirectionalLight,
+        HemisphereLight,
+        PerspectiveCamera,
+        PMREMGenerator,
+        PointLight,
+        Scene,
+        WebGLRenderer,
+        ACESFilmicToneMapping,
+      } from 'three';
+      import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+      import { BOSSES, buildTitan } from '/src/campaign/bosses.ts';
+
+      const params = new URLSearchParams(location.search);
+      const pick = params.get('t');
+      const yaw = Number(params.get('yaw') ?? 0);
+      const close = params.get('close') === '1';
+      const list = pick === null ? BOSSES.map((_, i) => i) : [Number(pick)];
+
+      const scene = new Scene();
+      scene.background = new Color(0x0d0c12);
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = ACESFilmicToneMapping;
+      document.body.appendChild(renderer.domElement);
+      scene.environment = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.add(new HemisphereLight(0xbfd4ff, 0x2a241c, 0.9));
+      const key = new DirectionalLight(0xfff1dd, 2.2);
+      key.position.set(3, 5, -4);
+      scene.add(key);
+      const rim = new DirectionalLight(0xff9a50, 1.2);
+      rim.position.set(-4, 3, 4);
+      scene.add(rim);
+
+      let x = 0;
+      let maxH = 0;
+      const placed = [];
+      for (const i of list) {
+        const rig = buildTitan(BOSSES[i]);
+        const w = BOSSES[i].scale * 1.25;
+        placed.push({ rig, w });
+        maxH = Math.max(maxH, rig.height);
+      }
+      const total = placed.reduce((a, p) => a + p.w, 0);
+      for (const p of placed) {
+        p.rig.root.position.x = -total / 2 + x + p.w / 2;
+        p.rig.root.rotation.y = yaw;
+        x += p.w;
+        scene.add(p.rig.root);
+      }
+      const camera = new PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.05, 100);
+      if (close && placed.length === 1) {
+        const r = placed[0].rig;
+        camera.position.set(0, r.coreY * 1.05, -r.height * 0.95);
+        camera.lookAt(0, (r.headY + r.coreY) / 2, 0);
+      } else {
+        const d = Math.max(maxH * 1.9, total * 1.25);
+        camera.position.set(0, maxH * 0.55, -d);
+        camera.lookAt(0, maxH * 0.48, 0);
+      }
+      renderer.render(scene, camera);
+      // Triangles and draw calls per titan, for the budget.
+      window.__stats = placed.map((p) => {
+        let tris = 0;
+        let meshes = 0;
+        p.rig.root.traverse((o) => {
+          if (!o.isMesh) return;
+          meshes++;
+          const g = o.geometry;
+          tris += (g.index ? g.index.count : g.getAttribute('position').count) / 3;
+        });
+        return { name: p.rig.root.name, tris: Math.round(tris), meshes };
+      });
+      window.__ready = true;
+    </script>
+  </body>
+</html>

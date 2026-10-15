@@ -1,0 +1,78 @@
+# THE ROOM SERVER on Render — one service for the whole town.
+#
+# FIRE FIGHT 2 runs three relays and they are one process (server/room.mjs),
+# told apart by path: /ff the duel relay, /pub the Iron Balls pub, /rave the
+# rave's room relay. They used to be three separate Render services, which
+# meant three cold starts to sit through, three free-tier hosts to keep warm,
+# and three URLs to keep in step with the client.
+#
+# On a free plan the consolidation is worth more than tidiness: a sleeping
+# service takes the best part of a minute to wake, and one service means
+# everybody arriving anywhere in the town wakes the SAME one. The pub warms
+# the rave; the rave warms the duel relay.
+#
+# TO USE THIS: Render dashboard → New → Blueprint → pick this repo. Render
+# reads this file, creates the service, and asks for the secrets below (they
+# are marked `sync: false`, which is what keeps them out of the repo).
+#
+# Editing an existing service by hand instead? The four things that matter are
+# rootDir, buildCommand, startCommand and the env vars — see README.
+services:
+  - type: web
+    name: ff2-room
+    runtime: node
+    plan: free
+    # server/ has its own package.json and is self-contained: node built-ins,
+    # `ws`, and its own files. Nothing reaches up into the game's source, so
+    # Render never has to build the client to run the relay.
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    # room.mjs answers / with the list of mounted relays, which doubles as a
+    # health check and as the quickest way to tell by eye that a host is
+    # running the room server rather than one of the old single relays.
+    healthCheckPath: /
+    envVars:
+      # Voice needs NOTHING here. The pub's voice is Int16 PCM over the same
+      # socket as the poses, panned client-side — no SFU, no keys, nothing to
+      # configure. (An earlier build brokered it through LiveKit and this list
+      # asked for three secrets to match; the code had stopped using them.)
+      #
+      # THE DISCORD BOT, both directions (server/discord.mjs). The same
+      # token READS the channel for the pub's bar TV and now POSTS to it:
+      # the bell's join link when a ball goes up, the lobby's SHARE card,
+      # and THE CHANNEL's LIVE and FINAL. The bot needs Send Messages and
+      # Embed Links on the channel to post, and the Message Content Intent
+      # to read. Optional — everything logs that it is off and carries on.
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_CHANNEL_ID
+        sync: false
+      # Where the game is served, for the links the bot posts. Without it
+      # they point at https://ff2.web.app.
+      - key: PUBLIC_URL
+        sync: false
+      # Moderation: the ban panel's shared secret. Optional, but a pub with no
+      # ADMIN_TOKEN is a pub nobody can be thrown out of.
+      - key: ADMIN_TOKEN
+        sync: false
+      # THE BANK (server/bank.mjs): iron-dollars for money. Real money
+      # needs the Stripe pair AND the service account; with any of them
+      # missing the bank runs in DEV mode — a fake checkout page and a
+      # ledger in memory — and charges nobody. See README, THE BANK.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # A service-account JSON (raw or base64) for the ff2 Firebase project:
+      # the ledger (bank/{uid}) is written with it and ID tokens verified.
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      # ISO code of the currency to charge in (default gbp).
+      - key: BANK_CURRENCY
+        sync: false
+      # 1 = Stripe Managed Payments (Stripe as merchant of record: it charges
+      # and files the VAT wherever the buyer is). Only after activating it in
+      # the Stripe dashboard — Stripe refuses the flag until then.
+      - key: BANK_MANAGED
+        sync: false

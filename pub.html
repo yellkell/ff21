@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Iron Balls Club — Fire Fight</title>
+    <link rel="icon" type="image/png" href="/firefightfavicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#14151c" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0c0d11;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      #scene-container {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        background:
+          radial-gradient(circle at 70% 22%, rgba(255, 176, 0, 0.2), transparent 28rem),
+          linear-gradient(135deg, #08090c 0%, #111317 48%, #1c1009 100%);
+      }
+      .landing {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        align-items: center;
+        padding: clamp(24px, 7vw, 96px);
+        box-sizing: border-box;
+        color: #f4efe8;
+        background:
+          linear-gradient(90deg, rgba(5, 6, 9, 0.95) 0%, rgba(5, 6, 9, 0.74) 50%, rgba(5, 6, 9, 0.22) 100%),
+          linear-gradient(180deg, rgba(255, 176, 0, 0.18) 0%, rgba(255, 176, 0, 0) 42%);
+        transition:
+          opacity 220ms ease,
+          visibility 220ms ease;
+      }
+      .landing::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 72px 72px;
+        mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.72), transparent 68%);
+      }
+      .landing__content {
+        position: relative;
+        z-index: 1;
+        max-width: 660px;
+      }
+      .landing__eyebrow {
+        margin: 0 0 18px;
+        color: #ffb000;
+        font-size: clamp(3.1rem, 8.4vw, 7.6rem);
+        font-weight: 900;
+        line-height: 0.9;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .landing__subtitle {
+        margin: 0 0 34px;
+        color: rgba(244, 239, 232, 0.82);
+        font-size: clamp(1.05rem, 2.4vw, 1.8rem);
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .enter-vr {
+        width: min(100%, 280px);
+        min-height: 68px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        box-sizing: border-box;
+        padding: 0 34px;
+        color: #120906;
+        background: linear-gradient(180deg, #ffd278 0%, #ff8a24 100%);
+        box-shadow:
+          0 18px 48px rgba(255, 138, 36, 0.24),
+          inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        cursor: pointer;
+        font: 900 1.08rem/1 system-ui, -apple-system, sans-serif;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .enter-vr:hover,
+      .enter-vr:focus-visible {
+        transform: translateY(-1px);
+        box-shadow:
+          0 24px 58px rgba(255, 138, 36, 0.32),
+          inset 0 1px 0 rgba(255, 255, 255, 0.56);
+      }
+      .enter-vr:focus-visible {
+        outline: 3px solid rgba(255, 255, 255, 0.78);
+        outline-offset: 4px;
+      }
+      .enter-vr:disabled {
+        cursor: wait;
+        opacity: 0.72;
+        transform: none;
+      }
+      /* Bottom-left community corner: a quiet label and the Discord mark. */
+      .discord-corner {
+        position: absolute;
+        left: clamp(16px, 3vw, 32px);
+        bottom: clamp(16px, 3vh, 28px);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+      }
+      .discord-corner span {
+        color: rgba(232, 236, 242, 0.75);
+        font: 700 0.92rem/1 system-ui, -apple-system, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .discord-corner svg {
+        width: 34px;
+        height: 34px;
+        fill: #5865f2;
+        transition: fill 150ms ease, transform 150ms ease;
+      }
+      .discord-corner:hover svg,
+      .discord-corner:focus-visible svg {
+        fill: #7983f5;
+        transform: translateY(-1px);
+      }
+      .discord-corner:hover span,
+      .discord-corner:focus-visible span {
+        color: rgba(232, 236, 242, 0.95);
+      }
+      body.app-entered .landing {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      @media (max-width: 700px) {
+        .landing {
+          align-items: end;
+        }
+        .landing__eyebrow {
+          font-size: clamp(2.5rem, 16vw, 4.5rem);
+        }
+        .landing__subtitle {
+          font-size: clamp(0.95rem, 4.8vw, 1.2rem);
+        }
+        .enter-vr {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <section class="landing" id="landing" aria-labelledby="landing-title">
+      <main class="landing__content">
+        <h1 class="landing__eyebrow" id="landing-title">Iron Balls Club</h1>
+        <p class="landing__subtitle">Fire Fight</p>
+        <button class="enter-vr" id="enter-vr" type="button">Enter VR</button>
+      </main>
+      <a class="discord-corner" href="https://discord.gg/gJY3XhejZf" target="_blank" rel="noopener" aria-label="Join the Discord">
+        <span>Join the Discord</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" /></svg>
+      </a>
+    </section>
+    <script type="module" src="/src/pub/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FIRE FIGHT 2 — recover your account</title>
+    <link rel="icon" type="image/png" href="public/firefightfavicon.png" />
+    <meta name="theme-color" content="#14151c" />
+    <!-- Where the RECOVER email's link lands (src/net/bank.ts startRecovery).
+         Opening it here signs THIS browser in as the protected account, and
+         then asks THE ROOM SERVER's /bank/handoff for a six-digit code the
+         headset types to become the same account. Opened on the headset's
+         own browser, the game itself is signed in the next time it starts. -->
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: #101116;
+        color: #e8ecf2;
+        font-family: system-ui, -apple-system, sans-serif;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        text-align: center;
+      }
+      main { padding: 32px 24px; max-width: 520px; }
+      h1 { color: #ffb02e; letter-spacing: 0.08em; font-size: 2rem; }
+      p { color: rgba(232, 236, 242, 0.85); line-height: 1.6; }
+      .code {
+        font-size: 3.4rem;
+        font-weight: 800;
+        letter-spacing: 0.35em;
+        color: #ffb02e;
+        margin: 0.4em 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .small { color: rgba(232, 236, 242, 0.55); font-size: 0.9rem; }
+      form { display: grid; gap: 12px; margin: 24px 0; }
+      input {
+        font: inherit;
+        padding: 14px 16px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.35);
+        color: #fff;
+      }
+      button {
+        font: inherit;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        padding: 16px 32px;
+        border: 0;
+        border-radius: 12px;
+        background: #ffb02e;
+        color: #221302;
+      }
+      a { color: #7983f5; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section id="working">
+        <h1>RECOVER</h1>
+        <p id="status">signing you in…</p>
+        <form id="ask" hidden>
+          <label>the email you protected your wallet with<br /><input id="email" type="email" autocomplete="email" required /></label>
+          <button type="submit">SIGN IN</button>
+        </form>
+      </section>
+      <section id="done" hidden>
+        <h1>SIGNED IN</h1>
+        <p>On the headset, open STORE › BANK › RECOVER › TYPE THE CODE and enter:</p>
+        <p class="code" id="code">------</p>
+        <p class="small">The code works once and lasts ten minutes. Opened this on the headset's own browser? Then you're done — restart FIRE FIGHT 2 and it starts as your account.</p>
+      </section>
+      <section id="bad" hidden>
+        <h1>THAT DIDN'T WORK</h1>
+        <p id="why"></p>
+        <p class="small">Ask for a fresh link from the headset: STORE › BANK › RECOVER.</p>
+      </section>
+    </main>
+    <script type="module">
+      import { getApps, getApp, initializeApp } from 'firebase/app';
+      import { getAuth, isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
+      import { firebaseConfig } from '/src/net/firebase.ts';
+      import { roomServerHost } from '/src/config.ts';
+
+      const $ = (id) => document.getElementById(id);
+      const show = (id) => {
+        for (const s of ['working', 'done', 'bad']) $(s).hidden = s !== id;
+      };
+      const fail = (why) => {
+        $('why').textContent = why;
+        show('bad');
+      };
+
+      const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      if (!isSignInWithEmailLink(auth, location.href)) {
+        fail('This page only works from the link in the recovery email.');
+      } else {
+        let email = '';
+        try {
+          email = localStorage.getItem('ff-recover-email') ?? '';
+        } catch {
+          /* it will ask */
+        }
+        const go = async (addr) => {
+          $('status').textContent = 'signing you in…';
+          $('ask').hidden = true;
+          try {
+            const cred = await signInWithEmailLink(auth, addr, location.href);
+            try {
+              localStorage.removeItem('ff-recover-email');
+              // If this IS the headset's browser, the game's next boot is a
+              // recovery: the account's wallet, plus anything earned here.
+              localStorage.setItem('ff-wallet-adopt', '1');
+            } catch {
+              /* fine */
+            }
+            const token = await cred.user.getIdToken();
+            const base = `${roomServerHost().replace(/^ws/, 'http')}/bank`;
+            const r = await fetch(`${base}/handoff`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}' });
+            const body = await r.json().catch(() => ({}));
+            if (!r.ok || !body.code) throw new Error(body.error ?? 'the bank did not answer');
+            $('code').textContent = String(body.code).replace(/(\d{3})(\d{3})/, '$1 $2');
+            show('done');
+          } catch (err) {
+            const code = String(err?.code ?? '');
+            fail(
+              code.includes('invalid-action-code') || code.includes('expired-action-code')
+                ? 'This link has been used or has expired.'
+                : code.includes('invalid-email')
+                  ? 'That email does not match the link.'
+                  : String(err?.message ?? err),
+            );
+          }
+        };
+        if (email) void go(email);
+        else {
+          $('status').textContent = '';
+          $('ask').hidden = false;
+          $('ask').addEventListener('submit', (e) => {
+            e.preventDefault();
+            void go($('email').value.trim().toLowerCase());
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

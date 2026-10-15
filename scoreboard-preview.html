@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- DEV-ONLY harness: hangs the in-match scoreboard in front of a camera at
+     the fighter's head, fed with a fake bout, for screenshots.
+     Not part of the game; never ship or link this page.
+     ?mode=1v1|2v2|ffa|low|verdict|training -->
+<html>
+  <body style="margin:0; background:#0b0a0f">
+    <script type="module">
+      import { Color, PerspectiveCamera, Scene, WebGLRenderer, ACESFilmicToneMapping, SRGBColorSpace } from 'three';
+      import { createScoreboard } from '/src/ui/scoreboard.ts';
+      import { app } from '/src/menu/appState.ts';
+      import { onFontsReady } from '/src/ui/kit/fonts.ts';
+
+      const mode = new URLSearchParams(location.search).get('mode') ?? '1v1';
+      const scene = new Scene();
+      scene.background = new Color(0x15131b);
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.outputColorSpace = SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+      // ?fov= narrows the view onto the boards (default: a close read).
+      const fov = Number(new URLSearchParams(location.search).get('fov') ?? 30);
+      const camera = new PerspectiveCamera(fov, innerWidth / innerHeight, 0.05, 50);
+      camera.position.set(0, 1.62, 0);
+      camera.lookAt(0, mode === '2v2' ? 2.5 : 2.35, -4.1);
+
+      const board = createScoreboard(scene);
+      const EMBER = '#ff7a18';
+      const COOL = '#4fb7ff';
+      const VENOM = '#57e389';
+      const VIOLET = '#b06bff';
+      const state = { phase: 'playing', round: 2, myScore: 1, oppScore: 0, teamScores: [1, 0], roundWinnerTeam: -1, roundTimer: 83, resultTimer: 0, message: '', resetCount: 1, rematchMine: false, rematchTheirs: false };
+      const F = (slot, name, neon, hp, pips, team, alive = true) => ({ slot, name, neon, hpFrac: hp / 100, hp, pips, team, alive });
+      let fighters;
+      if (mode === '2v2') {
+        app.arcade = '2v2';
+        fighters = [F(0, 'kellbot', EMBER, 72, 1, 0), F(1, 'VOLTAGE', EMBER, 40, 1, 0), F(2, 'NIGHTSHIFT', COOL, 88, 0, 1), F(3, 'Ashfall', COOL, 0, 0, 1, false)];
+      } else if (mode === 'ffa') {
+        app.arcade = 'ffa';
+        fighters = [F(0, 'kellbot', EMBER, 64, 1, 0), F(1, 'VOLTAGE', COOL, 90, 2, 1), F(2, 'GRIMWIRE', VENOM, 22, 0, 2), F(3, 'SOLARIS', VIOLET, 0, 1, 3, false)];
+      } else if (mode === 'low') {
+        state.roundTimer = 8;
+        fighters = [F(0, 'kellbot', EMBER, 18, 1, 0), F(1, 'NIGHTSHIFT', COOL, 55, 1, 1)];
+      } else if (mode === 'verdict') {
+        state.phase = 'matchOver';
+        state.message = 'DRAW';
+        fighters = [F(0, 'kellbot', EMBER, 0, 2, 0, false), F(1, 'NIGHTSHIFT', COOL, 0, 2, 1, false)];
+      } else {
+        fighters = [F(0, 'kellbot', EMBER, 100, 1, 0), F(1, 'NIGHTSHIFT', COOL, 100, 0, 1)];
+      }
+      const draw = () => {
+        if (mode === 'training') board.updateTraining(70, 100);
+        else board.updateMatch(state, fighters);
+        renderer.render(scene, camera);
+      };
+      draw();
+      // A hit on the rival mid-trail, to show the damage trail.
+      if (mode === '1v1') {
+        fighters[1] = { ...fighters[1], hpFrac: 0.62, hp: 62 };
+        setTimeout(() => { draw(); }, 50);
+      }
+      onFontsReady(() => {
+        setTimeout(() => { draw(); window.__ready = true; }, 120);
+      });
+    </script>
+  </body>
+</html>

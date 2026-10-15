@@ -1,0 +1,65 @@
+name: Deploy to GitHub Pages
+
+# Pages source is set to "GitHub Actions", so whatever this workflow uploads
+# becomes the live site (https://yellkell.github.io/ff2/).
+#
+# Deploys from `main` only. A feature branch can build here, but the
+# `github-pages` environment refuses the deploy step for any branch its
+# policy doesn't list (default: the default branch), so a run from
+# elsewhere fails instantly with no logs. Ship from main, or add the branch
+# under Settings → Environments → github-pages → Deployment branches.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Pages serves this project from /ff2/, not from a domain root, so any
+      # asset reference written with a leading slash 404s in production while
+      # working fine in local dev. Two things Vite can't save us from: string
+      # literals in TS (it only rewrites references in its HTML inputs) and
+      # files copied verbatim out of public/. Fail the deploy instead of
+      # shipping a site with no logo. (`npm run check:pages` is the fuller
+      # version of this — it boots the built site under /ff2/ in a browser.)
+      - name: Guard against root-absolute asset paths
+        run: |
+          if grep -rEn '(src|href)="/[^/]' dist --include='*.html' \
+            || grep -rEo '"/(signs|posters|icons)/[^"]*"' dist/assets; then
+            echo "::error::Root-absolute asset paths found — these 404 under the /ff2/ subpath. Make them relative."
+            exit 1
+          fi
+          echo "clean — every asset reference is relative"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

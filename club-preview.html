@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- DEV-ONLY harness: renders THE CLUB (the venue ported from RAVE RAID,
+     FF2's social base) for screenshots. Not shipped, not in build inputs.
+     ?x= ?y= ?z= camera position · ?yaw= ?pitch= heading (radians). -->
+<html>
+  <body style="margin:0; background:#000">
+    <script type="module">
+      import { Color, FogExp2, NoToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+      import { buildClub } from '/src/rave/club/build.ts';
+      import { stageShow } from '/src/rave/club/stageShow.ts';
+
+      const params = new URLSearchParams(location.search);
+      const x = Number(params.get('x') ?? 0);
+      const y = Number(params.get('y') ?? 1.6);
+      const z = Number(params.get('z') ?? 6.5);
+      const yaw = Number(params.get('yaw') ?? 0);
+      const pitch = Number(params.get('pitch') ?? 0);
+
+      const scene = new Scene();
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      // FIRE FIGHT 2's actual pipeline: ACES + the soft PMREM room env the
+      // arena installs globally — the club is relit FOR this.
+      // The venue is baked (tone-mapped at bake time) — no tone mapping, like the headset.
+      renderer.toneMapping = NoToneMapping;
+      document.body.appendChild(renderer.domElement);
+      // Fog and background as ClubSystem sets them in RAVE RAID.
+      scene.background = new Color(0x0b0810);
+      scene.fog = new FogExp2(0x0b0810, 0.008);
+
+      const refs = buildClub(scene, renderer);
+      refs.root.visible = true;
+
+      // ?ball=1 — THE BALL down over the dance floor, plate painted.
+      let ball = null;
+      if (params.get('ball') === '1') {
+        const { buildBallVisual, ballAnchor } = await import('/src/rave/club/ball.ts');
+        ball = buildBallVisual();
+        const bx = 0, bz = -3.2;
+        const anchor = ballAnchor(bx, bz);
+        ball.group.position.set(bx, 2.1, bz);
+        ball.setCable(anchor.y - 2.1);
+        ball.paint({ seconds: 42, trackId: params.get('song') ?? '', callerName: 'IRON-1736', joinNames: ['IRON-1736', 'RAVER-2041'], mine: false, joined: false, inReach: false });
+        ball.setPips([0.08, 0.62]);
+        scene.add(ball.group);
+      }
+
+      // (?console=1 used to stand the A-button console in space here. The
+      //  module it imported, src/club/console.ts, no longer exists — the
+      //  console moved into the club's own systems — and a dead import in a
+      //  dev harness is not a dormant bug: Vite analyses the whole module on
+      //  load, so it broke EVERY club screenshot, console or not.)
+
+      const camera = new PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.05, 200);
+      camera.position.set(x, y, z);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+
+      let t = 0;
+      window.__club = { renderer, scene, camera, refs, step: (n = 1) => { for (let i = 0; i < n; i++) { t += 1 / 60; stageShow.update(1 / 60, t, t * 2.083, 0.5, params.get('song')); refs.ledFloor.update(1 / 60, t * 2.083, params.get('song')); } renderer.render(scene, camera); } };
+      renderer.setAnimationLoop(() => {
+        t += 1 / 60;
+        // A little life so screenshots catch the room breathing.
+        refs.chandelier.rings.forEach((ring, i) => { ring.pivot.rotation.y = t * ring.speed * (i % 2 ? -1 : 1); });
+        // the stage show at the club record's tempo (125 BPM)
+        const beat = t * (125 / 60);
+        const pulse = Math.max(0, 1 - (beat - Math.floor(beat)) * 2.4);
+        stageShow.update(1 / 60, t, beat, pulse, params.get('song'));
+        refs.ledFloor.update(1 / 60, beat, params.get('song'));
+        refs.consoleMat.color.setScalar(0.35 + pulse * 0.65);
+        if (ball) {
+          ball.ball.rotation.y = t * 0.5;
+          ball.twinkle(1 / 60);
+          ball.plate.rotation.y = yaw;
+        }
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
+</html>

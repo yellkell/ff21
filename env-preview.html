@@ -1,0 +1,178 @@
+<!doctype html>
+<!-- DEV-ONLY harness: renders an arena backdrop for screenshots. Not shipped.
+     ?env=desert|saltflats|cove|neon  ?site=trailhead|flats|boneyard (desert) | backstreet|plaza (neon)  ?yaw=<rad>  ?pitch=<rad>
+     ?t=<s> freezes THE COVE's surf at that moment (default: live clock).
+     ?raid=1 lays out the five-seat raid arc + pit instead of the duel pair. -->
+<html>
+  <body style="margin:0; background:#000">
+    <script type="module">
+      import {
+        ACESFilmicToneMapping,
+        NoToneMapping,
+        Fog,
+        Matrix4,
+        PerspectiveCamera,
+        PMREMGenerator,
+        Scene,
+        Vector3,
+        WebGLRenderer,
+      } from 'three';
+      import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+      import { buildSaltFlats } from '/src/arena/saltflats/index.ts';
+      import { buildDesert } from '/src/arena/desert/index.ts';
+      import { buildCove } from '/src/arena/cove/index.ts';
+      import { buildNeon } from '/src/arena/neon/index.ts';
+      import { makePlatform } from '/src/arena/arena.ts';
+      import { MODE_LAYOUT, RAID_RING_RADIUS } from '/src/config.ts';
+
+      const params = new URLSearchParams(location.search);
+      const yaw = Number(params.get('yaw') ?? 0); // camera heading, radians
+      const pitch = Number(params.get('pitch') ?? -0.05);
+      const which = params.get('env') ?? 'saltflats';
+      const site = params.get('site') ?? 'trailhead';
+      const raid = params.get('raid') === '1';
+
+      const scene = new Scene();
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      scene.environment = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+      let env;
+      if (which === 'cove') {
+        // The headset renders with NO tone mapping (IWSDK only sets sRGB
+        // output) — preview the cove the way the Quest will show it.
+        renderer.toneMapping = NoToneMapping;
+        env = buildCove(Number(params.get('quality') ?? 1));
+        env.root.visible = true;
+        scene.add(env.root);
+        scene.background = env.skyColor;
+        scene.fog = env.fog;
+      } else if (which === 'neon') {
+        // Unlit baked atlases, tone-mapped at bake time: no tone mapping, like the headset.
+        renderer.toneMapping = NoToneMapping;
+        env = buildNeon(renderer);
+        env.setSite(site === 'backstreet' ? 'backstreet' : 'plaza');
+        env.root.visible = true;
+        scene.add(env.root);
+        scene.background = env.skyColor;
+        scene.fog = env.fog;
+      } else if (which === 'desert') {
+        env = buildDesert();
+        env.setSite(site);
+        env.root.visible = true;
+        scene.add(env.root);
+        scene.background = null;
+        renderer.setClearColor(0x131b34, 1);
+      } else {
+        env = buildSaltFlats();
+        env.root.visible = true;
+        scene.add(env.root);
+        scene.background = env.skyColor;
+        scene.fog = new Fog(env.skyColor.getHex(), 30, 700); // matches DesertSystem
+      }
+
+      window.__env = env; // for a probe to poke at (dev-only page)
+      window.__three = { renderer, scene, get camera() { return camera; } };
+
+      // Show the fight pedestals so the raised-platform effect is visible.
+      const mine = makePlatform(0xff7a18);
+      scene.add(mine);
+      if (raid) {
+        for (const seat of MODE_LAYOUT.raid.slice(1)) {
+          const pad = makePlatform(0x4fb7ff);
+          pad.position.set(seat.pos[0], seat.pos[1], seat.pos[2]);
+          pad.rotation.y = seat.yaw;
+          scene.add(pad);
+        }
+        const pit = makePlatform(0xe8352a, 2.4);
+        pit.position.set(0, 0, -RAID_RING_RADIUS);
+        pit.scale.set(2.4, 1, 2.4);
+        scene.add(pit);
+      } else {
+        const foe = makePlatform(0x4fb7ff);
+        foe.position.set(0, 0, -3);
+        scene.add(foe);
+      }
+
+      const camera = new PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 2000);
+      camera.position.set(0, 1.6, 0.4); // standing on your own pad
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+      // ?seat=N (with raid=1): stand on raid seat N, facing the pit (+yaw).
+      const seat = params.get('seat');
+      if (seat !== null && raid) {
+        const s = MODE_LAYOUT.raid[Number(seat)];
+        camera.position.set(s.pos[0], 1.6, s.pos[2]);
+        camera.rotation.y = s.yaw + yaw;
+      }
+      // ?cam=x,y,z&look=x,y,z: a free camera, for overviews.
+      const cam = params.get('cam');
+      if (cam) {
+        const c = cam.split(',').map(Number);
+        const l = (params.get('look') ?? '0,0,0').split(',').map(Number);
+        camera.position.set(c[0], c[1], c[2]);
+        camera.lookAt(l[0], l[1], l[2]);
+      }
+      // ?focus=<object name>[&inst=N&dist=6&h=1.6&lookY=1]: stand `dist` m
+      // from the first object of that name (an instance of an InstancedMesh,
+      // or a spot listed in its userData.spots), on the arena side, looking
+      // at it — for close-ups of a cactus, a boulder, a mesa.
+      const focus = params.get('focus');
+      if (focus) {
+        env.root.updateMatrixWorld(true);
+        const inst = Number(params.get('inst') ?? 0);
+        const matches = [];
+        env.root.traverse((o) => {
+          if (o.name === focus) matches.push(o);
+        });
+        // The nth named object — or the first, whose nth instance/spot it is.
+        const target = matches.length > 1 ? matches[Math.min(inst, matches.length - 1)] : matches[0] ?? null;
+        if (target) {
+          const p = new Vector3();
+          if (target.isInstancedMesh) {
+            const m = new Matrix4();
+            target.getMatrixAt(inst, m);
+            p.setFromMatrixPosition(m).applyMatrix4(target.matrixWorld);
+          } else if (target.userData.spots) {
+            p.copy(target.userData.spots[inst]).applyMatrix4(target.matrixWorld);
+          } else {
+            target.getWorldPosition(p);
+          }
+          const dist = Number(params.get('dist') ?? 6);
+          const h = Number(params.get('h') ?? 1.6);
+          const dir = new Vector3(p.x, 0, p.z).normalize();
+          camera.position.set(p.x - dir.x * dist, p.y + h, p.z - dir.z * dist);
+          camera.lookAt(p.x, p.y + Number(params.get('lookY') ?? 1), p.z);
+        } else {
+          console.warn(`focus: nothing named ${focus}`);
+        }
+      }
+
+      // A few frames so the living parts (fire, windmill) settle into motion.
+      let frames = 0;
+      let last = performance.now();
+      const frozen = params.get('t');
+      const tick = () => {
+        const now = performance.now();
+        // THE COVE bakes its sky a strip a frame before it can be shown.
+        if ((env.bake || which === 'neon') && !env.ready) {
+          env.bake?.(renderer);
+          requestAnimationFrame(tick);
+          return;
+        }
+        env.update((now - last) / 1000, frozen !== null ? Number(frozen) : now / 1000, camera.position);
+        last = now;
+        renderer.render(scene, camera);
+        if (++frames < 6 || params.get('live') === '1') requestAnimationFrame(tick);
+        else document.title = 'preview-ready';
+      };
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FIRE FIGHT 2 — the bank</title>
+    <link rel="icon" type="image/png" href="firefightfavicon.png" />
+    <meta name="theme-color" content="#14151c" />
+    <!-- Where Stripe Checkout lands you after paying (or backing out): a
+         thank-you and nothing else. The coins are credited by the webhook
+         and claimed by the headset — this page has no part in that. -->
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: #101116;
+        color: #e8ecf2;
+        font-family: system-ui, -apple-system, sans-serif;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        text-align: center;
+      }
+      main { padding: 32px 24px; max-width: 520px; }
+      h1 { color: #ffb02e; letter-spacing: 0.08em; font-size: 2rem; }
+      p { color: rgba(232, 236, 242, 0.85); line-height: 1.6; }
+      a { color: #7983f5; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section id="paid">
+        <h1>PAID</h1>
+        <p>Thank you. Your iron-dollars are on their way to the headset — they land in the wallet within a few seconds, or the next time the game starts.</p>
+        <p>You can close this page.</p>
+      </section>
+      <section id="cancel" hidden>
+        <h1>NO CHARGE</h1>
+        <p>The checkout was cancelled and nothing was taken. Start another from the store's BANK board whenever you like.</p>
+      </section>
+      <p><a href="terms.html">terms of purchase</a> · <a href="privacy1.html">privacy</a></p>
+    </main>
+    <script>
+      if (new URLSearchParams(location.search).get('cancel') === '1') {
+        document.getElementById('paid').hidden = true;
+        document.getElementById('cancel').hidden = false;
+      }
+    </script>
+  </body>
+</html>
