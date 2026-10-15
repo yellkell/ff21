@@ -57,8 +57,9 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
     names it (or counts the defense).
   - **THE BELT RACK** on the campaign panel: your best belt and count;
     open it for all 23, yours lit, the rest as ghosts, hover for what each
-    is or how to win it. Career cards and the launch card show the belt at
-    stake.
+    is or how to win it, click one of yours to hold it up in 3D the way it
+    rose when you won it (click it again, or anything else, to put it
+    back). Career cards and the launch card show the belt at stake.
   - **The profile shows your best belt** in place of the old SPEEDRUN
     badge; hover it and it says what it is. Its rank syncs as `beltBest`.
   - **"FELLED" reads "DEFEATED"** across the campaign.
