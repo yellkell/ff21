@@ -1,19 +1,24 @@
 /**
  * The promotion celebration. When the player lands back in the lobby having
  * crossed into a higher Bronze→Overlord tier, a badge medallion erupts in
- * front of them: the old emblem charges with gathering embers, then BURSTS —
- * a white flash, an expanding shockwave ring, a fountain of fire and a
- * sunburst of light wheeling behind — and swaps to the new emblem, which
- * slams in with an overshoot and holds under a pulsing glow before fading.
+ * front of them: the old emblem charges with gathering sparks, then BURSTS —
+ * a white flash, an expanding shockwave ring, a fountain of neon sparks and
+ * a wheel of light behind — and swaps to the new emblem, which slams in with
+ * an overshoot and holds under a pulsing glow before fading. The new tier's
+ * name tears with a glitch on the burst and settles into GLITCH type.
+ *
+ * It is painted in the neon district's own hand (ui/promoArt.ts, on the
+ * holo kit): holo glass, neon cyan the only accent, magenta decoration.
  *
  * It all stands on a BACKING PLATE, and it has to. FIRE FIGHT is passthrough:
  * behind the medallion is the player's own lit room, and every celebratory
  * layer here — halo, sunburst, flash, shockwave — is additive, which is to
  * say it only adds light. Additive light over a bright room adds almost
  * nothing, so without something solid underneath the whole burst reads as a
- * faint ghost of itself with the sofa showing through it. The plate is the
- * kit's own smoked steel, near-opaque: it gives the fire a dark room to
- * happen in, and the emblem an edge to sit against.
+ * faint ghost of itself with the sofa showing through it. So the plate is
+ * the kit's holo glass with its fill pushed near-opaque, not the menus'
+ * see-through pane: it gives the light a dark room to happen in, and the
+ * emblem an edge to sit against.
  *
  * XP only changes during play/training (away from the menu). We wait for the
  * cloud profile to finish loading (profileReady) before reading any tier — the
@@ -44,10 +49,22 @@ import { rankBadgeTexture, rankBadgeZoom } from '../menu/rankBadges.js';
 import { myStats, profileReady } from '../net/leaderboard.js';
 import { glowSprite } from '../materials/glow.js';
 import { emberBurst, setEmberDrawOrder, spawnEmber } from '../fx/fire.js';
-import { UI, fitStencilText, plate, stencilFont } from '../ui/industrial.js';
+import {
+  LABEL_H,
+  LABEL_W,
+  PLATE_H,
+  PLATE_W,
+  PROMO_ACCENT,
+  PROMO_FLASH,
+  paintPromoLabel,
+  paintPromoPlate,
+  paintPromoRays,
+  paintPromoRing,
+} from '../ui/promoArt.js';
 import * as sfx from '../audio/sfx.js';
 
-const EMBER = 0xff7a18;
+/** The sparks are the fire pool's cool (blue-cyan) embers: the kit's light. */
+const COOL = true;
 const _badgePos = new Vector3();
 
 // A longer, weightier celebration: charge → BURST → a long proud hold → fade.
@@ -55,6 +72,11 @@ const CHARGE = 0.8;
 const HOLD = 3.6;
 const FADE = 1.1;
 const TOTAL = CHARGE + HOLD + FADE;
+
+/** The burst's glitch tear: the tier name's chromatic split starts this wide
+ *  (px) and closes back to the kit's resting split over TEAR seconds. */
+const TEAR_SPLIT = 16;
+const TEAR = 0.4;
 
 /** How solid the backing plate gets — the whole burst's floor of contrast. */
 const PLATE_OPACITY = 0.94;
@@ -81,6 +103,8 @@ export class PromotionSystem extends createSystem({}) {
   private badge?: Mesh;
   private label?: Mesh;
   private labelTex?: CanvasTexture;
+  private labelTier = '';
+  private labelSplit = -1;
 
   private shownTier = -1;
   private animating = false;
@@ -150,7 +174,9 @@ export class PromotionSystem extends createSystem({}) {
     this.badge!.scale.setScalar(rankBadgeZoom(from));
 
     this.to = to;
-    this.drawLabel(tierName(to));
+    this.labelTier = tierName(to);
+    this.labelSplit = -1; // a new name: force the paint
+    this.drawLabel();
     this.group!.position.set(0, 1.62, -0.95);
     this.group!.scale.setScalar(0.001);
     this.group!.visible = true;
@@ -200,7 +226,7 @@ export class PromotionSystem extends createSystem({}) {
       this.emberTimer -= delta;
       if (this.emberTimer <= 0) {
         this.emberTimer = 0.03;
-        spawnEmber(_badgePos, 0.6, false);
+        spawnEmber(_badgePos, 0.6, COOL);
       }
     } else if (!this.swapped) {
       // BURST: flash, shockwave, fire fountain, sunburst — swap to the new tier.
@@ -212,8 +238,8 @@ export class PromotionSystem extends createSystem({}) {
         badgeMat.needsUpdate = true;
         this.badge!.scale.setScalar(rankBadgeZoom(this.to));
       }
-      emberBurst(_badgePos, 70, false);
-      emberBurst(_badgePos, 28, true);
+      emberBurst(_badgePos, 90, COOL);
+      this.drawLabel(TEAR_SPLIT);
       plateMat.opacity = plateK;
       this.glow!.material.opacity = 1;
       this.flash!.material.opacity = 1;
@@ -236,11 +262,16 @@ export class PromotionSystem extends createSystem({}) {
       const rk = Math.min(1, sinceSwap / 0.7);
       this.ring!.scale.setScalar(0.3 + rk * 1.7);
       this.ring!.material.opacity = (1 - rk) * 0.9;
+      // The glitch tear: the name's split closes, and its plane shudders
+      // sideways a few millimetres while it does.
+      const tk = Math.min(1, sinceSwap / TEAR);
+      this.drawLabel(tk < 1 ? Math.max(2, Math.round(TEAR_SPLIT * (1 - tk) ** 2)) : undefined);
+      this.label!.position.x = tk < 1 ? (Math.random() - 0.5) * 0.012 * (1 - tk) : 0;
       // A steady fountain of fire off the emblem for the whole hold.
       this.emberTimer -= delta;
       if (this.emberTimer <= 0) {
         this.emberTimer = 0.06;
-        spawnEmber(_badgePos, 0.85, false);
+        spawnEmber(_badgePos, 0.85, COOL);
       }
     } else if (this.t < TOTAL) {
       // Fade: everything lifts and dissolves.
@@ -258,6 +289,7 @@ export class PromotionSystem extends createSystem({}) {
 
   private finish(): void {
     this.animating = false;
+    if (this.label) this.label.position.x = 0;
     setEmberDrawOrder(0); // fire goes back into the world's own sort
     if (this.group) this.group.visible = false;
     if (this.forced) this.forced = false;
@@ -288,7 +320,7 @@ export class PromotionSystem extends createSystem({}) {
     backing.renderOrder = BAND;
     group.add(backing);
 
-    // Sunburst rays wheeling behind the emblem.
+    // The wheel of light behind the emblem.
     const rays = new Sprite(
       new SpriteMaterial({
         map: this.sunburstTexture(),
@@ -304,7 +336,7 @@ export class PromotionSystem extends createSystem({}) {
     rays.renderOrder = BAND + 1;
     group.add(rays);
 
-    const glow = glowSprite(EMBER, 0.95, 0);
+    const glow = glowSprite(PROMO_ACCENT, 0.95, 0);
     glow.renderOrder = BAND + 2;
     group.add(glow);
 
@@ -318,7 +350,7 @@ export class PromotionSystem extends createSystem({}) {
     group.add(badge);
 
     // Swap flash + expanding shockwave ring, in front, additive.
-    const flash = glowSprite(0xfff3cf, 1.4, 0);
+    const flash = glowSprite(PROMO_FLASH, 1.4, 0);
     flash.position.z = 0.012;
     flash.renderOrder = BAND + 4;
     group.add(flash);
@@ -338,8 +370,8 @@ export class PromotionSystem extends createSystem({}) {
     group.add(ring);
 
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 160;
+    canvas.width = LABEL_W;
+    canvas.height = LABEL_H;
     const labelTex = new CanvasTexture(canvas);
     labelTex.minFilter = LinearFilter;
     const label = new Mesh(
@@ -362,108 +394,39 @@ export class PromotionSystem extends createSystem({}) {
     this.labelTex = labelTex;
   }
 
-  /** The smoked-steel backing plate, in the arena's own kit — chamfered,
-   *  amber-edged, near-opaque so the passthrough room stops showing through
-   *  the celebration. */
+  /** The backing plate: the kit's holo glass, filled near-opaque. */
   private plateTexture(): Texture {
-    const w = 512;
-    const h = 564;
+    return this.canvasTexture(PLATE_W, PLATE_H, (g) => paintPromoPlate(g));
+  }
+
+  /** The wheel of light spokes behind the emblem, additive. */
+  private sunburstTexture(): Texture {
+    return this.canvasTexture(256, 256, (g) => paintPromoRays(g, 256));
+  }
+
+  /** The swap's shockwave annulus, additive. */
+  private ringTexture(): Texture {
+    return this.canvasTexture(128, 128, (g) => paintPromoRing(g, 128));
+  }
+
+  private canvasTexture(w: number, h: number, paint: (g: CanvasRenderingContext2D) => void): Texture {
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    // Inset by the edge glow's blur so the lit tubing isn't cropped.
-    const pad = 16;
-    plate(ctx, pad, pad, w - pad * 2, h - pad * 2, {
-      cut: 34,
-      fill: 'rgba(5,6,9,0.96)',
-      stroke: UI.amberSoft,
-    });
+    paint(canvas.getContext('2d')!);
     const tex = new CanvasTexture(canvas);
     tex.minFilter = LinearFilter;
     return tex;
   }
 
-  /** A radiating sunburst of light spokes (amber → transparent), additive. */
-  private sunburstTexture(): Texture {
-    const size = 256;
-    const c = size / 2;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    const rays = 14;
-    for (let i = 0; i < rays; i++) {
-      ctx.save();
-      ctx.translate(c, c);
-      ctx.rotate((i / rays) * Math.PI * 2);
-      const grad = ctx.createLinearGradient(0, 0, 0, -c);
-      grad.addColorStop(0, 'rgba(255,243,207,0.9)');
-      grad.addColorStop(0.55, 'rgba(255,176,0,0.32)');
-      grad.addColorStop(1, 'rgba(255,176,0,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.moveTo(-7, 0);
-      ctx.lineTo(7, 0);
-      ctx.lineTo(0, -c);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-    const tex = new CanvasTexture(canvas);
-    tex.minFilter = LinearFilter;
-    return tex;
-  }
-
-  /** A glowing annulus for the swap shockwave, additive. */
-  private ringTexture(): Texture {
-    const size = 128;
-    const c = size / 2;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    const g = ctx.createRadialGradient(c, c, 0, c, c, c);
-    g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(0.62, 'rgba(255,255,255,0)');
-    g.addColorStop(0.8, 'rgba(255,243,207,0.95)');
-    g.addColorStop(0.92, 'rgba(255,176,0,0.4)');
-    g.addColorStop(1, 'rgba(255,176,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-    const tex = new CanvasTexture(canvas);
-    tex.minFilter = LinearFilter;
-    return tex;
-  }
-
-  private drawLabel(tierName: string): void {
+  /** Repaint the words, only when the split actually changes (each repaint
+   *  is a texture upload). `split` undefined = the kit's resting split. */
+  private drawLabel(split?: number): void {
+    const key = split ?? -2;
+    if (key === this.labelSplit) return;
+    this.labelSplit = key;
     const canvas = this.labelTex!.image as HTMLCanvasElement;
-    const w = canvas.width;
-    const h = canvas.height;
-    const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, w, h);
-    // No backing plate — the words float free over the flare, kept legible by a
-    // heavy dark outline + a soft dark glow behind each glyph.
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(4,5,8,0.9)';
-    ctx.shadowBlur = 14;
-
-    ctx.font = stencilFont(44);
-    ctx.lineWidth = 9;
-    ctx.strokeStyle = 'rgba(4,5,8,0.95)';
-    ctx.strokeText('PROMOTED', w / 2, 48);
-    ctx.fillStyle = UI.amber;
-    ctx.fillText('PROMOTED', w / 2, 48);
-
-    // Fit the tier name to width so a long one (LEGENDARY) never overflows.
-    const px = fitStencilText(ctx, tierName, w - 72, 60, 28);
-    ctx.font = stencilFont(px);
-    ctx.lineWidth = 10;
-    ctx.strokeStyle = 'rgba(4,5,8,0.95)';
-    ctx.strokeText(tierName, w / 2, 114);
-    ctx.fillStyle = UI.emberBright;
-    ctx.fillText(tierName, w / 2, 114);
-    ctx.shadowBlur = 0;
+    paintPromoLabel(canvas.getContext('2d')!, this.labelTier, split);
     this.labelTex!.needsUpdate = true;
   }
 
