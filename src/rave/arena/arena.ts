@@ -114,13 +114,12 @@ function buildPlatform(seat: number, name: string, isMine: boolean): PlatformHan
   const hue = danceHue(seat, isMine);
   const accent = hueToColor(hue, 0.6);
 
-  // The slab: near-black glass so the neon owns it — with a whisper of the
-  // seat's accent in the emissive so the deck never reads as a flat hole.
+  // The slab: near-black glass with NO seat tint — the rim alone carries the
+  // seat's colour, so the deck reads as a dark stage the neon outlines.
   const slabMat = new MeshStandardMaterial({
-    color: 0x101318,
+    color: 0x07080b,
     metalness: 0.85,
     roughness: 0.3,
-    emissive: new Color(accent).multiplyScalar(0.045),
   });
   const slab = new Mesh(octagonSlab(OCTAGON_VERTICES, PLATFORM.thickness), slabMat);
   slab.position.y = -PLATFORM.thickness;
@@ -186,7 +185,7 @@ function buildPlatform(seat: number, name: string, isMine: boolean): PlatformHan
     pedestal.name = `pedestal-${seat}`;
     const column = new Mesh(
       octagonSlab(OCTAGON_VERTICES, 1),
-      new MeshStandardMaterial({ color: 0x14181f, metalness: 0.85, roughness: 0.4 }),
+      new MeshStandardMaterial({ color: 0x0a0b0f, metalness: 0.85, roughness: 0.4 }),
     );
     column.scale.set(0.88, 1, 0.88);
     pedestal.add(column);
