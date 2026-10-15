@@ -14,7 +14,7 @@
  *      (never the same move twice), THE FLOOR MANAGER's evict test, and
  *      the judge (gaps safe, rims deadly, corners must be committed).
  *
- *   2. THE BOUT (live, via __ff2.titan): launch RUSTHOOK — the scrapyard
+ *   2. THE BOUT (live, via __ff2.titan): launch CHROMEHOOK — the scrapyard
  *      titan that learned the gate — and FORCE each grammar move through
  *      the real buildAttack path, asserting the zones that land, the
  *      GESTURE the body makes mid-read (each shape a different silhouette,
@@ -54,7 +54,7 @@ const check = (name, ok, detail) => {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
-// Tutorial done — stage I (RUSTHOOK) is open from a fresh save.
+// Tutorial done — stage I (CHROMEHOOK) is open from a fresh save.
 await page.addInitScript(() => {
   localStorage.setItem('ff-tutorial-done', '1');
 });
@@ -183,7 +183,7 @@ const g = await page.evaluate(() => {
 });
 check('the grammar obeys its laws', g.fails.length === 0, g.fails.slice(0, 4).join(' | '));
 
-console.log('\n=== the bout: RUSTHOOK, forced through the vocabulary ===');
+console.log('\n=== the bout: CHROMEHOOK, forced through the vocabulary ===');
 const act = (id) => page.evaluate((a) => window.__ff2.wrap.act(a), id);
 await act('campaign-0');
 // The titan hook installs at bout start (the wrap owns __ff2 in the lobby).
@@ -192,7 +192,7 @@ const fighting = await page
   .then(() => true, () => false);
 const bossName = await page.evaluate(() => window.__ff2.titan.boss());
 check('stage I launches into a fight', fighting, `phase wait; boss=${bossName}`);
-check('RUSTHOOK takes the pit, grammar learned', bossName === 'RUSTHOOK', bossName);
+check('CHROMEHOOK takes the pit, grammar learned', bossName === 'CHROMEHOOK', bossName);
 const learned = await page.evaluate(() => window.__ff2.titan.moves());
 // The titan's clock is frozen and STEPPED at a fixed 60 Hz from here on: a
 // GPU-less runner renders a frame every few seconds, and a wall-clock wait
@@ -237,7 +237,7 @@ for (const [kind, wants] of Object.entries(EXPECT)) {
   const ok = forced && zones.length > 0 && wants.some((w) => zones.includes(w));
   check(`${kind}: builds and marks the deck`, ok, zones.join(','));
   // Mid-read: the telegraph is lit and the arms are up. Sampled short of
-  // the shortest charge (RUSTHOOK reads in ~1.4 s) but past the first third
+  // the shortest charge (CHROMEHOOK reads in ~1.4 s) but past the first third
   // of the read — at 0.7 s the donut's opening point had only lifted 0.33
   // rad, under the 0.35 bar, on a stepped clock that no longer gets the
   // extra slack a slow real frame used to add.

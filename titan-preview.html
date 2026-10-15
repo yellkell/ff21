@@ -1,8 +1,11 @@
 <!doctype html>
 <!-- DEV-ONLY harness: renders the arcade titans for screenshots.
      Not part of the game; never ship or link this page.
-     ?t=0..4 one titan (RUSTHOOK … GOLIATH), default the whole line-up.
-     ?yaw=radians turns them; ?close=1 frames the head and chest. -->
+     ?t=0..4 one titan (CHROMEHOOK … GOLIATH), default the whole line-up.
+     ?yaw=radians turns them; ?close=1 frames the head and chest.
+     ?pose=rx,rz,elbow,wrist,curl[,…second arm] holds the arms in a measured
+     fight pose; ?raw=1 shows it as the joints say (no reach solve), so a
+     kit titan's elbows can be compared against the solved arms. -->
 <html>
   <body style="margin:0; background:#0d0c12">
     <script type="module">
@@ -19,11 +22,15 @@
       } from 'three';
       import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
       import { BOSSES, buildTitan } from '/src/campaign/bosses.ts';
+      import { preloadTitans } from '/src/campaign/titanKit.ts';
+      // ?boxes=1 shows the procedural stand-ins instead of the Blender kits.
+      if (new URLSearchParams(location.search).get('boxes') !== '1') await preloadTitans();
 
       const params = new URLSearchParams(location.search);
       const pick = params.get('t');
       const yaw = Number(params.get('yaw') ?? 0);
       const close = params.get('close') === '1';
+      const poseArg = params.get('pose')?.split(',').map(Number);
       const list = pick === null ? BOSSES.map((_, i) => i) : [Number(pick)];
 
       const scene = new Scene();
@@ -57,6 +64,23 @@
         p.rig.root.rotation.y = yaw;
         x += p.w;
         scene.add(p.rig.root);
+        if (poseArg) {
+          p.rig.arms.forEach((a, i) => {
+            const [rx, rz, el, wr, curl] = poseArg.slice(i * 5, i * 5 + 5);
+            a.pivot.rotation.set(rx, 0, rz);
+            a.elbow.rotation.x = el;
+            a.wrist.rotation.x = wr;
+            for (const d of a.digits) d.node.rotation.x = d.open + (d.closed - d.open) * curl;
+          });
+        }
+        if (params.get('raw') === '1') {
+          // The joints exactly as posed: the visible arms copy them.
+          p.rig.root.updateMatrixWorld(true);
+          p.rig.root.traverse((o) => {
+            const shown = p.rig.root.getObjectByName(`${o.name}_shown`);
+            if (shown) shown.quaternion.copy(o.quaternion);
+          });
+        } else p.rig.solve?.();
       }
       const camera = new PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.05, 100);
       if (close && placed.length === 1) {

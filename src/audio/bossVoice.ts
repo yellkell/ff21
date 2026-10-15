@@ -1,7 +1,7 @@
 /**
  * Boss entrance voice lines — the same "prefers a real file but never
  * depends on one" law as the pub signs. Each boss looks for its line at
- * `voice/<name>.m4a` (lowercased boss name, e.g. voice/rusthook.m4a in
+ * `voice/<name>.m4a` (lowercased boss name, e.g. voice/chromehook.m4a in
  * public/voice/); drop the audio in and redeploy — no code change, the
  * titan just starts talking. While a boss has no file, the intro keeps its
  * roar, so a missing line is never a silent name card.

@@ -290,7 +290,7 @@ a correct dodge is never punished by where it parks you), windups sacred
 **No second line-up.** (Decision revised in build: a fresh bill of bosses
 wearing borrowed chassis was scraps-and-new-names — not worth a campaign.)
 Instead the campaign ITERATES: **the five titans learned to dance.** Each
-keeps its soul and gains the grammar subset that extends it — RUSTHOOK the
+keeps its soul and gains the grammar subset that extends it — CHROMEHOOK the
 scrapyard **gate** (+ slotted lanes), PISTONKAISER the **wave** (its
 drumline, marched deck-wide) + the surge, VULTURE the **crossfire** (rails,
 THE TRAP, the lattice) and **THE X**, JUGGERNAUT closing walls (**row
@@ -582,7 +582,7 @@ FLATS** are every match and Aim Training — open ground: the skull (now
 glinting) and two dead trees throwing the longest shadows in the game.
 **THE BONEYARD** is every campaign fight and every raid — where titans
 are broken: a ring of standing bevelled wreck-plates around the pit, oil
-drums burning (two lit — the light budget), RUSTHOOK's own hook buried
+drums burning (two lit — the light budget), CHROMEHOOK's own hook buried
 to the shank — all of it clear of the five-seat arc. No litter anywhere:
 the brief was beautiful, not busy, and the first cut's scrap heaps,
 loose bones and rib cages were pulled the moment they read as debris. Only one site is

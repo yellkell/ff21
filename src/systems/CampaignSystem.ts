@@ -41,6 +41,8 @@ import {
   NormalBlending,
   Object3D,
   PointLight,
+  type Sprite,
+  type SpriteMaterial,
 } from 'three';
 import { BOSSES, GOOPLIATH_DEF, buildTitan, goopliathBoss, raidBoss, runLineup, type AttackKind, type BossDef, type RunStage, type TitanRig } from '../campaign/bosses.js';
 import {
@@ -73,6 +75,10 @@ import {
   type GestureShape,
 } from '../campaign/gestures.js';
 import { RecitalBlockfall } from '../campaign/blockfall.js';
+import { titanTrident } from '../campaign/titanKit.js';
+import { MELEE, pickMelee, segmentDistance, strikePoint, windupOffset, type MeleeMove, type MeleePath } from '../campaign/melee.js';
+import { CyberTrident } from '../rave/arena/trident.js';
+import { TRIDENT } from '../rave/config.js';
 import type { Zone } from '../campaign/zones.js';
 import { Bolt, impactOf, lungeEnvelope, throwingArm } from '../campaign/delivery.js';
 import { playBossVoice, preloadBossVoice } from '../audio/bossVoice.js';
@@ -96,6 +102,7 @@ import {
   halfTelegraph,
   laneTelegraph,
   novaTelegraph,
+  pairTelegraph,
   quarterTelegraph,
   railTelegraph,
   recitalMarksTelegraph,
@@ -244,6 +251,15 @@ interface Strike {
   dispose(): void;
 }
 
+/** The earned decks' BRAND on the boards (BLAZING's flame tongue,
+ *  TIDEBREAKER's gel drop) — separate from their rail/crown/pool furniture. */
+const DECK_BRAND = new Set(['blazing-emblem', 'blazing-emblem-core', 'tide-emblem']);
+function showDeckBrand(pad: Object3D, on: boolean): void {
+  pad.traverse((o) => {
+    if (DECK_BRAND.has(o.userData?.fxRole as string)) o.visible = on;
+  });
+}
+
 const _v = new Vector3();
 const _p = new Vector3();
 const _head = new Vector3();
@@ -325,6 +341,43 @@ export class CampaignSystem extends createSystem({
    *  fighter who played it right. Reset to centre each stage. */
   private park: Park = { x: 0, z: 0 };
   private strikes: Strike[] = [];
+  /** THE TRIDENT (VULTURE, GOLIATH): the weapon in the titan's fist while
+   *  the move runs — conjured over the charge, flashing on every blow,
+   *  dissolving after the last. Built once per bout, on first use. */
+  /** THE REACH in flight (campaign/melee.ts), solo only — it owns the
+   *  turn the way an attack does. */
+  private melee: {
+    move: MeleeMove;
+    arms: (0 | 1)[];
+    stage: 'windup' | 'strike' | 'recover';
+    t: number;
+    windup: number;
+    blow: number;
+    home: Vector3[];
+    from: Vector3[];
+    at: Vector3[];
+    was: Vector3[];
+    to: Vector3;
+    lunge: number;
+    blocked: boolean;
+  } | null = null;
+  private meleeLast: MeleePath | null = null;
+  private meleeStreak = false;
+  /** The reach's lunge: eased toward its target, added to the root along
+   *  the facing after everything else has placed it (meleeOff.x comes back
+   *  off at the top of the next frame, like the delivery's lungeOff). */
+  private meleeLunge = 0;
+  private meleeLungeTarget = 0;
+  private meleeLungeRate = 3;
+  private meleeOff = new Vector3();
+  private meleeGlow: Sprite | null = null;
+  private trident: CyberTrident | null = null;
+  private tridentReveal = 0;
+  private tridentFlash = 0;
+  private tridentAim = new Vector3(0, -1, 0);
+  /** Attacks begun this fight: the long floods (seesaw, surge) wait for
+   *  the opening exchanges to pass before they're dealt. */
+  private attacksThisFight = 0;
   private shots: VolleyShot[] = [];
   /**
    * The weak-point pattern (BossDef.weakPattern) drives which point(s) BLINK
@@ -424,7 +477,7 @@ export class CampaignSystem extends createSystem({
         phase: (): string => this.phase,
         boss: (): string => this.def.name,
         moves: (): string[] => Object.keys(this.def.grammar ?? {}),
-        kind: (): string | null => this.attack?.kind ?? null,
+        kind: (): string | null => (this.melee ? `strike:${this.melee.move.path}` : this.attack?.kind ?? null),
         zones: (): string[] => this.attack?.zones.map((z) => z.kind) ?? [],
         /** The live gesture: shape + read fill, and each arm's pivot delta
          *  from rest [pitch, yaw] — the probe's silhouette check. */
@@ -445,6 +498,13 @@ export class CampaignSystem extends createSystem({
         },
         force: (kind: string, seed?: number): boolean => {
           if (this.phase !== 'fight') return false;
+          if (kind === 'strike' || kind.startsWith('strike:')) {
+            // 'strike' rolls a reach; 'strike:<path>' forces that one.
+            if (!this.meleeAllowed()) return false;
+            this.disposeAttack();
+            this.startMelee(kind.split(':')[1] as MeleePath | undefined);
+            return true;
+          }
           if ((['slam', 'sweep', 'beam', 'volley', 'nova', 'seesaw', 'surge'] as string[]).includes(kind)) {
             this.launchClassic(kind as AttackKind);
             return true;
@@ -567,7 +627,10 @@ export class CampaignSystem extends createSystem({
         break;
     }
 
-    if (this.rig) this.animateTitan(delta);
+    if (this.rig) {
+      this.animateTitan(delta);
+      this.updateTrident(delta);
+    }
     else if (this.goop) this.animateGoop(delta);
     this.placeHitboxes();
     this.refreshHud(delta);
@@ -1002,13 +1065,20 @@ export class CampaignSystem extends createSystem({
       if (pad) {
         const deck = this.def.platform;
         applyPlatformSkin(pad, deck ? platformSkin(deck) : OPPONENT_DEFAULT_PLATFORM);
+        // The titan's ground keeps its living furniture (GOLIATH's burning
+        // rail and flame crown, GOOPLIATH's pool and crests) but not the
+        // trophy BRAND laid on the deck — that mark belongs to a player who
+        // earned the pad, not to the boss standing on it.
+        showDeckBrand(pad, false);
         // No signature deck? Fall back to the house tint the pit has always
         // worn. (The skin pass above is still what clears a stale ornament.)
         if (!deck) tintPlatform(pad, this.raid() ? PALETTE.danger : teamColor(1));
         // This pedestal is a titan's ground for the duration — wear the hazard
         // band. (The raid pit already has it; a campaign titan borrows slot 1's
         // ordinary boxer pad, so it has to be switched on and off.)
-        setPlatformHazard(pad, true);
+        // (GOLIATH's fire and GOOPLIATH's tide frame their own ground — no
+        // tape on a signature deck.)
+        setPlatformHazard(pad, !deck);
       }
     }
     this.disposeShots();
@@ -1094,6 +1164,7 @@ export class CampaignSystem extends createSystem({
 
   /** Tear down the live attack: telegraphs AND any ghost hammer markers. */
   private disposeAttack(): void {
+    this.endMelee();
     const a = this.attack;
     if (!a) return;
     a.telegraphs.forEach((t) => t?.dispose());
@@ -1117,6 +1188,12 @@ export class CampaignSystem extends createSystem({
 
   private teardown(): void {
     this.phase = 'idle';
+    this.meleeGlow?.removeFromParent();
+    (this.meleeGlow?.material as SpriteMaterial | undefined)?.dispose();
+    this.meleeGlow = null;
+    this.trident?.dispose();
+    this.trident = null;
+    this.tridentReveal = 0;
     titanView.active = false; // the outcome stays for the tape's final read
     this.disposeAttack();
     this.disposeShots();
@@ -1153,6 +1230,7 @@ export class CampaignSystem extends createSystem({
       const pad = this.scene.getObjectByName(name);
       if (!pad) continue;
       applyPlatformSkin(pad, OPPONENT_DEFAULT_PLATFORM);
+      showDeckBrand(pad, true); // a player's pad again: their brand is theirs
       tintPlatform(pad, name === 'raid-boss-platform' ? PALETTE.danger : teamColor(1));
     }
   }
@@ -1297,7 +1375,7 @@ export class CampaignSystem extends createSystem({
     root.scale.setScalar(1);
     switch (this.def.style) {
       case 'hook': {
-        // RUSTHOOK grinds up CROOKED, in seizing winch-jerks, and only
+        // CHROMEHOOK grinds up CROOKED, in seizing winch-jerks, and only
         // straightens with a lurch at the top — salvage, not ceremony.
         const steps = 5;
         const seg = Math.floor(k * steps);
@@ -1366,6 +1444,7 @@ export class CampaignSystem extends createSystem({
   private startFight(finale = false): void {
     this.phase = 'fight';
     this.t = 0;
+    this.attacksThisFight = 0;
     // Snap to the rest pose — a trigger-skip can land mid-swoop/mid-stroke.
     if (this.rig) {
       const root = this.rig.root;
@@ -1492,7 +1571,9 @@ export class CampaignSystem extends createSystem({
     // Attack scheduling is the authority's; everyone advances the live copy.
     // A REELING boss (EASY stun) holds its fire — the cooldown clock only
     // ticks once it shakes the stagger off.
-    if (!this.attack) {
+    if (this.melee) {
+      this.tickMelee(delta);
+    } else if (!this.attack) {
       if (this.isAuthority() && this.stunTimer <= 0) {
         if (!this.probeHold) {
           this.cooldown -= delta;
@@ -1865,6 +1946,13 @@ export class CampaignSystem extends createSystem({
    * live copy locally. Guests build theirs from the ratk message.
    */
   private startAttack(): void {
+    this.attacksThisFight++;
+    if (this.meleeAllowed() && this.attacksThisFight > 1 && !this.meleeStreak && Math.random() < CAMPAIGN.meleeChance) {
+      this.meleeStreak = true;
+      this.startMelee();
+      return;
+    }
+    this.meleeStreak = false;
     // The DECREE: GOLIATH's raid-only group attack, once he's angry (either
     // life). Rolls ahead of the normal pool — everyone gets marked at once.
     if (
@@ -1978,7 +2066,13 @@ export class CampaignSystem extends createSystem({
     const classicKinds: AttackKind[] = ['slam', 'sweep', 'beam', 'volley', 'nova', 'seesaw', 'surge'];
     const act = this.grammarAct();
     const entries: Array<[AttackKind | GrammarKind, number]> = [];
-    for (const k of classicKinds) if (def.weights[k] > 0) entries.push([k, def.weights[k]]);
+    for (const k of classicKinds) {
+      if (def.weights[k] <= 0) continue;
+      // The long floods never OPEN a fight: the first exchanges are short
+      // reads, and the seesaw/surge only join from the third attack on.
+      if ((k === 'seesaw' || k === 'surge') && this.attacksThisFight <= CAMPAIGN.floodOpeningAttacks) continue;
+      entries.push([k, def.weights[k]]);
+    }
     for (const k of GRAMMAR_KINDS) {
       const w = def.grammar?.[k] ?? 0;
       if (w > 0 && act >= GRAMMAR_ACT_MIN[k]) entries.push([k, w]);
@@ -2144,7 +2238,15 @@ export class CampaignSystem extends createSystem({
           staggers.push(l.delay);
           // The recital's reads open one step ahead (the conductor's fill
           // runs per step; a swept recital's blade shows a step early).
-          windows.push(gk === 'recital' ? GRAMMAR.recitalStepBeats * (this.def.beat ?? 0.5) : chargeTime);
+          // The recital's reads open one step ahead; so do the trident's —
+          // each blow's quarters light only as the blow before it lands.
+          windows.push(
+            gk === 'recital'
+              ? GRAMMAR.recitalStepBeats * (this.def.beat ?? 0.5)
+              : gk === 'trident'
+                ? GRAMMAR.tridentStepBeats * (this.def.beat ?? 0.5)
+                : chargeTime,
+          );
           markers.push(null);
           let tg: Telegraph | null = null;
           if (gz.kind === 'lane' && gz.yaw) {
@@ -2172,6 +2274,10 @@ export class CampaignSystem extends createSystem({
             tg.group.rotation.y = yawD;
           } else if (gz.kind === 'ring') {
             tg = donutTelegraph(GRAMMAR.donutRadius, gz.innerR);
+            tg.group.position.set(deckX, deckY, deckZ);
+            tg.group.rotation.y = yawD;
+          } else if (gz.kind === 'pair') {
+            tg = pairTelegraph(gz.hit, OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
             tg.group.position.set(deckX, deckY, deckZ);
             tg.group.rotation.y = yawD;
           } else if (gz.kind === 'sweep') {
@@ -2206,6 +2312,15 @@ export class CampaignSystem extends createSystem({
         // THE RECITAL's furniture: the chalk quarter lines for the whole
         // move and THE LESSON's marks, lit one step at a time with the
         // notes and dark for the recital itself.
+        // THE TRIDENT keeps the floor dark but for the chalk quarter lines:
+        // the read is the weapon's colour and where it is cocked.
+        if (gk === 'trident') {
+          const quarters = quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
+          quarters.group.position.set(deckX, deckY, deckZ);
+          quarters.group.rotation.y = yawD;
+          this.scene.add(quarters.group);
+          dressing.push(quarters);
+        }
         const firstQuad = landings.find((l) => l.zone.kind === 'quad')?.zone;
         if (firstQuad?.kind === 'quad' && lesson) {
           const quarters = quarterTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH);
@@ -2860,6 +2975,11 @@ export class CampaignSystem extends createSystem({
       this.spawnRingStrike(zone, seat);
     } else if (zone.kind === 'quad') {
       sfx.slamImpact(); // the block crush (advanceAttack) carries the visual
+    } else if (zone.kind === 'pair') {
+      sfx.slamImpact();
+      sfx.beamBlast();
+      this.spawnPairStrike(zone.hit, zone.form, seat);
+      this.tridentFlash = 1;
     } else if (zone.kind === 'sweep' && (GRAMMAR_KINDS as readonly string[]).includes(kind)) {
       // The duckdonut's blade / the swept recital — the classic cut.
       sfx.sweepWhoosh();
@@ -2986,7 +3106,7 @@ export class CampaignSystem extends createSystem({
     // THE RECITAL judges the HEAD's commitment, like the nova — the body
     // spheres trail the head by design, and a corner you clearly reached
     // must never clip you on a trailing hip.
-    if (zone.kind === 'quad') {
+    if (zone.kind === 'quad' || zone.kind === 'pair') {
       this.playerHead(_p);
       return grammarZoneHit(zone, _p.x, _p.z, 0);
     }
@@ -3041,6 +3161,7 @@ export class CampaignSystem extends createSystem({
       case 'gate':
       case 'ring':
       case 'quad':
+      case 'pair':
         return grammarZoneHit(zone, x, z, 0);
       default:
         return true;
@@ -3484,6 +3605,344 @@ export class CampaignSystem extends createSystem({
     });
   }
 
+  /** THE REACH is a solo law: one fist, one head, a titan on its own pad. */
+  private meleeAllowed(): boolean {
+    return !this.raid() && !this.goopStage && !!this.rig?.reach && !!this.rig.fistWorld && this.def.style !== 'goop';
+  }
+
+  /** Begin a reach (campaign/melee.ts): its windup starts from wherever
+   *  the fists are now. `path` forces a move (the dev probe). */
+  private startMelee(path?: MeleePath): void {
+    const rig = this.rig;
+    if (!rig?.reach || !rig.fistWorld || this.def.style === 'goop') return;
+    const moves = MELEE[this.def.style];
+    const move = (path && moves.find((m) => m.path === path)) || pickMelee(moves, this.meleeLast);
+    this.meleeLast = move.path;
+    const arms: (0 | 1)[] = move.arm === 'both' ? [0, 1] : [move.arm];
+    const m = {
+      move,
+      arms,
+      stage: 'windup' as const,
+      t: 0,
+      windup: move.windup * this.diff.charge,
+      blow: 0,
+      home: [new Vector3(), new Vector3()],
+      from: [new Vector3(), new Vector3()],
+      at: [new Vector3(), new Vector3()],
+      was: [new Vector3(), new Vector3()],
+      to: new Vector3(),
+      lunge: 0,
+      blocked: false,
+    };
+    for (const i of arms) rig.fistWorld(i, m.home[i]);
+    this.melee = m;
+    sfx.chargeWhine(m.windup);
+    if (!this.meleeGlow) {
+      this.meleeGlow = glowSprite(this.def.accent, 0.4 * this.def.scale, 0);
+      this.scene.add(this.meleeGlow);
+    }
+  }
+
+  /** Stop any reach where it stands; the arms ease back to the pose. */
+  private endMelee(): void {
+    if (!this.melee && !this.meleeLungeTarget) return;
+    this.melee = null;
+    this.meleeLungeTarget = 0;
+    this.meleeLungeRate = 3;
+    if (this.rig?.reach) for (const r of this.rig.reach) r.w = 0;
+    if (this.meleeGlow) (this.meleeGlow.material as SpriteMaterial).opacity = 0;
+  }
+
+  /** The windup point for arm `i`: drawn back off its shoulder (world). */
+  private meleeCocked(i: 0 | 1, path: MeleePath, out: Vector3): Vector3 {
+    const rig = this.rig!;
+    windupOffset(path, i === 0 ? -1 : 1, out).multiplyScalar(this.def.scale).add(rig.arms[i].pivot.position);
+    return rig.root.localToWorld(out);
+  }
+
+  private tickMelee(delta: number): void {
+    const m = this.melee;
+    const rig = this.rig;
+    if (!m || !rig?.reach || !rig.fistWorld) {
+      this.endMelee();
+      return;
+    }
+    m.t += delta;
+    const s = this.def.scale;
+    const path = m.move.path;
+    const glow = this.meleeGlow;
+    const glowMat = glow?.material as SpriteMaterial | undefined;
+    const smooth = (u: number): number => {
+      const k = Math.min(1, Math.max(0, u));
+      return k * k * (3 - 2 * k);
+    };
+
+    if (m.stage === 'windup') {
+      // THE TELL: the fist eases from where it was into the cocked point
+      // (there by 70 % of the windup, then held), swelling with light, and
+      // the body leans a quarter of the way into the coming lunge.
+      const u = smooth(m.t / (m.windup * 0.7));
+      for (const i of m.arms) {
+        this.meleeCocked(i, path, _v);
+        m.at[i].copy(m.home[i]).lerp(_v, u);
+        rig.reach[i].at.copy(m.at[i]);
+        rig.reach[i].w = Math.min(1, rig.reach[i].w + delta * 6);
+      }
+      this.playerHead(_head);
+      this.meleeLungeTarget = 0.25 * this.planLunge(m.arms, _head);
+      this.meleeLungeRate = 3;
+      if (glow && glowMat) {
+        glow.position.copy(m.at[m.arms[0]]);
+        glowMat.opacity = 0.15 + 0.75 * Math.min(1, m.t / m.windup);
+        glow.scale.setScalar((0.3 + 0.5 * Math.min(1, m.t / m.windup)) * s);
+      }
+      if (m.t >= m.windup) {
+        // THE SNAPSHOT: from here the blow goes where your head WAS.
+        this.playerHead(m.to);
+        m.lunge = this.planLunge(m.arms, m.to);
+        for (const i of m.arms) {
+          m.from[i].copy(m.at[i]);
+          m.was[i].copy(m.at[i]);
+        }
+        m.stage = 'strike';
+        m.t = 0;
+        this.meleeLungeTarget = m.lunge;
+        this.meleeLungeRate = 10;
+        sfx.kickWhoosh();
+      }
+      return;
+    }
+
+    if (m.stage === 'strike') {
+      const u = m.t / (m.move.strike * this.diff.charge);
+      const fistR = CAMPAIGN.meleeFistRadius * s;
+      for (const i of m.arms) {
+        // Outward is the arm's own side, in the world.
+        _p.set(i === 0 ? -1 : 1, 0, 0).applyQuaternion(rig.root.quaternion);
+        m.was[i].copy(m.at[i]);
+        strikePoint(path, m.from[i], m.to, _p, u, m.at[i]);
+        // Honest reach: the fist goes no further than the arm can carry it
+        // from where the shoulder is now — and that is what gets judged.
+        const arm = rig.arms[i];
+        const reachLen =
+          arm.elbow.position.length() + arm.wrist.position.length() + arm.fist.position.length() + 0.06 * s;
+        arm.pivot.getWorldPosition(_v);
+        if (m.at[i].distanceTo(_v) > reachLen) m.at[i].sub(_v).setLength(reachLen).add(_v);
+        rig.reach[i].at.copy(m.at[i]);
+        rig.reach[i].w = 1;
+      }
+      if (glow && glowMat) {
+        glow.position.copy(m.at[m.arms[0]]);
+        glowMat.opacity = 0.9;
+      }
+      // The judge: the fists' sweep this frame against your hands first
+      // (a hand in the way blocks), then your head.
+      for (const i of m.arms) {
+        for (const hand of ['left', 'right'] as const) {
+          const grip = this.world.playerSpaceEntities.gripSpaces[hand]?.object3D;
+          if (!grip) continue;
+          grip.getWorldPosition(_p);
+          const guard = this.handArmed(hand === 'left' ? 0 : 1) ? CAMPAIGN.meleeBlockRadius : CAMPAIGN.meleeBareBlockRadius;
+          if (segmentDistance(m.was[i], m.at[i], _p) <= fistR + guard) {
+            this.meleeBlocked(m, _p, hand);
+            return;
+          }
+        }
+        this.playerHead(_head);
+        if (segmentDistance(m.was[i], m.at[i], _head) <= fistR + CAMPAIGN.meleeHeadRadius) {
+          // The blast blooms a little way back along the blow, not in your eyes.
+          _v.copy(m.was[i]).sub(m.at[i]).setLength(0.35).add(_head);
+          spawnFireImpact(this.world, _v, 1.2, 1);
+          emberBurst(_v, 24, true);
+          if (this.invuln <= 0) {
+            this.invuln = 0.7;
+            this.damagePlayer(CAMPAIGN.attackDamage);
+          }
+          this.meleeRecover(m);
+          return;
+        }
+      }
+      if (u >= 1) this.meleeRecover(m); // a whiff: it overcommitted into air
+      return;
+    }
+
+    // RECOVER: the fist comes home to the pose and the titan steps back.
+    const u = Math.min(1, m.t / m.move.recover);
+    for (const i of m.arms) rig.reach[i].w = 1 - smooth(u);
+    if (glowMat) glowMat.opacity = 0.9 * (1 - u);
+    if (u < 1) return;
+    const chain = m.move.combo ?? 1;
+    if (!m.blocked && m.blow + 1 < chain) {
+      // THE PISTON: the other arm, wound up on the beat, at wherever you
+      // are by then.
+      m.blow++;
+      const next: 0 | 1 = m.arms[0] === 0 ? 1 : 0;
+      m.arms = [next];
+      rig.fistWorld(next, m.home[next]);
+      m.stage = 'windup';
+      m.t = 0;
+      m.windup = (m.move.beat ?? 0.5) * this.diff.charge;
+      sfx.chargeWhine(m.windup);
+      return;
+    }
+    this.endMelee();
+    this.cooldown = this.attackCooldown() + (m.blocked ? CAMPAIGN.meleeStagger : 0);
+  }
+
+  /** How far the whole titan steps in so every swinging fist reaches `to`. */
+  private planLunge(arms: readonly (0 | 1)[], to: Vector3): number {
+    const rig = this.rig!;
+    let lunge = 0;
+    for (const i of arms) {
+      const a = rig.arms[i];
+      const reach = a.elbow.position.length() + a.wrist.position.length() + a.fist.position.length() + 0.06 * this.def.scale;
+      a.pivot.getWorldPosition(_v);
+      // The lunge carries the shoulder along the facing; the head is near
+      // enough dead ahead that the straight-line shortfall is the step.
+      _v.sub(this.meleeOff);
+      lunge = Math.max(lunge, _v.distanceTo(to) - reach * 0.9 + 0.1);
+    }
+    const room = Math.max(0, -this.bossZ() - CAMPAIGN.meleeStandOff - CAMPAIGN.meleeStandOffPerScale * this.def.scale);
+    return Math.min(CAMPAIGN.meleeLungeMax, room, Math.max(0, lunge));
+  }
+
+  private meleeRecover(m: NonNullable<CampaignSystem['melee']>): void {
+    m.stage = 'recover';
+    m.t = 0;
+    this.meleeLungeTarget = 0;
+    this.meleeLungeRate = 2.4;
+  }
+
+  /** A hand in the fist's path: the blow stops dead, the titan reels. */
+  private meleeBlocked(m: NonNullable<CampaignSystem['melee']>, at: Vector3, hand: 'left' | 'right'): void {
+    m.blocked = true;
+    spawnFireImpact(this.world, at, 1, 0.9);
+    emberBurst(at, 28, true);
+    sfx.deflect();
+    sfx.armorClank();
+    pulseHand(this.world.session, hand, 0.9, 120);
+    this.flinch = 0.35;
+    this.meleeRecover(m);
+  }
+
+  /**
+   * A TRIDENT blow lands: each doomed quarter erupts in a sheet of the
+   * weapon's colour that settles into the deck (RAVE RAID's bolt-and-burn,
+   * told in the campaign's slab language).
+   */
+  private spawnPairStrike(hit: number, form: number, seat: number): void {
+    this.seatPoint(seat, 0, 0, 0, _v);
+    const cx = _v.x;
+    const cz = _v.z;
+    const yd = this.seatYawDelta(seat);
+    const cos = Math.cos(yd);
+    const sin = Math.sin(yd);
+    const color = TRIDENT.forms[form]?.color ?? this.def.accent;
+    const hw = OCTAGON_HALF_WIDTH + 0.12;
+    const hd = OCTAGON_HALF_DEPTH + 0.12;
+    const slabs: Mesh[] = [];
+    for (let c = 0; c < 4; c++) {
+      if (!((hit >> c) & 1)) continue;
+      const lx = ((c & 1 ? 1 : -1) * hw) / 2;
+      const lz = ((c & 2 ? 1 : -1) * hd) / 2;
+      const slab = new Mesh(
+        new BoxGeometry(hw, 0.5, hd),
+        new MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: AdditiveBlending, depthWrite: false }),
+      );
+      slab.rotation.y = yd;
+      slab.position.set(cx + lx * cos + lz * sin, 0.26, cz - lx * sin + lz * cos);
+      this.scene.add(slab);
+      slabs.push(slab);
+      _v.set(slab.position.x, 0.1, slab.position.z);
+      emberBurst(_v, 10, true);
+    }
+    this.strikes.push({
+      age: 0,
+      life: 0.45,
+      update(age) {
+        const k = Math.min(1, age / 0.4);
+        for (const s of slabs) {
+          (s.material as MeshBasicMaterial).opacity = 0.6 * (1 - k * k);
+          s.scale.y = 1 - 0.75 * k;
+        }
+      },
+      dispose() {
+        for (const s of slabs) {
+          s.geometry.dispose();
+          (s.material as MeshBasicMaterial).dispose();
+          s.removeFromParent();
+        }
+      },
+    });
+  }
+
+  /**
+   * THE TRIDENT in the titan's fist. It materialises over the charge (the
+   * colour is the read), rides the visible fist, and aims its prongs at
+   * the quarters the NEXT blow takes — so where it's cocked is where it
+   * starts. Every landing flashes it white-hot; after the last blow it
+   * dissolves back into the fist.
+   */
+  private updateTrident(delta: number): void {
+    const a = this.attack;
+    const rig = this.rig;
+    const live = a && a.kind === 'trident' && rig ? a : null;
+    if (live && !this.trident) {
+      this.trident = new CyberTrident(titanTrident() ?? undefined);
+      this.scene.add(this.trident.root);
+    }
+    const t = this.trident;
+    if (!t || !rig) return;
+    // The next blow still to land (its quarters are where the prongs go).
+    let next: Zone | null = null;
+    let nextDue = Infinity;
+    if (live) {
+      for (let i = 0; i < live.zones.length; i++) {
+        const z = live.zones[i];
+        if (z.kind !== 'pair' || live.resolved[i]) continue;
+        const due = live.chargeTime + live.staggers[i];
+        if (due < nextDue) {
+          nextDue = due;
+          next = z;
+        }
+      }
+    }
+    // Conjured over the first 60 % of the charge; gone after the last blow.
+    const target = live && next ? Math.min(1, live.time / Math.max(0.2, live.chargeTime * 0.6)) : 0;
+    this.tridentReveal += (target - this.tridentReveal) * Math.min(1, delta * (target > this.tridentReveal ? 6 : 3));
+    if (target === 0 && this.tridentReveal < 0.01) this.tridentReveal = 0;
+    this.tridentFlash = Math.max(0, this.tridentFlash - delta * 4);
+    if (next && next.kind === 'pair') t.setColor(TRIDENT.forms[next.form]?.color ?? this.def.accent);
+    t.update(delta, this.tridentReveal, this.tridentFlash, 1);
+    if (this.tridentReveal <= 0) return;
+    // Grip: the striking arm's VISIBLE fist (a kit titan re-solves its arms).
+    const arm = live?.arm ?? 1;
+    const fist = rig.root.getObjectByName(`HAND_${arm}_shown`) ?? rig.arms[arm].fist;
+    fist.getWorldPosition(_v);
+    t.root.position.copy(_v);
+    t.root.scale.setScalar(0.48 * this.def.scale);
+    // Between blows it is COCKED — upright, the prongs leaning toward the
+    // quarters the next blow takes; each landing STABS it down onto them
+    // (the flash carries the stab), then it comes back up.
+    if (next && next.kind === 'pair') {
+      let x = 0;
+      let z = 0;
+      for (let c = 0; c < 4; c++) {
+        if (!((next.hit >> c) & 1)) continue;
+        x += (c & 1 ? 1 : -1) * 0.45;
+        z += (c & 2 ? 1 : -1) * 0.4;
+      }
+      this.seatPoint(this.mySeatId(), x / 2, 0.05, z / 2, _head);
+      _head.sub(_v).normalize();
+      this.tridentAim.lerp(_head, Math.min(1, delta * 8)).normalize();
+    }
+    const stab = this.tridentFlash;
+    _p.copy(this.tridentAim).multiplyScalar(0.55).add(_up).normalize(); // cocked
+    _head.copy(this.tridentAim).addScaledVector(_up, -0.5).normalize(); // the stab
+    _p.lerp(_head, stab).normalize();
+    t.root.quaternion.setFromUnitVectors(_up, _p);
+  }
+
   private spawnHalfFlood(side: -1 | 1, seat: number, axis: 0 | 1): void {
     this.seatPoint(seat, 0, 0, 0, _v);
     const cx = _v.x;
@@ -3652,6 +4111,7 @@ export class CampaignSystem extends createSystem({
     if (fighting) {
       // Last frame's lunge comes off first, so the sway eases the true x.
       rig.root.position.x -= this.lungeOff.x;
+      rig.root.position.x -= this.meleeOff.x;
       const swayRate = this.enraged ? 0.85 : 0.45;
       const sway = Math.sin(this.time * swayRate) * this.def.swayAmp;
       rig.root.position.x += (sway - rig.root.position.x) * Math.min(1, delta * 1.6);
@@ -3668,6 +4128,13 @@ export class CampaignSystem extends createSystem({
     // its facing and back — the blow comes from a body that MEANT it.
     // (rotation.y faces (−sin ry, −cos ry).)
     this.stepLunge(delta, fighting, rig.root.position, -Math.sin(rig.root.rotation.y), -Math.cos(rig.root.rotation.y));
+    // THE REACH's lunge: the whole machine comes across the gap behind its
+    // fist, and goes home after.
+    this.meleeLunge += (this.meleeLungeTarget - this.meleeLunge) * Math.min(1, delta * this.meleeLungeRate);
+    if (!fighting) this.meleeLunge = this.meleeLungeTarget = 0;
+    this.meleeOff.set(-Math.sin(rig.root.rotation.y), 0, -Math.cos(rig.root.rotation.y)).multiplyScalar(this.meleeLunge);
+    rig.root.position.x += this.meleeOff.x;
+    rig.root.position.z += this.meleeOff.z;
 
     // RAID: the whole machine squares up to whoever it's hunting — the body
     // yaw eases toward the CENTROID of the marked platforms (one raider: dead
@@ -3892,6 +4359,9 @@ export class CampaignSystem extends createSystem({
     // swung-through follow-through handed into THE X — the two fists never
     // fuse on the midline. A no-op on every pose the language holds.
     keepArmsApart(rig.arms, this.def.scale, this.armGuardMemo);
+    // A kit titan's visible arms re-solve from the pose just written: the
+    // same wrists, elbows that always point out-down-back (titanKit.ts).
+    rig.solve?.();
   }
 
   /**
@@ -4182,7 +4652,7 @@ export class CampaignSystem extends createSystem({
 
     // Felling the KING crowns you: the CHAMPION pad joins your locker.
     // Strictly GOLIATH now. The old gate was `lastStage && !stageGoop`, and a
-    // single titan bout is its own last stage — so felling RUSTHOOK in a
+    // single titan bout is its own last stage — so felling CHROMEHOOK in a
     // one-off line-up bout handed out the crown. Keyed to the boss instead of
     // the bout shape, any first GOLIATH fell crowns (line-up bout, run stage,
     // raid finale) and nothing else does. (The tide crowns no one — that pad
@@ -4498,7 +4968,7 @@ export class CampaignSystem extends createSystem({
     const root = rig.root;
     switch (this.def.style) {
       case 'hook': {
-        // RUSTHOOK keels over SIDEWAYS — a slow list past the point of no
+        // CHROMEHOOK keels over SIDEWAYS — a slow list past the point of no
         // return, then the crash.
         const lean = k < 0.45 ? (k / 0.45) * 0.3 : 0.3 + ((k - 0.45) / 0.55) ** 2 * 1.15;
         root.rotation.z = lean;

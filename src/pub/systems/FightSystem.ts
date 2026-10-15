@@ -60,7 +60,7 @@ import {
 import { buildBoxer, solveTorso, type BoxerRig } from '../../avatar/boxer.js';
 import { applyLook, myLook } from '../../avatar/paint.js';
 import { applyGear } from '../../avatar/gear.js';
-import { applyAvatarSkin, applyPlatformSkin, platformSkin, type PlatformSkin } from '../../avatar/skins.js';
+import { applyAvatarSkin, applyPlatformSkin, shownPlatform, type PlatformSkin } from '../../avatar/skins.js';
 import { customization, myAvatarSkin, myGear, myTone } from '../../menu/customization.js';
 import {
   createFireVisual,
@@ -609,7 +609,7 @@ export class FightSystem extends createSystem({}) {
     ([0, 1] as const).forEach((side) => {
       const pf = pfFor(side);
       const skin: PlatformSkin = pf
-        ? platformSkin(pf)
+        ? shownPlatform(pf)
         : { id: '', name: '', deck: 'charred', neon: teamColor(side), trim: 0x4a4c52, blurb: '' };
       applyPlatformSkin(platforms[side], skin);
     });

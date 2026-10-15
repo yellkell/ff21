@@ -5,7 +5,7 @@
  *   npm run dev              # terminal 1
  *   node tools/delivery-check.mjs [--shots]
  *
- * Two bouts, RUSTHOOK and GOOPLIATH. In each, the boss's own picks are held
+ * Two bouts, CHROMEHOOK and GOOPLIATH. In each, the boss's own picks are held
  * and each floor attack is FORCED through the real buildAttack path, then
  * watched frame by frame on a frozen, stepped clock:
  *
@@ -172,7 +172,7 @@ async function bout(browser, label, acts, boss, kinds) {
 }
 
 const browser = await launch();
-await bout(browser, 'RUSTHOOK, every floor attack thrown', ['campaign-0'], 'RUSTHOOK', {
+await bout(browser, 'CHROMEHOOK, every floor attack thrown', ['campaign-0'], 'CHROMEHOOK', {
   seesaw: true,
   surge: true,
   nova: true,

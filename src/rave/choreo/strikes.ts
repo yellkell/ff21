@@ -38,13 +38,14 @@ import {
   PointsMaterial,
   ShaderMaterial,
   Color,
+  Matrix4,
   type Object3D,
   type Sprite,
   type SpriteMaterial,
 } from 'three';
-import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, TRIDENT } from '../config.js';
+import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, OCTAGON_VERTICES, TRIDENT } from '../config.js';
 import { glintTexture, glowSprite } from '../materials/glow.js';
-import { HEAT, HEAT_GLSL } from './telegraphs.js';
+import { HEAT, HEAT_GLSL, OCT_GLSL } from './telegraphs.js';
 
 interface Strike {
   group: Group;
@@ -57,6 +58,9 @@ interface Strike {
 
 const EMBER = HEAT.amber;
 
+/** The deck's corner radius: past it a ring of light is all void. */
+const DECK_CORNER_R = Math.max(...OCTAGON_VERTICES.map(([x, z]) => Math.hypot(x, z)));
+
 /**
  * A sheet of light. `vY` runs 0 at the business edge to 1 at the far edge
  * (uBase/uH in object space); the caps of a box carry nothing (a wall is
@@ -65,11 +69,14 @@ const EMBER = HEAT.amber;
  */
 const WALL_VERT = /* glsl */ `
   uniform float uBase, uH;
+  uniform mat4 uPlace;
   varying vec2 vUv;
+  varying vec2 vDeck;
   varying float vY;
   varying float vCap;
   void main(){
     vUv = uv;
+    vDeck = (uPlace * vec4(position, 1.0)).xz;
     vY = (position.y - uBase) / uH;
     vCap = abs(normal.y);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -78,13 +85,20 @@ const WALL_VERT = /* glsl */ `
 
 const WALL_FRAG = /* glsl */ `
   ${HEAT_GLSL}
+  ${OCT_GLSL}
   uniform float uK, uTime, uGain, uCore, uRise, uEdges, uTintAmt;
   uniform vec3 uTint;
   varying vec2 vUv;
+  varying vec2 vDeck;
   varying float vY;
   varying float vCap;
   void main(){
     if (vCap > 0.5) discard;
+    // Light lives over the deck and nowhere else: a wall that would run
+    // past the chamfers (or a ring still outside them) never pokes out
+    // through the rim into the void.
+    float deck = octMask(vDeck);
+    if (deck <= 0.0) discard;
     // Ignites white-hot, burns out to danger red; a core stays hot longer.
     vec3 col = mix(HOT, DANGER, smoothstep(0.0, mix(0.5, 1.3, uCore), uK));
     // A tinted sheet (THE TRIDENT's bolt) wears the weapon's colour.
@@ -98,7 +112,7 @@ const WALL_FRAG = /* glsl */ `
     float foot = 1.0 - smoothstep(0.0, 0.05, vY);
     float a = fall * (0.4 * scan + 0.7 * tube) + foot * 0.9;
     float env = 1.0 - uK;
-    gl_FragColor = vec4(col * a * env * env * uGain, 1.0);
+    gl_FragColor = vec4(col * a * env * env * uGain * deck, 1.0);
   }
 `;
 
@@ -130,6 +144,8 @@ function wallMat(o: WallOpts): ShaderMaterial {
       uEdges: { value: o.edges === false ? 0 : 1 },
       uTint: { value: new Color(o.tint ?? HEAT.hot) },
       uTintAmt: { value: o.tintAmt ?? 0 },
+      // The mesh's transform in deck space (StrikeFx.update keeps it live).
+      uPlace: { value: new Matrix4() },
     },
     vertexShader: WALL_VERT,
     fragmentShader: WALL_FRAG,
@@ -237,20 +253,33 @@ class Sparks {
   }
 }
 
+/** Hand every wall its CURRENT transform in deck space (the strike group
+ *  sits on the platform root; its walls move and scale as they burn), so
+ *  the octagon clip follows them. */
+function place(s: { group: Group; walls: Mesh[] }): void {
+  s.group.updateMatrix();
+  for (const m of s.walls) {
+    m.updateMatrix();
+    const u = (m.material as ShaderMaterial).uniforms.uPlace.value as Matrix4;
+    u.multiplyMatrices(s.group.matrix, m.matrix);
+  }
+}
+
 export class StrikeFx {
-  private live: (Strike & { mats: ShaderMaterial[] })[] = [];
+  private live: (Strike & { walls: Mesh[] })[] = [];
 
   private spawn(parent: Object3D, life: number, tick: Strike['tick'], build: (g: Group) => void, step?: Strike['step']): void {
     const group = new Group();
     build(group);
     parent.add(group);
-    const mats: ShaderMaterial[] = [];
+    const walls: Mesh[] = [];
     group.traverse((o) => {
-      const mat = (o as Mesh).material;
-      if (mat instanceof ShaderMaterial) mats.push(mat);
+      if ((o as Mesh).material instanceof ShaderMaterial) walls.push(o as Mesh);
     });
-    this.live.push({ group, age: 0, life, tick, step, mats });
+    const strike = { group, age: 0, life, tick, step, walls };
+    this.live.push(strike);
     tick(0, group);
+    place(strike);
   }
 
   /** The swing — a hanging CURTAIN of light travels the deck: all its mass
@@ -259,7 +288,8 @@ export class StrikeFx {
    *  below", not "the deck is about to be cut in half". Embers shed off the
    *  lip. `fromSide` = which local-x side the swing enters from. */
   sweep(parent: Object3D, fromSide: 1 | -1): void {
-    const span = OCTAGON_HALF_WIDTH + 0.5;
+    // Enters at the rim: the deck clip would hide any travel over the void.
+    const span = OCTAGON_HALF_WIDTH + 0.07;
     const curtainH = 0.9;
     const sparks = new Sparks(26, EMBER);
     let emberClock = 0;
@@ -387,7 +417,9 @@ export class StrikeFx {
    *  though both are round. The middle is left conspicuously untouched:
    *  that's the ground that lived (the floor's afterburn spares it too). */
   donut(parent: Object3D, innerR: number): void {
-    const outer = CHOREO.donutRadius;
+    // Starts at the deck's corners, not out in the void: the wall closes IN
+    // from the rim instead of sweeping through it.
+    const outer = DECK_CORNER_R;
     const sparks = new Sparks(54, EMBER);
     let landed = false;
     this.spawn(
@@ -530,7 +562,9 @@ export class StrikeFx {
       (k, g) => {
         const grow = Math.min(1, k / 0.84);
         const ring = g.children[0];
-        const r = 0.15 + grow * CHOREO.novaRadius;
+        // Out to the deck's corners and no further — it never passes out
+        // through the rim (the crown goes off as it arrives there).
+        const r = 0.15 + grow * (DECK_CORNER_R - 0.15);
         ring.scale.set(r, 1, r);
         burn(ring, k * k);
         // Fire along the expanding front — everywhere but the wedge.
@@ -619,9 +653,10 @@ export class StrikeFx {
     for (let i = this.live.length - 1; i >= 0; i--) {
       const s = this.live[i];
       s.age += dt;
-      for (const mat of s.mats) mat.uniforms.uTime.value = s.age;
+      for (const m of s.walls) (m.material as ShaderMaterial).uniforms.uTime.value = s.age;
       const k = Math.min(1, s.age / s.life);
       s.tick(k, s.group);
+      place(s);
       s.step?.(dt);
       if (k >= 1) {
         s.group.removeFromParent();

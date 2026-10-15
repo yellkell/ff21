@@ -15,6 +15,7 @@ import { installCrashTrap } from './debug/crashTrap.js';
 // First of the app's own imports: it starts counting three.js loads, and
 // every loader in the game must start after it does.
 import { holdBoot, waitForBootLoads, warmTextures } from './experience/bootLoad.js';
+import { preloadTitans } from './campaign/titanKit.js';
 import { installTownExperienceManager } from './experience/ClubExperienceManager.js';
 import { requestArenaReturn, requestVenueEntry } from './experience/clubNavigation.js';
 import { initLeaderboard, myName } from './net/leaderboard.js';
@@ -312,6 +313,7 @@ World.create(container, {
     document.referrer.startsWith('android-app://') ||
     window.matchMedia?.('(display-mode: standalone)')?.matches === true;
   holdBoot(preloadMenuMusic());
+  holdBoot(preloadTitans());
   if (!app.tutorialDone) holdBoot(preloadTutorVoice());
   const desert = world.getSystem(DesertSystem)!;
   await loadStep(0.75, 'Loading the district…');

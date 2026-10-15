@@ -3,7 +3,7 @@
  * each machine's signature accent, used on the campaign sub-menu cards (and
  * anywhere else a titan needs a face at postage-stamp size):
  *
- *   0 RUSTHOOK      — a scrapyard crane hook
+ *   0 CHROMEHOOK      — a scrapyard crane hook
  *   1 PISTONKAISER  — a drop-forge piston hammer
  *   2 VULTURE    — an executioner's crosshair
  *   3 JUGGERNAUT    — a riveted fortress shield
@@ -33,7 +33,7 @@ export function drawBossIcon(
 
   switch (stage) {
     case 0: {
-      // RUSTHOOK: hanging eye, shank, and the big open J-hook with a point.
+      // CHROMEHOOK: hanging eye, shank, and the big open J-hook with a point.
       ctx.beginPath();
       ctx.arc(0, -36, 10, 0, Math.PI * 2); // the eye
       ctx.stroke();

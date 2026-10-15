@@ -438,6 +438,26 @@ const MARK_FRAG = /* glsl */ `
  * lit dim and neutral for the whole move — furniture, not danger. It says
  * where the boxes will land, never which quarter is yours.
  */
+/**
+ * One quarter of a TRIDENT blow: the pane fills with the warning ramp, the
+ * two quarter lines it borders are its rails (the lines to hop across) and
+ * hatching marches toward them. Authored with u = 0 and v = 0 on the
+ * deck's centre lines (see pairTelegraph's mirroring).
+ */
+const PAIR_FRAG = /* glsl */ `
+  ${COMMON}
+  void main(){
+    vec3 col = warnColor();
+    float a = 0.05 + 0.55 * uFill;
+    float rail = max(1.0 - smoothstep(0.0, 0.07, vUv.x), 1.0 - smoothstep(0.0, 0.07, vUv.y));
+    a += rail * (0.25 + 0.75 * uFill);
+    float lanes = aaStripe((vUv.x + vUv.y) * 4.0 + uTime * 2.4, 0.72);
+    a += lanes * (0.08 + 0.22 * uFill);
+    a *= pulse();
+    gl_FragColor = vec4(col, ink(a));
+  }
+`;
+
 const QUARTER_FRAG = /* glsl */ `
   ${COMMON}
   void main(){
@@ -692,6 +712,31 @@ export function quarterTelegraph(halfWidth: number, halfDepth: number): Telegrap
   const pane = new Mesh(new PlaneGeometry(halfWidth * 2, halfDepth * 2), mat);
   pane.rotation.x = -Math.PI / 2;
   return makeTelegraph([pane], [mat]);
+}
+
+/**
+ * THE TRIDENT's blow: every quarter in the 4-bit `hit` mask (corner bit 0 =
+ * local +x, bit 1 = local +z) fills. Place the group at the deck centre on
+ * the floor and yaw it like the other deck panes.
+ */
+export function pairTelegraph(hit: number, halfWidth: number, halfDepth: number): Telegraph {
+  const meshes: Mesh[] = [];
+  const mats: ShaderMaterial[] = [];
+  for (let c = 0; c < 4; c++) {
+    if (!((hit >> c) & 1)) continue;
+    const sx = c & 1 ? 1 : -1;
+    const sz = c & 2 ? 1 : -1;
+    const mat = warnMat(PAIR_FRAG);
+    const pane = new Mesh(new PlaneGeometry(halfWidth, halfDepth), mat);
+    pane.rotation.x = -Math.PI / 2;
+    pane.position.set((sx * halfWidth) / 2, 0, (sz * halfDepth) / 2);
+    // Mirror so (u, v) = (0, 0) sits on the deck centre for every quarter:
+    // the plane's +y runs to local −z once laid flat.
+    pane.scale.set(sx, -sz, 1);
+    meshes.push(pane);
+    mats.push(mat);
+  }
+  return makeTelegraph(meshes, mats);
 }
 
 /**

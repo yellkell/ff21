@@ -15,7 +15,7 @@
  *              and a dead tree throwing the longest shadow in the game.
  *   BONEYARD   the campaign and every raid — where titans are broken. A
  *              ring of standing wreck-plates around the pit, oil drums
- *              burning, RUSTHOOK's own hook buried to the shank.
+ *              burning, CHROMEHOOK's own hook buried to the shank.
  *
  * Every piece is a SURFACE, not a facet: rounded river stones and worn
  * plates in the material kit's rock, rust, bark, bone and wood skins
@@ -518,7 +518,7 @@ function burningDrum(lit: boolean, seed: number): { group: Group; flame: Flame }
   return { group: g, flame };
 }
 
-/** RUSTHOOK's hook, buried to the shank — the boneyard's monument. */
+/** CHROMEHOOK's hook, buried to the shank — the boneyard's monument. */
 function buriedHook(): Group {
   const g = new Group();
   const mat = rustMat(0x5a4736, { roughness: 0.66, repeat: [4, 1] });

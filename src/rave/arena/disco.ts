@@ -33,7 +33,7 @@ import {
   PointsMaterial,
   Vector3,
 } from 'three';
-import { RING, hueToColor } from '../config.js';
+import { OCTAGON_VERTICES, PLATFORM, RING, hueToColor } from '../config.js';
 import { glintTexture } from '../materials/glow.js';
 import { arena } from './arena.js';
 import { LaserBeams, LaserFlares } from './laserBeams.js';
@@ -48,9 +48,25 @@ const CROWN_BEAMS = 3;
 const BEAM_LEN = 34;
 const CONFETTI = 240;
 
-/** Platform circumradius (widest OCTAGON_VERTICES corner ≈ 0.94 m) plus a
- *  hair — the circle a beam has to land inside to count as hitting a deck. */
-const DECK_R = 0.98;
+/** The deck outline as half-planes (outward normal · p <= offset), for the
+ *  beam-vs-deck pass: a beam stops on the deck's real solid — slab, rim and
+ *  pedestal — not on a circle drawn at its top surface. */
+const DECK_EDGES = OCTAGON_VERTICES.map(([ax, az], i) => {
+  const [bx, bz] = OCTAGON_VERTICES[(i + 1) % OCTAGON_VERTICES.length];
+  let nx = bz - az;
+  let nz = ax - bx;
+  const l = Math.hypot(nx, nz);
+  nx /= l;
+  nz /= l;
+  // Outward = away from the deck's centre (the origin).
+  if (nx * ax + nz * az < 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  return { nx, nz, off: nx * ax + nz * az };
+});
+/** The slab's top: the rim tube stands proud of the deck. */
+const DECK_TOP = PLATFORM.rimLift + 0.03;
 
 // Scratch space for the beam-vs-deck pass — no per-frame allocation.
 const _o = new Vector3();
@@ -59,6 +75,49 @@ const _p = new Vector3();
 const _col = new Color();
 const _aim = newAim();
 const _ownCue = newCue();
+
+/**
+ * Entry distance of a ray into an upright octagonal prism (deck outline ×
+ * `scale`, local y0..y1), or Infinity. Cyrus–Beck: clip the ray's [0, maxT]
+ * against the two caps and the eight sides; it hits if anything survives.
+ */
+function rayPrism(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  scale: number,
+  y0: number,
+  y1: number,
+  maxT: number,
+): number {
+  let t0 = 0;
+  let t1 = maxT;
+  if (Math.abs(dy) < 1e-6) {
+    if (oy < y0 || oy > y1) return Infinity;
+  } else {
+    let a = (y0 - oy) / dy;
+    let b = (y1 - oy) / dy;
+    if (a > b) [a, b] = [b, a];
+    t0 = Math.max(t0, a);
+    t1 = Math.min(t1, b);
+  }
+  for (const e of DECK_EDGES) {
+    const den = e.nx * dx + e.nz * dz;
+    const num = e.off * scale - (e.nx * ox + e.nz * oz);
+    if (Math.abs(den) < 1e-9) {
+      if (num < 0) return Infinity;
+      continue;
+    }
+    const t = num / den;
+    if (den > 0) t1 = Math.min(t1, t);
+    else t0 = Math.max(t0, t);
+    if (t0 > t1) return Infinity;
+  }
+  return t0 <= t1 ? t0 : Infinity;
+}
 
 /**
  * Where a light ray first lands on the show's real surfaces — any dancer
@@ -81,15 +140,33 @@ function rayHitsFloor(o: Vector3, d: Vector3, maxT: number): number {
       const dz = o.z + d.z * tS - s.z;
       if (dx * dx + dz * dz < RING.stageRadius * RING.stageRadius) best = tS;
     }
-    // Every dancer deck, at its CURRENT lift.
-    for (const p of a.platforms) {
-      const c = p.root.position;
-      const t = (c.y - o.y) / d.y;
-      if (t <= 0.05 || t >= maxT || t >= best) continue;
-      const dx = o.x + d.x * t - c.x;
-      const dz = o.z + d.z * t - c.z;
-      if (dx * dx + dz * dz < DECK_R * DECK_R) best = t;
+  }
+  // Every dancer deck, at its CURRENT lift — the whole solid: the crown
+  // climbs, so a raised deck is met from BELOW (its underside, its
+  // pedestal) or edge-on through its rim, and the beam stops right there
+  // instead of running up through the slab to a spot on top.
+  for (const p of a.platforms) {
+    const c = p.root.position;
+    const yaw = p.root.rotation.y;
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    // Into the deck's own frame (inverse of its yaw).
+    const rx = o.x - c.x;
+    const rz = o.z - c.z;
+    const lx = cos * rx - sin * rz;
+    const lz = sin * rx + cos * rz;
+    const ly = o.y - c.y;
+    const ldx = cos * d.x - sin * d.z;
+    const ldz = sin * d.x + cos * d.z;
+    const reach = Math.min(maxT, best);
+    let t = rayPrism(lx, ly, lz, ldx, d.y, ldz, 1, -PLATFORM.thickness, DECK_TOP, reach);
+    const ped = p.pedestal;
+    if (ped?.visible) {
+      // The column: inset like its mesh, from the slab's underside down.
+      const tp = rayPrism(lx, ly, lz, ldx, d.y, ldz, ped.children[0]?.scale.x ?? 1, ped.position.y, -PLATFORM.thickness, reach);
+      t = Math.min(t, tp);
     }
+    if (t > 0.05 && t < best) best = t;
   }
   return best;
 }
@@ -265,9 +342,12 @@ export class DiscoRig {
         const len = t < Infinity ? t : BEAM_LEN;
         this.beams.set(i, _o, _d, len, c, g);
         if (t < Infinity && g * energy > 0.02) {
-          this.glintPos[i * 3] = _o.x + _d.x * t;
-          this.glintPos[i * 3 + 1] = _o.y + _d.y * t + 0.02;
-          this.glintPos[i * 3 + 2] = _o.z + _d.z * t;
+          // Just short of the surface it met, on the side the light came
+          // from (a hit from below glints on the underside, not on top).
+          const tg = t - 0.03;
+          this.glintPos[i * 3] = _o.x + _d.x * tg;
+          this.glintPos[i * 3 + 1] = _o.y + _d.y * tg;
+          this.glintPos[i * 3 + 2] = _o.z + _d.z * tg;
           const k = g * energy * (0.6 + pump * 0.4);
           this.glintCol[i * 3] = c.r * k;
           this.glintCol[i * 3 + 1] = c.g * k;

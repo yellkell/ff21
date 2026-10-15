@@ -31,12 +31,12 @@ in-your-face boxing feel.
   game is untouched.
 - **CAMPAIGN** — the ARCADE panel's titan gauntlet, right under TUTORIAL:
   five single-player boss machines fought left to right on the line-up
-  (~1.9 m up to ~3.9 m of plate), each a BESPOKE chassis — RUSTHOOK's
+  (~1.9 m up to ~3.9 m of plate), each a BESPOKE chassis — CHROMEHOOK's
   hunched rust-brown wreck with a crane-hook arm, PISTONKAISER's anvil head,
   smokestacks and hammer-block fists, VULTURE's hooded one-eyed skull with
   swept wing plates and talons, JUGGERNAUT's squat dome-headed fortress in
   skirt armour, GOLIATH's near-black gold-crowned king — with its own
-  pit-lane intro (klaxon, strobes, a bespoke entrance — RUSTHOOK winches up
+  pit-lane intro (klaxon, strobes, a bespoke entrance — CHROMEHOOK winches up
   crooked in seizing jerks, PISTONKAISER press-drops from above in slam
   strokes, VULTURE swoops in off the flank, JUGGERNAUT rolls out of the dark
   at ground level, GOLIATH's rise stalls and resumes on his own clock — then
@@ -52,7 +52,7 @@ in-your-face boxing feel.
   bursts harmlessly; a bare hand takes the hit. GOLIATH enrages at half
   health. Damage runs on **per-boss weak-point patterns** — whatever
   is vulnerable **blinks** (the visor tell, the chest core, the low-blow
-  emblem, GOLIATH's shoulder lamps): RUSTHOOK keeps head AND core open,
+  emblem, GOLIATH's shoulder lamps): CHROMEHOOK keeps head AND core open,
   PISTONKAISER flips head↔core every hit, VULTURE wants two hits per point,
   JUGGERNAUT cycles head → core → **low blow**, and GOLIATH is the exam —
   a five-point **crown circuit** (head → his left shoulder → core → his
@@ -81,7 +81,7 @@ in-your-face boxing feel.
   of every raider while your squadmates (avatars, voice, live health bars)
   flank you on the curve. Same five titans, raid-cut: **bigger, far tougher
   (well over 4× the health)** — and the targeting ESCALATES stage by stage:
-  RUSTHOOK hunts one raider at a time (the chassis visibly squares up to its
+  CHROMEHOOK hunts one raider at a time (the chassis visibly squares up to its
   mark), PISTONKAISER marks TWO at once with a two-fisted hoist, and from
   VULTURE on every swing marks the WHOLE squad — hammer ghosts on every
   platform, a fan of beams, a **fireball barrage** raining rounds across

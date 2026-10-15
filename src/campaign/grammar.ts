@@ -27,6 +27,7 @@
  */
 
 import { GRAMMAR, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
+import { TRIDENT } from '../rave/config.js';
 
 /* ── seeded rng (mulberry32 — same generator the paint splats use) ─────── */
 
@@ -52,9 +53,9 @@ export function mulberry32(seed: number): () => number {
 
 /** The Encore moves this module builds. (The classic kinds — slam, sweep,
  *  beam, volley, nova, seesaw, surge — keep their existing machinery.) */
-export type GrammarKind = 'lanes' | 'cross' | 'gate' | 'donut' | 'recital' | 'wave' | 'duckdonut';
+export type GrammarKind = 'lanes' | 'cross' | 'gate' | 'donut' | 'recital' | 'wave' | 'duckdonut' | 'trident';
 
-export const GRAMMAR_KINDS: readonly GrammarKind[] = ['lanes', 'cross', 'gate', 'donut', 'recital', 'wave', 'duckdonut'];
+export const GRAMMAR_KINDS: readonly GrammarKind[] = ['lanes', 'cross', 'gate', 'donut', 'recital', 'wave', 'duckdonut', 'trident'];
 
 /** The escalation-act floor per kind (RAVE RAID's weight curves, folded to
  *  a single gate): below its act a kind never deals, so an EASY bout keeps
@@ -68,6 +69,7 @@ export const GRAMMAR_ACT_MIN: Record<GrammarKind, number> = {
   wave: 1,
   recital: 2,
   duckdonut: 4,
+  trident: 0,
 };
 
 /** A target-local kill zone (the player's platform at the origin, −z toward
@@ -91,7 +93,13 @@ export type GrammarZone =
    *  carries the WHOLE pattern so the lesson can teach it up front. */
   | { kind: 'quad'; corner: number; step: number; hold: boolean; pattern: readonly number[]; holds: readonly boolean[] }
   /** The blade overhead — duck (duckdonut borrows the classic sweep). */
-  | { kind: 'sweep' };
+  | { kind: 'sweep' }
+  /** One blow of THE TRIDENT: the quarters in `hit` burn (a 4-bit mask,
+   *  bit = corner; corner bit 0 = local +x, bit 1 = local +z). `form`
+   *  indexes TRIDENT.forms — the weapon's colour, which IS the pattern:
+   *  SWING the left/right halves, THRUST the front/back, SLASH the
+   *  diagonals. */
+  | { kind: 'pair'; hit: number; form: number; step: number; steps: number };
 
 /** One landing within a move: `delay` is seconds after the FIRST landing. */
 export interface GrammarLanding {
@@ -118,6 +126,7 @@ export const VERB: Record<string, string> = {
   sweep: 'duck',
   volley: 'guard',
   recital: 'corners',
+  trident: 'hop',
   wave: 'travel', // the whole-deck crossing — its own verb, never damped
 };
 
@@ -177,6 +186,7 @@ export function evictsPark(landings: readonly GrammarLanding[], park: Park): boo
         return Math.abs((zone.axis ? park.z : park.x) - zone.at) > zone.half - 0.05;
       case 'sweep': // the duck is a demand wherever you stand
       case 'quad': // the recital makes you commit, corner to corner
+      case 'pair': // the trident's first blow is aimed AT the park
         return true;
     }
   });
@@ -196,6 +206,24 @@ export function parkOf(kind: GrammarKind, landings: readonly GrammarLanding[], p
       const lastQ = quads[quads.length - 1]?.zone;
       if (lastQ?.kind !== 'quad') return prev;
       return { x: (lastQ.corner & 1 ? 1 : -1) * 0.45, z: (lastQ.corner & 2 ? 1 : -1) * 0.4 };
+    }
+    case 'trident': {
+      // The last blow's nearest living quarter — a fighter who hopped pair
+      // to pair ends wherever the final hop put them.
+      const lastQ = landings[landings.length - 1]?.zone;
+      if (lastQ?.kind !== 'pair') return prev;
+      let best = { x: p.x, z: p.z };
+      let bestD = Infinity;
+      for (let c = 0; c < 4; c++) {
+        if ((lastQ.hit >> c) & 1) continue;
+        const q = { x: c & 1 ? 0.45 : -0.45, z: c & 2 ? 0.4 : -0.4 };
+        const d = Math.hypot(q.x - p.x, q.z - p.z);
+        if (d < bestD) {
+          bestD = d;
+          best = q;
+        }
+      }
+      return best;
     }
     case 'gate': {
       const g = landings[0].zone;
@@ -426,6 +454,25 @@ export function buildGrammarMove(kind: GrammarKind, rng: () => number, o: Gramma
       landings.push({ delay: i * step, zone: { kind: 'quad', corner: c, step: i, hold: holds[i], pattern, holds } });
       if (swept) landings.push({ delay: i * step, zone: { kind: 'sweep' } });
     });
+  } else if (kind === 'trident') {
+    // THE TRIDENT, as RAVE RAID's DJ throws it: one form per move — the
+    // weapon's colour is the whole pattern — and the blows alternate
+    // between the form's two pairs of quarters, a hop on every blow. The
+    // opening pair is aimed at the park, so the first blow always asks the
+    // floor to move; an unknowable park takes the coin. Both rolls are
+    // always drawn, to keep the seeded stream aligned.
+    const form = Math.floor(rng() * TRIDENT.forms.length);
+    const [a, b] = TRIDENT.forms[form].pairs;
+    const coin = rng() < 0.5;
+    const park = o.park;
+    const quarter = park ? (park.x >= 0 ? 1 : 0) | (park.z >= 0 ? 2 : 0) : -1;
+    const first = quarter >= 0 ? ((a >> quarter) & 1 ? a : b) : coin ? a : b;
+    const steps = GRAMMAR.tridentStrikes[Math.min(act, GRAMMAR.tridentStrikes.length - 1)];
+    const step = GRAMMAR.tridentStepBeats * beat;
+    for (let i = 0; i < steps; i++) {
+      const hit = i % 2 === 0 ? first : first === a ? b : a;
+      landings.push({ delay: i * step, zone: { kind: 'pair', hit, form, step: i, steps } });
+    }
   } else if (kind === 'wave') {
     // THE WAVE: strips marching 1-2-3 across the deck with a dark EXIT —
     // travel with the march. EVERY wave turns at the exit (a breather, then
@@ -517,6 +564,16 @@ export function grammarZoneHit(zone: GrammarZone, x: number, z: number, r: numbe
       const sz = zone.corner & 2 ? 1 : -1;
       return !(x * sx > GRAMMAR.recitalMargin && z * sz > GRAMMAR.recitalMargin);
     }
+    case 'pair': {
+      // The head's quarter burns — unless it is within a lip of a line
+      // whose far side lives (the head reaching safe ground is the dodge).
+      const q = (x >= 0 ? 1 : 0) | (z >= 0 ? 2 : 0);
+      if (!((zone.hit >> q) & 1)) return false;
+      const lip = GRAMMAR.tridentLip;
+      if (Math.abs(x) < lip && !((zone.hit >> (q ^ 1)) & 1)) return false;
+      if (Math.abs(z) < lip && !((zone.hit >> (q ^ 2)) & 1)) return false;
+      return true;
+    }
     case 'sweep':
       return false; // judged by height via the classic sweep path
   }
@@ -559,6 +616,8 @@ export function zoneOnDeck(zone: GrammarZone): boolean {
       return zone.innerR > 0.2 && zone.innerR < OCTAGON_HALF_DEPTH;
     case 'quad':
       return zone.corner >= 0 && zone.corner <= 3;
+    case 'pair':
+      return zone.hit > 0 && zone.hit < 15;
     case 'sweep':
       return true;
   }

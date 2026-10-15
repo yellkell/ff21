@@ -241,13 +241,13 @@ carried over verbatim: everything in it still applies to this code.
   A finishing pass over each rig (`finishTitan` in `campaign/bosses.ts`)
   bevels every box and rounds every barrel without moving a pivot, and
   each machine wears its own procedural SKIN (`materials/titanSkin.ts`:
-  colour, roughness, metalness and bump, drawn once): RUSTHOOK's blotched
+  colour, roughness, metalness and bump, drawn once): CHROMEHOOK's blotched
   rust, pitting and weeps; PISTONKAISER's hammer-dimpled iron with temper
   colours; VULTURE's scale plumage; JUGGERNAUT's riveted panel armour;
   GOLIATH's brushed black plate engraved with scrollwork. Rust and paint
   aren't bare metal any more, so the hulls stop mirroring the room black.
   And each theme grew: a hazard-striped salvage plate, riveted patches and
-  a live severed cable on RUSTHOOK; heat vents and molten cracks on
+  a live severed cable on CHROMEHOOK; heat vents and molten cracks on
   PISTONKAISER; a raised feather ruff and wing coverts on VULTURE; track
   links and a stencilled IV on JUGGERNAUT; crown jewels and a chain of
   office on GOLIATH. Repeated parts merge to one mesh, so draw calls barely
@@ -268,7 +268,7 @@ carried over verbatim: everything in it still applies to this code.
   every def). The machinery for both stays for the dev probe and a later
   bill. (THE RECITAL was already off the titans' bill; RAVE RAID's
   ROUTINE is untouched.)
-  And every titan past RUSTHOOK throws the **CROSS** now, not just VULTURE: the arms
+  And every titan past CHROMEHOOK throws the **CROSS** now, not just VULTURE: the arms
   go out like wings and snap across the body as the side rails fire.
 
 - **THE BANK** — iron-dollars for money. The STORE has a third chip,
@@ -626,7 +626,7 @@ carried over verbatim: everything in it still applies to this code.
   waits at THE TRAILHEAD (the GASKET sign under its lamp, a campfire, a
   windmill on the sun band), matches box on THE FLATS (the skull, two dead
   trees), and every campaign fight and raid stands in THE BONEYARD (a ring
-  of wreck-plates and burning drums round the pit, RUSTHOOK's hook buried
+  of wreck-plates and burning drums round the pit, CHROMEHOOK's hook buried
   to the shank). The far layer turns with the site so the skyline moves
   too. With it, Desert 2.0's second pass — and the END of papercraft:
   `src/arena/desert/textures.ts` is a kit of six procedural skins (sand,
