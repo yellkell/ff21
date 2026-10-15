@@ -22,6 +22,11 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
     until the site has been swapped behind full black; it all arrives with
     the lift on the plaza. The desert crosses the same way now, trailhead
     to flats or boneyard (`systems/DesertSystem.ts`).
+  - **The show starts when you get there.** A titan's klaxon, WARNING card
+    and entrance, and a bout's 3-2-1 (plate and announcer), used to start
+    on the pick and run through the black. They now hold at zero until the
+    curtain starts lifting on the plaza (`experience/stageGate.ts`, read by
+    CampaignSystem and GameStateSystem).
   - **ENTER VR lights when everything's in.** The button used to light as
     soon as the code had built, with ~56 MB of neon district still on its
     way, so an early tap stood you in a violet void. The landing now waits

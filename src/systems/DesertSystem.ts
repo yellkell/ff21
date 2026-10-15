@@ -21,6 +21,7 @@ import { buildCove, type Cove } from '../arena/cove/index.js';
 import { buildNeon, type Neon, type NeonSite } from '../arena/neon/index.js';
 import { setFoeStageShown } from '../arena/arena.js';
 import { Curtain } from '../experience/Curtain.js';
+import { setStageGate } from '../experience/stageGate.js';
 import { CONFIG } from '../arena/desert/config.js';
 
 /** Crossing timings (s): down over where you stand, a beat of black, up on the other. */
@@ -91,6 +92,15 @@ export class DesertSystem extends createSystem({}) {
     if (app.environment === 'neon') this.buildNeon();
     else if (app.environment === 'cove') this.buildCove();
     else this.apply(app.environment);
+
+    // Held from the pick until the black starts lifting on the fight ground
+    // (experience/stageGate.ts): the ceremonies wait for you to get there.
+    setStageGate(() => {
+      if (app.state !== 'playing' && app.state !== 'training') return false;
+      const site = this.placeSite();
+      if (site === null) return false;
+      return site !== this.wantSite() || (this.crossing !== null && this.crossing.phase !== 'lift');
+    });
 
     const scene = this.scene;
     const after = scene.onAfterRender.bind(scene);
