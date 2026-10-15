@@ -1164,7 +1164,7 @@ const HEAD_SIZE: Record<string, number> = {
   bear: 1.1,
   panther: 1.12,
   eagle: 0.92,
-  knight: 1.15,
+  knight: 1.0925,
   stallion: 1.05,
   // (the FF2 builds were made at their final size — and came out small)
   wolf: 1.06,
@@ -1185,7 +1185,7 @@ const SEAT: Record<string, number> = {
   bear: 0.037,
   panther: 0.047,
   eagle: 0.058,
-  knight: 0.04, // the rim lands where the old gorget's foot did
+  knight: 0.044, // the rim lands where the old gorget's foot did
   stallion: 0.062,
   wolf: 0.06,
   frog: 0.027,
@@ -1225,7 +1225,7 @@ export const HEAD_FIT: Record<string, { s: [number, number, number]; y: number; 
   eagle: { s: [0.636, 0.671, 0.706], y: 0.0177, z: -0.0281 },
   // The helm is a flat-topped barrel, not a dome: raised, so a crown sits
   // ON it instead of sinking into the barrel's side.
-  knight: { s: [1.266, 1.313, 1.362], y: -0.0244, z: -0.0162 },
+  knight: { s: [1.203, 1.248, 1.294], y: -0.0291, z: -0.0154 },
   // A horse's cranium is small against its long face: carried 1.3× the
   // measure (top still pinned), or a crown was a ring between the ears.
   stallion: { s: [0.711, 0.699, 0.688], y: -0.0112, z: 0.0022 },
