@@ -709,10 +709,19 @@ hosting targets.
   relay's public club floor, then to a dark test card. The relay ranks
   people over raids over solo bouts and expires a silent channel in six
   seconds. The Discord bot announces LIVE / FINAL for online matches.
-- **THE LOOK**: the page wears RAVE RAID's stats-page surface language
-  (near-black glass, corner brackets, the rail and its eased marker,
-  Rajdhani) with FIRE FIGHT's hazard amber as the accent; each face swaps
-  the accent and the floor's pools rather than the layout.
+- **THE LOOK**: the neon district, in the game's own hand. The panels
+  are the holo kit's glass (`ui/kit/holo.ts`: see-through blue-black,
+  cool tint at the top, scanlines, diagonal sheen, a lit cyan edge tube
+  with its inner hairline, the top light bar, magenta brackets on all four
+  corners, readout ticks along the foot); headings are GLITCH type, the
+  gauges and the XP bar are the kit's skewed neon bar, the medals its lit
+  cells, Rajdhani throughout. Behind the glass runs the landing page's
+  street — the magenta/cyan grid, rain, CRT, the corner HUD readout and the
+  kanji blade — and the one primary (REFRESH) is the landing's ENTER VR
+  plate. The kit's colour law holds: neon cyan is the only accent, on every
+  face; magenta is decoration. Each face keeps its own wordmark tube
+  (FIRE FIGHT cyan with the sign's magenta 2, RAVE RAID green and magenta,
+  FFTV on-air red) and its own haze. Reduced motion stills the street.
 - **SPEEDRUN** is what the GAUNTLET board is called now, and it is three
   boards rather than one — `ff2-speedrun-{normal,hard,blazing}-time` —
   because a board is a per-uid ratchet and one board would keep only your
