@@ -42,16 +42,16 @@
           g.shadowBlur = 0;
         }
       };
-      const W = (o) => ({ score: 0, mult: 0, seatCss: 'hsl(190, 100%, 62%)', alive: true, missChain: 0, chainOut: 3, grooveScore: 0, ...o });
+      const W = (o) => ({ score: 0, mult: 0, seatCss: 'hsl(190, 100%, 62%)', alive: true, missChain: 0, chainOut: 3, grooveScore: 0, perfectMult: 1.5, perfectLit: false, ...o });
       const draw = () => {
         grid.innerHTML = '';
         cell('wedge · cold', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({})); pips(g, 0); });
-        cell('wedge · chain + groove', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 18450, mult: 2.4, grooveScore: 1250 })); pips(g, 6); });
+        cell('wedge · chain + beats + perfect', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 18450, mult: 2.4, grooveScore: 1250, perfectLit: true })); pips(g, 6); });
         cell('wedge · clipped twice', WEDGE_W, WEDGE_H, (g) => { paintWedge(g, W({ score: 7310, mult: 0, missChain: 2, seatCss: 'hsl(320, 100%, 62%)' })); pips(g, 2); });
         cell('wedge · spectating', WEDGE_W, WEDGE_H, (g) => paintWedge(g, W({ score: 4200, alive: false })));
         cell('pop · perfect', POP_W, POP_H, (g) => paintPop(g, 'PERFECT!', 'perfect'));
         cell('pop · hit', POP_W, POP_H, (g) => paintPop(g, 'HIT', 'hit'));
-        cell('card · count-in', CARD_W, CARD_H, (g) => paintCount(g, 3, 'COMBAT', { name: 'NEON NIGHTS · 2', colour: '#ff6ee0' }));
+        cell('card · count-in', CARD_W, CARD_H, (g) => paintCount(g, 3, 'COMBAT'));
         cell('card · grade', CARD_W, CARD_H, (g) => paintGrade(g, { letter: 'A', colour: '#7dff9a', alive: true, coins: 40, dodges: 47, faced: 50, rate: 0.94, perfects: 12 }));
         cell('card · game over', CARD_W, CARD_H, (g) => paintGrade(g, { letter: 'F', colour: '#ff5040', alive: false, coins: 0, dodges: 9, faced: 14, rate: 0.64, perfects: 0 }));
       };

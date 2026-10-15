@@ -9,7 +9,8 @@
  *
  *   THE WEDGE   the live readout off your left shoulder — the score as a
  *               padded counter (dim leading zeros, lit digits), the ×mult
- *               chip in your seat's colour, the GROOVE row (its pips are
+ *               chip in your seat's colour, the PERFECT ×1.5 chip that
+ *               burns when you ride the beat, the BEATS row (its pips are
  *               real points HudSystem lays over WEDGE_PIPS) and, only once
  *               you're clipped, the CHAIN row of skewed alarm cells.
  *   THE POP     PERFECT / HIT — glitch type on a skewed dark-glass slate.
@@ -30,7 +31,7 @@ export const POP_H = 200;
 export const CARD_W = 768;
 export const CARD_H = 384;
 
-/** Where the GROOVE pips sit on the wedge (canvas px) — HudSystem maps
+/** Where the BEATS (groove) pips sit on the wedge (canvas px) — HudSystem maps
  *  these into the plane so its points land on the painted row. */
 export const WEDGE_PIPS = { count: 4, x0: 168, gap: 36, y: 178 };
 
@@ -83,6 +84,10 @@ export interface WedgeState {
   chainOut: number;
   /** What the running groove streak has paid (0 hides the tally). */
   grooveScore: number;
+  /** What a perfect landing multiplies its points by. */
+  perfectMult: number;
+  /** A perfect just landed: the PERFECT chip burns. */
+  perfectLit: boolean;
 }
 
 /* ── the wedge ─────────────────────────────────────────────────────────── */
@@ -109,10 +114,10 @@ export function paintWedge(g: CanvasRenderingContext2D, s: WedgeState): void {
   lit(g, digits, x + 22 + padW, sy, 74, '#ffffff', `rgba(${ACCENT_RGB},0.75)`, 700, 2);
 
   // ── ×MULT: a skewed chip in the seat's colour, lit while a chain runs.
-  const cw = 112;
-  const ch = 50;
+  const cw = 132;
+  const ch = 42;
   const cx = x + w - cw - 24;
-  const cy = sy - ch / 2 - 2;
+  const cy = y + 40;
   const live = s.alive && s.mult > 1;
   neonCell(g, cx, cy, cw, ch, live, s.seatCss);
   g.save();
@@ -123,6 +128,33 @@ export function paintWedge(g: CanvasRenderingContext2D, s: WedgeState): void {
   g.fillText(`×${(live ? s.mult : 1).toFixed(1)}`, cx + cw / 2, cy + ch / 2 + 1);
   g.restore();
   caption(g, 'MULT', cx + cw - 4, y + 28, `rgba(${ACCENT_RGB},0.5)`, 'right');
+
+  // ── PERFECT ×1.5: what riding the last beat pays, under the chain's
+  // multiplier — dark tube until a perfect lands, then it burns white.
+  const pw = cw - 8;
+  const ph = 26;
+  const px = cx + 4;
+  const py = cy + ch + 8;
+  const hot = s.alive && s.perfectLit;
+  if (hot) {
+    g.save();
+    g.shadowColor = ACCENT;
+    g.shadowBlur = 18;
+    skewCell(g, px, py, pw, ph);
+    g.fillStyle = '#ffffff';
+    g.fill();
+    g.restore();
+  } else {
+    neonCell(g, px, py, pw, ph, false, ACCENT);
+  }
+  g.save();
+  g.font = font(700, 16);
+  g.letterSpacing = '1px';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = hot ? 'rgba(3,6,14,0.92)' : `rgba(${ACCENT_RGB},0.5)`;
+  g.fillText(`PERFECT ×${s.perfectMult.toFixed(1)}`, px + pw / 2, py + ph / 2 + 1);
+  g.restore();
 
   // A hairline with readout ticks under the counter — the instrument's rule.
   const ry = y + 122;
@@ -139,8 +171,9 @@ export function paintWedge(g: CanvasRenderingContext2D, s: WedgeState): void {
     return;
   }
 
-  // ── GROOVE: the pips are points laid over this row; the tally is ink.
-  caption(g, 'GROOVE', x + 26, WEDGE_PIPS.y, 'rgba(28,245,201,0.72)');
+  // ── BEATS (the groove streak): the pips are points laid over this row;
+  // the tally is ink.
+  caption(g, 'BEATS', x + 26, WEDGE_PIPS.y, 'rgba(28,245,201,0.72)');
   if (s.grooveScore > 0) {
     g.textAlign = 'left';
     const tx = WEDGE_PIPS.x0 + WEDGE_PIPS.gap * (WEDGE_PIPS.count - 0.5) + 24;
@@ -269,13 +302,9 @@ export function paintCueing(g: CanvasRenderingContext2D): void {
   glitchText(g, 'CUEING…', CARD_W / 2, CARD_H / 2, 46, ACCENT, { weight: 600, track: 10 });
 }
 
-/** The count-in: the number, the record, and (on tour) the night. */
-export function paintCount(g: CanvasRenderingContext2D, count: number, title: string | null, tour: { name: string; colour: string } | null): void {
+/** The count-in: the number and the record. */
+export function paintCount(g: CanvasRenderingContext2D, count: number, title: string | null): void {
   g.clearRect(0, 0, CARD_W, CARD_H);
-  if (tour) {
-    g.textAlign = 'center';
-    lit(g, tour.name, CARD_W / 2, 54, 28, tour.colour, tour.colour, 600, 6);
-  }
   glitchText(g, `${Math.max(1, count)}`, CARD_W / 2, CARD_H / 2 - 6, 168, '#ff2ad5', { split: 6 });
   if (title) {
     g.textAlign = 'center';

@@ -2,7 +2,8 @@
  * HudSystem — your numbers, OUT of your sightline. A small readout floats
  * off to your LEFT at a natural glance height, turned toward you like a
  * monitor wedge at a gig: the score, the ×multiplier chip (lit only
- * while a chain is alive) and the GROOVE row. Tiny captions, no sentences,
+ * while a chain is alive), the PERFECT ×1.5 chip (lit for a moment after
+ * a perfect landing) and the BEATS row. Tiny captions, no sentences,
  * and NO LIFE COUNTER — you dance the whole record. The centre of your view belongs to the
  * giant and the blocks.
  *
@@ -14,7 +15,7 @@
  * THE GRADE takes the centre when the record ends: one big letter, S to
  * F, with the share of landings you survived under it.
  *
- * THE GROOVE ROW is how you see the combo catch: four pips light one per
+ * THE BEATS ROW (the groove streak) is how you see the combo catch: four pips light one per
  * rhythmic swap as it winds up — and once it's running the pips KEEP
  * DANCING: the cycle walks 1-2-3-4 with your swaps, and the pip whose
  * turn it is hops with a lens-glint sparkle, with the points the streak
@@ -35,7 +36,7 @@
  * owns the planes, the timing and the pips.
  */
 
-import { createSystem, Vector3 } from '@iwsdk/core';
+import { createSystem } from '@iwsdk/core';
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -51,7 +52,7 @@ import {
   Sprite,
   SpriteMaterial,
 } from 'three';
-import { GRADE, SCORE, TOUR } from '../config.js';
+import { GRADE, SCORE } from '../config.js';
 import { trackById } from '../audio/tracks.js';
 import { danceHue } from '../game/profile.js';
 import { dodgeRate, type Flair, gradeOf, match, me, showBeat } from '../game/state.js';
@@ -71,8 +72,6 @@ import {
   paintPop,
   paintWedge,
 } from '../ui/hud.js';
-
-const SET_COLORS = ['#8cff70', '#ff6ee0', '#ffd24a'];
 
 /** The groove's own colour — electric ice, never the seat's, so the two
  *  never blur. Turquoise, per the boss. */
@@ -104,7 +103,11 @@ export function pipHop(tb: number): number {
   return 0;
 }
 
-const _head = new Vector3();
+/** The standing eye the wedge is turned toward, once (platform space). */
+const EYE_Y = 1.6;
+/** How long the wedge's PERFECT chip stays lit after a perfect landing. */
+const PERFECT_HOLD = 1.4;
+
 const _pipC = new Color();
 const _pipWhite = new Color(0xffffff);
 
@@ -147,6 +150,8 @@ export class HudSystem extends createSystem({}) {
   private flairCanvas = document.createElement('canvas');
   private flairTex!: CanvasTexture;
   private flairAge = 9;
+  /** Seconds since the last perfect landing — the PERFECT chip's clock. */
+  private perfectAge = 9;
   private lastKey = '';
   /** The groove pips — points on the wedge, not paint (see groovePips). */
   private pips!: Points;
@@ -188,11 +193,15 @@ export class HudSystem extends createSystem({}) {
     // pushed to the outer edge would sit further into the periphery than
     // the wedge itself, which is how the first pass hid its own numbers.
     this.strip.position.set(-0.52, 1.2, -0.9);
+    // BOLTED to the room: turned once toward where a standing dancer's eyes
+    // are and left there — a monitor wedge on the deck, not a sticker on
+    // your visor. Lean, duck or turn and it stays put.
+    this.strip.lookAt(0, EYE_Y, 0);
     this.scene.add(this.strip);
 
     // THE PIPS ride the strip as four real points plus one glint sprite,
     // just proud of the plane so they draw over it. Children of the strip,
-    // so its look-at and visibility carry them for free.
+    // so its pose and visibility carry them for free.
     const pipGeo = new BufferGeometry();
     this.pipPosAttr = new BufferAttribute(this.pipPos, 3).setUsage(DynamicDrawUsage);
     this.pipColAttr = new BufferAttribute(this.pipCol, 3).setUsage(DynamicDrawUsage);
@@ -246,6 +255,7 @@ export class HudSystem extends createSystem({}) {
     this.flair = new Mesh(new PlaneGeometry(0.76, 0.24), this.flairMat);
     this.flair.renderOrder = 31;
     this.flair.position.set(-0.52, 0.93, -0.88);
+    this.flair.lookAt(0, EYE_Y, 0); // bolted with the wedge it hangs under
     this.scene.add(this.flair);
   }
 
@@ -254,19 +264,19 @@ export class HudSystem extends createSystem({}) {
     // The record is over: the grade owns the centre while the board reads
     // out the ranks behind it.
     const podium = match.screen === 'podium';
-    _head.set(match.headX, match.headY, match.headZ);
 
     // Flair pops.
     const next = match.flairs.shift();
     if (next) {
       this.drawFlair(next.text, next.tone);
       this.flairAge = 0;
+      if (next.tone === 'perfect') this.perfectAge = 0;
     }
     this.flairAge += delta;
+    this.perfectAge += delta;
     const t = this.flairAge;
     const fade = Math.max(0, 1 - Math.max(0, t - 0.9) / 0.5);
     this.flair.visible = inSet && fade > 0;
-    if (this.flair.visible) this.flair.lookAt(_head);
     // THE KICK (see popScale). Every pop resets the age, so each change
     // bounces on its own — a perfect landing on the tail of the last one
     // re-kicks rather than sliding quietly to the new number.
@@ -279,14 +289,14 @@ export class HudSystem extends createSystem({}) {
     const cardUp = podium || (inSet && match.screen === 'countdown');
     this.card.visible = cardUp;
     this.strip.visible = inSet && !cardUp;
-    if (this.strip.visible) this.strip.lookAt(_head);
     this.groovePips(delta);
     if (cardUp) {
       // The count-in and the grade are MOMENTS — hang them at eye line,
-      // big, facing you. Nothing else is happening; nothing is blocked.
+      // big, facing where you stand (bolted like the wedge, never chasing
+      // your head). Nothing else is happening; nothing is blocked.
       this.card.position.set(0, 1.42, -1.55);
       this.card.scale.setScalar(podium ? 1.5 : 1.3);
-      this.card.lookAt(_head);
+      this.card.lookAt(0, EYE_Y, 0);
     }
 
     if (!inSet && !podium) return;
@@ -312,6 +322,7 @@ export class HudSystem extends createSystem({}) {
       d?.alive,
       match.grooveStreak,
       match.grooveScore,
+      this.perfectAge < PERFECT_HOLD, // the PERFECT ×1.5 chip lights, then goes dark
       fontsReady(), // repaint once Rajdhani lands
       // (The groove pips animate OFF the canvas — see groovePips — so the
       // strip repaints only when a number on it actually changes. The old
@@ -361,16 +372,8 @@ export class HudSystem extends createSystem({}) {
       this.cardTex.needsUpdate = true;
       return;
     }
-    // Clean: the number, the record, and (on tour) the night. No slogan.
-    const set = match.tour ? TOUR.sets[match.tour.set] : undefined;
-    paintCount(
-      g,
-      count,
-      trackById(match.trackId)?.title ?? null,
-      match.tour
-        ? { name: `${set?.name ?? 'THE TOUR'} · ${match.tour.song + 1}`, colour: SET_COLORS[match.tour.set % SET_COLORS.length] }
-        : null,
-    );
+    // Clean: the number and the record. No slogan, no tour banner.
+    paintCount(g, count, trackById(match.trackId)?.title ?? null);
     this.cardTex.needsUpdate = true;
   }
 
@@ -386,6 +389,8 @@ export class HudSystem extends createSystem({}) {
       missChain: d?.missChain ?? 0,
       chainOut: GRADE.chainOut,
       grooveScore: match.grooveScore,
+      perfectMult: SCORE.perfectMult,
+      perfectLit: this.perfectAge < PERFECT_HOLD,
     });
     this.stripTex.needsUpdate = true;
   }
