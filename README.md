@@ -645,6 +645,25 @@ carried over verbatim: everything in it still applies to this code.
   spars the ROOKIE. The bout panel names the grade you're facing
   ("contender · gold grade"). Dev: `?bot=gold` pins a rank's row,
   `?botskill=0.6` a raw skill. Headless probe: `npm run check:bot`.
+- **THE NEON SIGNS** (`ui/signArt.ts`) — the countdown (3 / 2 / 1 /
+  FIGHT), the verdicts (KO / WIN / TIME / DRAW) and the pub ring's OPEN
+  are painted in code in the holo kit's hand, replacing the nine
+  hand-made script-neon PNGs: Rajdhani leaned on the kit's slant, a
+  white-hot core inside a lit tube, a wide bloom under a tight halo, the
+  GLITCH cyan / magenta split, two torn scan slices and scanlines, a
+  small tracked tag (KNOCKOUT, VICTORY, DEAD HEAT…) and a lit rule — or,
+  under a digit, three skew cells draining 3 → 2 → 1. The count runs cool
+  to hot: 3 and 2 cyan, 1 and FIGHT red; KO magenta, WIN cyan, TIME
+  amber, DRAW violet, and the aura behind each sign takes its colour.
+  Each sign strikes like a tube as it lands (two shallow opacity dips,
+  material-only). **The lag fix**: the PNGs were 1536×1024 (~2 MB each)
+  and the first show of each one decoded it and read the whole image
+  back with `getImageData` to find the word in its padding, a
+  main-thread hitch on every countdown beat and on the KO. The signs are
+  painted once, in idle slices after the fonts load, with their content
+  box known from the layout, so showing one is a single `drawImage`;
+  the PNGs (~19 MB) are gone. Preview: `/sign-preview.html`
+  (`?bg=room` for a bright passthrough stand-in).
 - **THE PROMOTION** (`systems/PromotionSystem.ts`, art in
   `ui/promoArt.ts`) — crossing into a new Bronze→Overlord tier plays a
   rank-up pop-up in the lobby, painted in the holo kit like every other
