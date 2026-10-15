@@ -25,12 +25,12 @@ import { signColour, signFlicker } from '../ui/signArt.js';
 const BEAT_STYLE: Record<string, { fill: string; glow: string }> = {
   '3': { fill: '#f4f6fb', glow: 'rgba(170,225,255,0.95)' },
   '2': { fill: '#f4f6fb', glow: 'rgba(170,225,255,0.95)' },
-  '1': { fill: '#ffb62e', glow: 'rgba(255,150,30,0.95)' },
+  '1': { fill: '#ff5266', glow: 'rgba(255,82,102,0.95)' },
   FIGHT: { fill: '#ff3b1e', glow: 'rgba(255,60,20,0.95)' },
 };
 
 /** The aura tint behind each beat — the sign's own tube colour: 3 and 2
- *  cyan, 1 amber, FIGHT red (the clock's escalation). */
+ *  cyan, then 1 and FIGHT red. */
 const BEAT_ACCENT: Record<string, string> = {
   '3': signColour('3'),
   '2': signColour('2'),

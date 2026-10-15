@@ -12,8 +12,8 @@
  *     stubs, and under it a lit rule — or, under a countdown digit, three
  *     skew cells that drain 3 → 2 → 1.
  *
- * The colours follow the clock's escalation (cyan → amber → red): 3 and 2
- * cyan, 1 amber, FIGHT red. KO burns magenta, WIN is the accent cyan,
+ * The countdown goes cool to hot: 3 and 2 cyan, then 1 and FIGHT
+ * red. KO burns magenta, WIN is the accent cyan,
  * TIME is the clock's amber, DRAW a cool violet.
  *
  * WHY PAINTED ONCE: the old hand-made PNGs were 1536×1024 apiece (~2 MB
@@ -58,7 +58,7 @@ interface SignSpec {
 const SPECS: Record<string, SignSpec> = {
   '3': { word: '3', rgb: CYAN, cells: [3, 3], tear: [0.28, 0.71] },
   '2': { word: '2', rgb: CYAN, cells: [2, 3], tear: [0.34, 0.8] },
-  '1': { word: '1', rgb: AMBER, cells: [1, 3], tear: [0.22, 0.62] },
+  '1': { word: '1', rgb: RED, cells: [1, 3], tear: [0.22, 0.62] },
   fight: { word: 'FIGHT', rgb: RED, tag: 'ROUND START', tear: [0.3, 0.74] },
   ko: { word: 'K.O.', rgb: MAGENTA, tag: 'KNOCKOUT', tear: [0.36, 0.68] },
   win: { word: 'WIN', rgb: CYAN, tag: 'VICTORY', tear: [0.26, 0.77] },

@@ -652,8 +652,8 @@ carried over verbatim: everything in it still applies to this code.
   white-hot core inside a lit tube, a wide bloom under a tight halo, the
   GLITCH cyan / magenta split, two torn scan slices and scanlines, a
   small tracked tag (KNOCKOUT, VICTORY, DEAD HEAT…) and a lit rule — or,
-  under a digit, three skew cells draining 3 → 2 → 1. Colours follow the
-  clock: 3 and 2 cyan, 1 amber, FIGHT red; KO magenta, WIN cyan, TIME
+  under a digit, three skew cells draining 3 → 2 → 1. The count runs cool
+  to hot: 3 and 2 cyan, 1 and FIGHT red; KO magenta, WIN cyan, TIME
   amber, DRAW violet, and the aura behind each sign takes its colour.
   Each sign strikes like a tube as it lands (two shallow opacity dips,
   material-only). **The lag fix**: the PNGs were 1536×1024 (~2 MB each)
