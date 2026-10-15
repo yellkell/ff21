@@ -40,6 +40,17 @@ OUT = sys.argv[-1] if sys.argv[-1].endswith(".glb") else "mc_suit.glb"
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 
+# QUEST BUDGET. The whole suit is drawn as five skinned meshes (one per
+# material — see mcCostume.ts), so draw calls are settled; this trims the
+# triangles. Curves are tessellated at LOD of their authored segment counts
+# (never under the floors below) — the MC is a 3.4 m figure seen from
+# 4.6 m and up, where a 40-sided ring and a 24-sided one look the same.
+LOD = 0.55
+
+
+def lod(n, floor=8):
+    return max(floor, round(n * LOD))
+
 
 # ── materials ─────────────────────────────────────────────────────────────
 def material(name, rgb, metal=0.0, rough=0.5, emit=None, alpha=1.0):
@@ -88,7 +99,7 @@ def smooth(o, angle=40):
 def ellipsoid(name, mat, c, r, segs=24, rings=14, keep=None):
     """An ellipsoid at `c` with radii `r`; `keep(v)` (unit-sphere coords) trims it."""
     bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=segs, v_segments=rings, radius=1.0)
+    bmesh.ops.create_uvsphere(bm, u_segments=lod(segs, 10), v_segments=lod(rings, 6), radius=1.0)
     if keep:
         doomed = [v for v in bm.verts if not keep(v.co)]
         bmesh.ops.delete(bm, geom=doomed, context="VERTS")
@@ -109,7 +120,7 @@ def solidify(o, t, offset=-1):
     return o
 
 
-def bevel(o, w, segs=2):
+def bevel(o, w, segs=1):
     mod = o.modifiers.new("bevel", "BEVEL")
     mod.width = w
     mod.segments = segs
@@ -135,6 +146,7 @@ def box(name, mat, c, size, bev=0.0, rot=(0, 0, 0)):
 
 
 def ring(name, mat, c, R, r, axis="Z", sx=1.0, sy=1.0, segs=40, tube=8):
+    segs, tube = lod(segs, 14), 5
     bm = bmesh.new()
     verts = []
     for i in range(segs):
@@ -163,6 +175,7 @@ def ring(name, mat, c, R, r, axis="Z", sx=1.0, sy=1.0, segs=40, tube=8):
 
 def lathe(name, mat, prof, segs=32, sx=1.0, sy=1.0, c=(0, 0, 0), cap=True, arc=None):
     """Revolve (radius, z) pairs about Z. `arc` = (a0, a1) leaves it open."""
+    segs = lod(segs, 12)
     bm = bmesh.new()
     full = arc is None
     a0, a1 = arc if arc else (0, math.tau)
@@ -400,8 +413,8 @@ def mantle():
     solidify(col, 0.006, 1)
     p.append(col)
     lip = []
-    for i in range(29):
-        a = math.pi / 2 + 0.75 + (math.tau - 1.5) * i / 28
+    for i in range(15):
+        a = math.pi / 2 + 0.75 + (math.tau - 1.5) * i / 14
         lip.append((math.cos(a) * 0.075 * 1.05, math.sin(a) * 0.075 * 0.95, 0.076))
     p.extend(strip("m_lip", "glow_trim", lip, 0.005, 0.005))
     # The back: a spine of chrome vertebrae and two lit speaker cones.
@@ -415,8 +428,8 @@ def mantle():
         p.append(ring(f"m_conering{s}", "glow_core", (s * 0.052, -0.097, -0.09), 0.03, 0.0035, axis="Y"))
     # The lower hem of the cuirass, lit.
     hem = []
-    for i in range(41):
-        a = i / 40 * math.tau
+    for i in range(21):
+        a = i / 20 * math.tau
         hem.append((math.cos(a) * 0.065 * 1.15, math.sin(a) * 0.065 * 0.88, -0.278))
     p.extend(strip("m_hem", "glow_trim", hem, 0.005, 0.005))
     # Lit flank seams under the arms.
@@ -613,6 +626,8 @@ for o in pieces:
     o.data.calc_loop_triangles()
     tris += len(o.data.loop_triangles)
 print(f"pieces={len(pieces)} tris={tris}")
+for o in pieces:
+    print(f"  {o.name:12s} {len(o.data.loop_triangles):6d}")
 
 bpy.ops.export_scene.gltf(
     filepath=OUT,

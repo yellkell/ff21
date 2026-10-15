@@ -201,6 +201,10 @@ export interface DancerRig {
    *  posed with the figure for free. (The house figures carry it; the
    *  players' blank doesn't.) */
   mount?: DancerMounts;
+  /** The house meshes a full suit of armour encloses completely (the
+   *  bodice and its seams, the clavicles, the mitts) — the MC's suit takes
+   *  them out of the scene so they stop costing draws nobody can see. */
+  underSuit?: Mesh[];
 }
 
 export interface DancerMounts {
@@ -857,6 +861,7 @@ export function buildDancer(hue: number): DancerRig {
   root.add(elbowL, elbowR);
 
   /* ── hands: faceted gauntlet mitt + neon cuff + glowstick blade ── */
+  const underSuit: Mesh[] = [bodice, sternum, spine];
   const mkHand = (): Group => {
     const hand = new Group();
     const mitt = M(hexGeo(), shell);
@@ -869,6 +874,7 @@ export function buildDancer(hue: number): DancerRig {
     fingers.position.set(0, -0.012, -0.072);
     fingers.rotation.x = -0.5;
     hand.add(fingers);
+    underSuit.push(mitt, fingers);
     const cuff = detail(M(torusGeo(0.034, 0.0065), neonStd));
     cuff.rotation.x = Math.PI / 2;
     cuff.position.set(0, 0.008, -0.008);
@@ -1203,6 +1209,7 @@ export function buildDancer(hue: number): DancerRig {
       bootL,
       bootR,
     },
+    underSuit: [...underSuit, clavL, clavR],
     setCrown(on: boolean) {
       if (on && !crown) {
         crown = buildCrown();

@@ -74,7 +74,7 @@
         });
       };
       // The suit streams in; give it a beat, then paint and flag ready.
-      const wait = () => (scenes.every((s) => s.rig.root.getObjectByName('HELMET')) ? (paint(), (window.__ready = true)) : setTimeout(wait, 100));
+      const wait = () => (scenes.every((s) => s.rig.root.getObjectByName('mc-suit')) ? (paint(), (window.__ready = true)) : setTimeout(wait, 100));
       wait();
       setInterval(paint, 500);
     </script>

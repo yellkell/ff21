@@ -25,7 +25,20 @@
  * `glow_trim` at the sleeves' level. The chest's PLATTER turns at 33⅓
  * (McSystem). Same suit in the club and on raid nights — it's him.
  */
-import { MeshStandardMaterial, type Material, type Mesh, type Object3D } from 'three';
+import {
+  Bone,
+  type BufferGeometry,
+  Float32BufferAttribute,
+  Matrix4,
+  MeshStandardMaterial,
+  type Material,
+  type Mesh,
+  type Object3D,
+  Skeleton,
+  SkinnedMesh,
+  Uint16BufferAttribute,
+} from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { ACCENT_REST, type DancerMounts, type DancerRig } from './avatars.js';
@@ -124,49 +137,120 @@ const PIECES: [string, keyof DancerMounts][] = [
   ['BOOT_R', 'bootR'],
 ];
 
-/** Dress a house rig as the MC. Safe to call before the suit has loaded —
- *  the pieces arrive when it does. */
+/** A piece-local geometry, ready to merge: its mesh's transform baked in
+ *  (relative to the bone frame it rides) and every vertex bound fully to
+ *  bone `bone`. */
+function bound(mesh: Mesh, frame: Object3D, bone: number): BufferGeometry {
+  _rel.copy(frame.matrixWorld).invert().multiply(mesh.matrixWorld);
+  const g = mesh.geometry.clone().applyMatrix4(_rel);
+  // Only what the suit's surfaces read: no UVs, no tangents.
+  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+  const n = g.attributes.position.count;
+  const idx = new Uint16Array(n * 4);
+  const wt = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    idx[i * 4] = bone;
+    wt[i * 4] = 1;
+  }
+  g.setAttribute('skinIndex', new Uint16BufferAttribute(idx, 4));
+  g.setAttribute('skinWeight', new Float32BufferAttribute(wt, 4));
+  return g;
+}
+const _rel = new Matrix4();
+
+/**
+ * Dress a house rig as the MC. Safe to call before the suit has loaded —
+ * the pieces arrive when it does.
+ *
+ * QUEST BUDGET: fifteen pieces in five materials were ~60 draw calls if
+ * each hung off its mount as its own meshes. Instead the whole suit is
+ * FIVE skinned meshes — one per material — over a sixteen-bone skeleton
+ * whose bones ARE the rig's mounts (plus the chest platter): every vertex
+ * is bound 100% to the bone of the piece it came from, so each plate rides
+ * its limb rigidly, exactly as if it were parented there, for a single
+ * draw per material.
+ */
 export function dressMc(rig: DancerRig): McSuit {
   const suit: McSuit = { platter: null };
   const mount = rig.mount;
   if (!mount) return suit;
   loadKit()
     .then((src) => {
-      // One accent per glow tier, shared by every piece: the rig drives
-      // three materials instead of one per bar of piping.
+      // One accent per glow tier: the rig drives two materials, not one per
+      // bar of piping.
       const glows = new Map<string, MeshStandardMaterial>();
       const glowFor = (name: string): MeshStandardMaterial => {
-        const tier = name.replace(/\.\d+$/, '');
-        let glow = glows.get(tier);
+        let glow = glows.get(name);
         if (!glow) {
           glow = new MeshStandardMaterial({
             color: 0x101218,
             emissive: rig.baseColor,
-            emissiveIntensity: ACCENT_REST * glowGain(tier),
+            emissiveIntensity: ACCENT_REST * glowGain(name),
             metalness: 0.3,
             roughness: 0.4,
           });
-          glows.set(tier, glow);
-          rig.accents.push({ mat: glow, gain: glowGain(tier), neon: true, hot: tier === 'glow_core' ? 0.3 : 0.12 });
+          glows.set(name, glow);
+          rig.accents.push({ mat: glow, gain: glowGain(name), neon: true, hot: name === 'glow_core' ? 0.3 : 0.12 });
         }
         return glow;
       };
-      for (const [name, at] of PIECES) {
-        const o = src.getObjectByName(name);
-        if (!o) continue;
-        const c = o.clone(true);
-        c.position.set(0, 0, 0); // authored in the mount's own frame
-        c.traverse((n) => {
+      src.updateMatrixWorld(true);
+      const bones: Bone[] = [];
+      const byMaterial = new Map<string, { mat: Material; parts: BufferGeometry[] }>();
+      const take = (root: Object3D, bone: number, skip?: Object3D): void => {
+        root.traverse((n) => {
           const mesh = n as Mesh;
           if (!mesh.isMesh) return;
+          // A child node with its own bone (the platter) is taken separately.
+          for (let p: Object3D | null = mesh; p && p !== root; p = p.parent) if (p === skip) return;
           const m = mesh.material as Material;
-          mesh.material = m.name.startsWith('glow_') ? glowFor(m.name) : dressSurface(m);
+          const key = m.name.replace(/\.\d+$/, '');
+          let slot = byMaterial.get(key);
+          if (!slot) {
+            slot = { mat: key.startsWith('glow_') ? glowFor(key) : dressSurface(m), parts: [] };
+            byMaterial.set(key, slot);
+          }
+          slot.parts.push(bound(mesh, root, bone));
         });
+      };
+      for (const [name, at] of PIECES) {
+        const piece = src.getObjectByName(name);
+        if (!piece) continue;
+        const bone = new Bone();
+        mount[at].add(bone); // the piece's frame IS the mount's
+        bones.push(bone);
+        const platter = piece.getObjectByName('PLATTER');
+        take(piece, bones.length - 1, platter);
+        if (platter) {
+          // The record turns about its own axis, riding the chest.
+          const spin = new Bone();
+          spin.position.copy(platter.position);
+          spin.quaternion.copy(platter.quaternion);
+          bone.add(spin);
+          bones.push(spin);
+          take(platter, bones.length - 1);
+          suit.platter = spin;
+        }
         // The helmet IS his head and the boots ARE his feet: the house
         // pieces under them go dark.
-        if (at === 'head' || at === 'bootL' || at === 'bootR') for (const k of mount[at].children) k.visible = false;
-        mount[at].add(c);
-        suit.platter ??= c.getObjectByName('PLATTER') ?? null;
+        if (at === 'head' || at === 'bootL' || at === 'bootR') for (const k of mount[at].children) if (k !== bone) k.visible = false;
+      }
+      // Out of the scene entirely (not just hidden — a detail toggle would
+      // bring them back): nothing can see them inside the plate.
+      for (const m of rig.underSuit ?? []) m.removeFromParent();
+      // Identity inverses: each bone's frame is the frame its piece was
+      // authored in, so a vertex rides its bone's world matrix as-is.
+      const skeleton = new Skeleton(bones, bones.map(() => new Matrix4()));
+      for (const { mat, parts } of byMaterial.values()) {
+        const geo = mergeGeometries(parts);
+        for (const p of parts) p.dispose();
+        if (!geo) continue;
+        const skin = new SkinnedMesh(geo, mat);
+        skin.name = 'mc-suit';
+        skin.bind(skeleton, new Matrix4());
+        // Bounds would be the bind pose's; he never leaves the stage.
+        skin.frustumCulled = false;
+        rig.root.add(skin);
       }
     })
     .catch(() => {
