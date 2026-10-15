@@ -24,17 +24,40 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
     premultiplied shader: a puff is pure light while it burns and starts to
     hide what's behind it once it is smoke.
   - **Your own head stays readable.** A hit taken on the head bursts a
-    hand's width from your eyes, so soot thins out near the camera and
-    the flame eases off right at the lens. A puff faded to nothing is drawn
-    at zero size, so it costs no GPU fill in stereo.
+    hand's width from your eyes, so soot thins out near the camera and the
+    flame is gone before it would cover the view; the flash and the damage
+    vignette carry that moment.
+  - **Built for Quest's fill rate.** The headset is fill-bound, so an
+    effect costs the pixels its quads cover, transparent texels included,
+    once per eye. No billboard is drawn wider than about half the view.
+    Anything faded out is drawn at zero size. The puff texture fills its
+    quad. Smoke grows less and clears sooner. Impacts landing close together
+    share a budget: a titan's nova erupts twenty a second, so each gets less
+    detail the busier it is. A full smoke pool drops new puffs instead of
+    growing. Measured with `impact-preview.html?overdraw=1` /
+    `?storm=20`, in screens of fill (peak / mean over 1.6 s):
+
+    | case | old cartoon burst | now |
+    | --- | --- | --- |
+    | rival body hit | 0.75 / 0.086 | 0.23 / 0.038 |
+    | hit taken on body (1.7×) | 4.95 / 0.539 | 1.14 / 0.306 |
+    | hit taken on head (1.7×) | 6.65 / 0.637 | 2.37 / 0.464 |
+    | titan nova, 20 hits/s | 1.41 / 0.320 | 0.36 / 0.051 |
+  - **No upload hitch on the first hit.** The puff texture rides a shader
+    uniform, which the boot-time texture warm never sees. Now `initImpactFx`
+    takes the renderer and pushes every effect texture, and each damage
+    number as it is prewarmed, to the GPU ahead of time.
   - **The damage number goes pop art, still red.** It now has a flat
     printed red with Ben-Day dots that swell toward the bottom, a black
     keyline inside an off-white paper border, a hard offset shadow and a
     glint. Each number lands a few degrees askew. The X and the GG keep
-    their old style.
-  - **Still no hitch.** Everything stays pooled and permanently in the
-    scene; `impact-preview.html` still counts 7 programs before and after a
-    landed hit. Its new `?eye=<metres>` option lands the hit at your face.
+    their old style. It stays 256x128 like every popup, since Quest 3 spends
+    only ~150 px on a number. The dot sheet is drawn once and stamped over
+    each number in one call.
+  - **Still no recompiles.** Everything stays pooled and permanently in
+    the scene; `impact-preview.html` still counts 7 programs before and
+    after a landed hit. Its new `?eye=<metres>` option lands the hit at your
+    face, and its randomness is seeded so measurements repeat.
 - **THE MATCH WAITS FOR THE BLACK, AND THE DOOR WAITS FOR THE LOAD.**
   - **No rival in the alley.** Picking a bout, the tutorial, Aim Training
     or a titan switched the whole match on at once — the rival, their pad,

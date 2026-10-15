@@ -56,6 +56,7 @@ import {
   Vector3,
   type Camera,
   type Material,
+  type WebGLRenderer,
   type Scene,
   type Texture,
 } from 'three';
@@ -83,6 +84,24 @@ const _hot = new Color();
 /** The white-hot heart of every flash and spark, faintly warm. */
 const WHITE_HOT = new Color(1, 0.94, 0.82);
 const Z_AXIS = new Vector3(0, 0, 1);
+
+/**
+ * QUEST BUDGET. The headset is fill-bound: what an effect costs is the
+ * pixels its quads cover, every one of them, transparent texels included,
+ * twice (one per eye). So:
+ *  - no billboard is ever drawn wider than MAX_SPAN × its distance (about
+ *    half the view), and nothing faded to nothing is drawn at all;
+ *  - the pools are small and a full puff pool drops new smoke rather than
+ *    growing;
+ *  - impacts landing close together (a titan's nova erupts twenty a second)
+ *    share a budget: LOAD counts recent impacts and each new one gets less
+ *    detail the busier it is, so a storm costs about what one big hit does.
+ * `impact-preview.html?overdraw=1` (and `?storm=20`) measure it.
+ */
+const MAX_SPAN = 0.55;
+/** Recent impacts, in hit-scale units; decays with LOAD_TAU seconds. */
+let load = 0;
+const LOAD_TAU = 0.4;
 
 /* ── textures (drawn once) ───────────────────────────────────────────────── */
 
@@ -169,8 +188,10 @@ function puffTexture(): Texture {
         const v = (y + 0.5) / s - 0.5;
         const r = Math.sqrt(u * u + v * v) * 2;
         const ang = Math.atan2(v, u);
-        // A lumpy rim: the outline swells and pinches round the puff.
-        const rim = 0.72 + 0.22 * (fbm(Math.cos(ang) * 2.2 + 3, Math.sin(ang) * 2.2 + 3) - 0.5) * 2;
+        // A lumpy rim: the outline swells and pinches round the puff. It
+        // reaches nearly to the quad's edge — every texel of the quad is
+        // paid for in fill rate whether it shows or not.
+        const rim = 0.84 + 0.13 * (fbm(Math.cos(ang) * 2.2 + 3, Math.sin(ang) * 2.2 + 3) - 0.5) * 2;
         const mask = smooth(rim, rim * 0.35, r);
         const dens = fbm(u * 7 + 11, v * 7 + 5);
         const i = (y * s + x) * 4;
@@ -290,7 +311,7 @@ class BillboardLayer {
     this.anim[i] = this.anim[j];
   }
 
-  update(dt: number, camQ: Quaternion): void {
+  update(dt: number, camQ: Quaternion, camPos: Vector3): void {
     if (this.n === 0 && this.mesh.count === 0) return;
     const colors = this.mesh.instanceColor!;
     let i = 0;
@@ -312,8 +333,10 @@ class BillboardLayer {
         scale = 1 + 0.4 * easeOut(t);
         fade = (1 - t) * (1 - t);
       }
-      const s = this.size[i] * scale;
       _p.fromArray(this.pos, i * 3);
+      // Never wider than about half the view: a flash at your face is
+      // already all you can see, and the rest would be fill for nothing.
+      const s = Math.min(this.size[i] * scale, MAX_SPAN * _p.distanceTo(camPos));
       _m.compose(_p, camQ, _s.set(s, s, s));
       this.mesh.setMatrixAt(i, _m);
       // Additive: dimming the colour IS the fade.
@@ -373,7 +396,6 @@ const enum Puff {
 class PuffLayer {
   readonly mesh: InstancedMesh;
   private n = 0;
-  private steal = 0;
   private readonly smokeAttr: InstancedBufferAttribute;
   private readonly pos: Float32Array;
   private readonly vel: Float32Array;
@@ -415,10 +437,12 @@ class PuffLayer {
     this.kind = new Uint8Array(max);
   }
 
+  /** A full pool drops the new puff: stealing a live one would pop it out
+   *  of the air, and a full pool is already all the smoke a frame can pay
+   *  for. */
   spawn(p: Vector3, vx: number, vy: number, vz: number, kind: Puff, c: Color, size: number, life: number): void {
-    let i = this.n;
-    if (i < this.max) this.n++;
-    else i = this.steal = (this.steal + 1) % this.max;
+    if (this.n >= this.max) return;
+    const i = this.n++;
     const k = i * 3;
     this.pos[k] = p.x;
     this.pos[k + 1] = p.y;
@@ -485,7 +509,7 @@ class PuffLayer {
       const g = this.col[k + 1];
       const b = this.col[k + 2];
       if (fire) {
-        grow = 1 + 1.3 * easeOut(t);
+        grow = 1 + 1.1 * easeOut(t);
         // White-hot for the first frames, the fire's own colour after, and
         // the colour drains (blue and green first, as real flame reddens).
         const hot = Math.max(0, 1 - t * 5);
@@ -497,31 +521,35 @@ class PuffLayer {
         occl = 0.3 * smooth(0.3, 0.6, t) * (1 - smooth(0.6, 1, t));
         erode = 0.22 + 0.65 * t;
       } else {
-        grow = 1 + 2.1 * easeOut(t);
+        grow = 1 + 1.3 * easeOut(t);
         const lit = Math.max(0, 1 - t * 6) * 0.3; // the flash on its underside
         er = r * lit;
         eg = g * lit;
         eb = b * lit;
-        occl = 0.38 * smooth(0, 0.12, t) * (1 - t) ** 1.4;
+        occl = 0.42 * smooth(0, 0.12, t) * (1 - t) ** 1.4;
         erode = 0.05 + 0.65 * t;
       }
-      const s = this.size[i] * grow;
       // A hit on your own head bursts a hand's width from your eyes: soot
       // that close would blind you for a second, so it thins out near the
-      // eye and the fight stays readable through it. The flame still fills
-      // the view (taking a hit should), but eases off right at the lens.
+      // eye and the fight stays readable through it. The flame eases off as
+      // it reaches the lens and is gone before it would cover the view —
+      // the light layer's flash and the damage vignette carry that moment,
+      // and a stack of full-screen puffs is the one thing Quest's fill rate
+      // can't afford.
       _p.fromArray(this.pos, k);
-      const gap = _p.distanceTo(camPos) - s * 0.5;
+      const dist = _p.distanceTo(camPos);
+      const s = Math.min(this.size[i] * grow, MAX_SPAN * dist);
+      const gap = dist - s * 0.5;
       const near = smooth(0.25, 0.9, gap);
-      const glow = fire ? 0.35 + 0.65 * smooth(-0.05, 0.3, gap) : near;
+      const glow = fire ? smooth(0.02, 0.3, gap) : near;
       occl *= near;
       er *= glow;
       eg *= glow;
       eb *= glow;
       _qz.setFromAxisAngle(Z_AXIS, this.rot[i] + this.spin[i] * age);
       _q.copy(camQ).multiply(_qz);
-      // Nothing left to see: zero size, so it costs no fill rate in stereo.
-      const z = occl + er + eg + eb > 1e-3 ? s : 0;
+      // Nothing worth seeing: zero size, so it costs no fill rate in stereo.
+      const z = occl > 0.01 || er + eg + eb > 0.01 ? s : 0;
       _m.compose(_p, _q, _s.set(z, z, z));
       this.mesh.setMatrixAt(i, _m);
       colors.setXYZ(i, er, eg, eb);
@@ -691,6 +719,7 @@ function popupTexture(text: string, fill: string, glow: string): CanvasTexture {
   tex = new CanvasTexture(canvas);
   tex.minFilter = LinearFilter;
   popupTextures.set(key, tex);
+  warm(tex);
   return tex;
 }
 
@@ -704,81 +733,102 @@ const POP_PAPER = '#fff6e0';
 
 /**
  * The damage number as a pop-art panel lettering: flat red printed with
- * Ben-Day dots that swell toward the bottom, a heavy black keyline and a
- * hard offset shadow, set on a slight italic lean. Drawn at 512x256 and
- * mipmapped so the dots don't shimmer at arm's length.
+ * Ben-Day dots that swell toward the bottom, a heavy black keyline inside a
+ * paper border and a hard offset shadow, set on a slight italic lean.
+ *
+ * 256x128, the same as every other popup: at the distance a number flies,
+ * Quest 3 spends ~150 px on it, so more texels would only cost memory and
+ * upload time. Mipmapped so the dots don't shimmer. The dot sheet is drawn
+ * once and stamped over each new number in one call, so rasterising a
+ * number we didn't prewarm is a handful of text draws, not hundreds of dots.
  */
+const DMG_W = 256;
+const DMG_H = 128;
+let dotSheet: HTMLCanvasElement | undefined;
+let dmgFace: CanvasRenderingContext2D | undefined;
+
+function halftone(): HTMLCanvasElement {
+  if (dotSheet) return dotSheet;
+  dotSheet = document.createElement('canvas');
+  dotSheet.width = DMG_W;
+  dotSheet.height = DMG_H;
+  const g = dotSheet.getContext('2d')!;
+  g.fillStyle = POP_DOT;
+  const step = 6.5;
+  for (let row = 0, y = 0; y < DMG_H + step; row++, y += step * 0.866) {
+    const r = 0.5 + 2.3 * Math.min(1, Math.max(0, (y - DMG_H * 0.28) / (DMG_H * 0.6)));
+    for (let x = row % 2 ? step / 2 : 0; x < DMG_W + step; x += step) {
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  // A printed highlight: a white glint across the top-left.
+  g.fillStyle = 'rgba(255,255,255,0.85)';
+  g.beginPath();
+  g.ellipse(DMG_W * 0.36, DMG_H * 0.3, 35, 4.5, -0.25, 0, Math.PI * 2);
+  g.fill();
+  return dotSheet;
+}
+
 function damageTexture(text: string): CanvasTexture {
   const key = `dmg|${text}`;
   let tex = popupTextures.get(key);
   if (tex) return tex;
-  const W = 512;
-  const H = 256;
-  const font = `italic 900 188px 'Arial Black', 'Helvetica Neue', system-ui, sans-serif`;
   const set = (g: CanvasRenderingContext2D): void => {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.font = font;
+    g.font = `italic 900 94px 'Arial Black', 'Helvetica Neue', system-ui, sans-serif`;
     g.lineJoin = 'round';
     g.miterLimit = 2;
-    g.setTransform(1, 0, -0.14, 1, 18, 0); // the lean
+    g.setTransform(1, 0, -0.14, 1, 9, 0); // the lean
   };
-  const cx = W / 2;
-  const cy = H / 2 + 12;
+  const cx = DMG_W / 2;
+  const cy = DMG_H / 2 + 6;
 
-  // The face: flat red with the halftone printed over it, clipped to the
-  // letters by drawing the dots source-atop.
-  const face = document.createElement('canvas');
-  face.width = W;
-  face.height = H;
-  const f = face.getContext('2d')!;
+  // The face: flat red with the halftone sheet printed over it, clipped to
+  // the letters by stamping the sheet source-atop.
+  if (!dmgFace) {
+    const c = document.createElement('canvas');
+    c.width = DMG_W;
+    c.height = DMG_H;
+    dmgFace = c.getContext('2d')!;
+  }
+  const f = dmgFace;
+  f.setTransform(1, 0, 0, 1, 0, 0);
+  f.globalCompositeOperation = 'source-over';
+  f.clearRect(0, 0, DMG_W, DMG_H);
   set(f);
   f.fillStyle = POP_RED;
   f.fillText(text, cx, cy);
   f.setTransform(1, 0, 0, 1, 0, 0);
   f.globalCompositeOperation = 'source-atop';
-  f.fillStyle = POP_DOT;
-  const step = 13;
-  for (let row = 0, y = 0; y < H + step; row++, y += step * 0.866) {
-    const r = 1 + 4.6 * Math.min(1, Math.max(0, (y - H * 0.28) / (H * 0.6)));
-    for (let x = row % 2 ? step / 2 : 0; x < W + step; x += step) {
-      f.beginPath();
-      f.arc(x, y, r, 0, Math.PI * 2);
-      f.fill();
-    }
-  }
-  // A printed highlight: a white glint stroke across the top-left.
-  f.globalCompositeOperation = 'source-atop';
-  f.fillStyle = 'rgba(255,255,255,0.85)';
-  f.beginPath();
-  f.ellipse(W * 0.36, H * 0.3, 70, 9, -0.25, 0, Math.PI * 2);
-  f.fill();
+  f.drawImage(halftone(), 0, 0);
 
   const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = DMG_W;
+  canvas.height = DMG_H;
   const g = canvas.getContext('2d')!;
   set(g);
   // The hard drop shadow: solid ink, offset down-right, no blur.
-  g.fillStyle = POP_INK;
   g.strokeStyle = POP_INK;
-  g.lineWidth = 40;
-  g.strokeText(text, cx + 12, cy + 12);
+  g.lineWidth = 20;
+  g.strokeText(text, cx + 6, cy + 6);
   // The paper border, so the lettering separates from a dark venue.
   g.strokeStyle = POP_PAPER;
-  g.lineWidth = 40;
+  g.lineWidth = 20;
   g.strokeText(text, cx, cy);
   // The keyline.
   g.strokeStyle = POP_INK;
-  g.lineWidth = 22;
+  g.lineWidth = 11;
   g.strokeText(text, cx, cy);
   g.setTransform(1, 0, 0, 1, 0, 0);
-  g.drawImage(face, 0, 0);
+  g.drawImage(f.canvas, 0, 0);
 
   tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace; // the printed red, not a washed-out pink
-  tex.anisotropy = 4;
   popupTextures.set(key, tex);
+  warm(tex);
   return tex;
 }
 
@@ -806,17 +856,36 @@ let puffs: PuffLayer | undefined;
 let streaks: StreakLayer | undefined;
 const popups: Popup[] = [];
 let popupCursor = 0;
+/** Set by initImpactFx: lets a texture go up to the GPU when it is made,
+ *  during the quiet frames of the prewarm, instead of on the frame of the
+ *  hit that first shows it. */
+let gpu: WebGLRenderer | undefined;
+function warm(tex: Texture): void {
+  try {
+    gpu?.initTexture(tex);
+  } catch {
+    /* it uploads on first use instead */
+  }
+}
 /** Labels still to rasterise ahead of their first use, one per frame. */
 const prewarm: (() => void)[] = [];
 
-/** Build the pools and hang them in the scene. Call once at boot. */
-export function initImpactFx(scene: Scene): void {
+/** Build the pools and hang them in the scene. Call once at boot. Pass the
+ *  renderer so every texture is on the GPU before the first hit needs it. */
+export function initImpactFx(scene: Scene, renderer?: WebGLRenderer): void {
   if (glow) return;
+  gpu = renderer;
   // Smoke first, so the flash and the sparks shine through it.
-  puffs = new PuffLayer(128);
-  glow = new BillboardLayer(lightTexture(), 64, 1);
-  streaks = new StreakLayer(384, 1);
+  puffs = new PuffLayer(64);
+  glow = new BillboardLayer(lightTexture(), 32, 1);
+  streaks = new StreakLayer(256, 1);
   scene.add(puffs.mesh, glow.mesh, streaks.mesh);
+  // The puff texture rides a shader uniform, where the boot-time texture
+  // warm (which reads material.map and friends) never looks.
+  for (const layer of [puffs.mesh, glow.mesh, streaks.mesh]) {
+    const m = layer.material as ShaderMaterial & MeshBasicMaterial;
+    warm(m.uniforms?.uMap?.value ?? m.map);
+  }
 
   // The popups are separate quads (each wears its own number); all share
   // one program. A permanent zero-size KEEPER holds that program compiled so
@@ -857,8 +926,9 @@ export function updateImpactFx(dt: number, camera: Camera): void {
 
   camera.getWorldQuaternion(_camQ);
   camera.getWorldPosition(_camPos);
+  load *= Math.exp(-dt / LOAD_TAU);
   puffs!.update(dt, _camQ, _camPos);
-  glow.update(dt, _camQ);
+  glow.update(dt, _camQ, _camPos);
   streaks!.update(dt, _camPos);
 
   for (const pop of popups) {
@@ -883,6 +953,7 @@ export function updateImpactFx(dt: number, camera: Camera): void {
 
 /** Drop every live effect (crossing between unrelated experiences). */
 export function clearImpactFx(): void {
+  load = 0;
   puffs?.clear();
   glow?.clear();
   streaks?.clear();
@@ -964,6 +1035,9 @@ export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale
   if (!glow) return;
   const tint = _col.set(teamColor(team));
   const s = scale;
+  // Detail: 1 for a lone hit, falling as impacts pile up (see QUEST BUDGET).
+  load += s;
+  const lod = Math.min(1, 2.2 / load);
 
   // Which way the burst splashes: back off the struck surface.
   let bx = 0;
@@ -978,11 +1052,11 @@ export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale
 
   // The light: a white-hot instant, and the glow it throws into the air.
   glow.spawn(pos, Anim.Flash, 0.3 * s, 0.07, WHITE_HOT, 1.1);
-  glow.spawn(pos, Anim.Bloom, 0.85 * s, 0.2, tint, 0.45);
+  glow.spawn(pos, Anim.Bloom, 0.65 * s, 0.18, tint, 0.5);
 
   // The flame: ragged billows that roll out of the hit, cool and redden.
   // Each starts a little proud of the surface so it doesn't slice the body.
-  const flames = Math.max(3, Math.round(5 * s));
+  const flames = Math.max(1, Math.round(4 * s * lod));
   for (let i = 0; i < flames; i++) {
     _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     const out = 0.5 + Math.random() * 1.1;
@@ -995,12 +1069,12 @@ export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale
       (bz * out + _x.z * 0.9) * s,
       Puff.Fire,
       _hot,
-      (0.1 + Math.random() * 0.08) * s,
+      (0.09 + Math.random() * 0.06) * s,
       0.24 + Math.random() * 0.16,
     );
   }
   // The soot it leaves: a few dark billows that hang, rise and thin out.
-  const smokes = Math.max(2, Math.round(3 * s));
+  const smokes = Math.round(Math.min(2.6, 2 * s) * lod);
   for (let i = 0; i < smokes; i++) {
     _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     _p.copy(pos).add(_y.set(bx, by, bz).multiplyScalar(0.05 * s)).addScaledVector(_x, 0.03 * s);
@@ -1011,14 +1085,14 @@ export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale
       (bz * 0.35 + _x.z * 0.25) * s,
       Puff.Smoke,
       tint,
-      (0.12 + Math.random() * 0.08) * s,
-      0.9 + Math.random() * 0.6,
+      (0.11 + Math.random() * 0.06) * s,
+      0.7 + Math.random() * 0.4,
     );
   }
 
   // Sparks: many fine, fast flecks that die quick, a few heavier beads that
   // arc out and fall. The fire's colour is what they cool to.
-  const count = Math.round(22 * s);
+  const count = Math.round(20 * s * Math.sqrt(lod));
   for (let i = 0; i < count; i++) {
     _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     _x.x += bx * 0.9;
@@ -1040,5 +1114,5 @@ export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale
   }
 
   // A few embers from the shared pool drift up off the hit.
-  emberBurst(pos, Math.round(4 * s), team === 1);
+  emberBurst(pos, Math.round(4 * s * lod), team === 1);
 }
