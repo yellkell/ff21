@@ -249,17 +249,10 @@ function buildLandings(
     // ground left. Out, then back — the whole deck used in four beats.
     // (The ring's own telegraph holds off until the laser has fired; see
     // ChoreoSystem, which gates the second stage's window.)
-    // THE SAFE DISC tightens act by act — except on EXPERT, where every
-    // donut in the night is the same tight disc. This is the one move you
-    // run BACK INTO on memory (the opening laser drives you off the very
-    // ground the rim then demands), so a middle that quietly resizes
-    // between phrases asks you to re-learn the answer mid-set. Expert
-    // holds the tightest disc from the first bar and never moves it.
-    const innerR = expert
-      ? CHOREO.donutInnerRExpert
-      : act >= 3
-        ? CHOREO.donutInnerRLate
-        : CHOREO.donutInnerR;
+    // THE SAFE DISC is one small disc all night, on every difficulty (and
+    // the duck donut's too): this is the one move you run BACK INTO on
+    // memory, so the middle never resizes between phrases.
+    const innerR = CHOREO.donutInnerR;
     const opens = rng() < CHOREO.donutOpenChance;
     if (opens) {
       landings.push({
@@ -410,14 +403,10 @@ function buildLandings(
     // THE COMBINATION: the rim floods AND the blade hangs over the middle
     // — get to the centre and DUCK there. Both zones detonate together;
     // both answers are ones the set already taught.
-    // Its disc is EXPERT's tight one, always — the roomy opener disc made
-    // the rarest move in the game gentler than the plain donut beside it,
-    // and a once-a-night finale shouldn't come with training wheels. It
-    // only ever deals from the top two acts, where the tight middle is
-    // either already the law (expert) or exactly one act away (hard's
-    // back stretch serving donutInnerRLate).
+    // Its disc is the plain donut's small one — the finale combination
+    // never opens a roomier middle than the move it out-ranks.
     landings.push({ beat: landBeat, zone: { kind: 'sweep' } });
-    landings.push({ beat: landBeat, zone: { kind: 'donut', innerR: CHOREO.donutInnerRExpert } });
+    landings.push({ beat: landBeat, zone: { kind: 'donut', innerR: CHOREO.donutInnerR } });
   } else if (kind === 'sweep') {
     landings.push({ beat: landBeat, zone: { kind: 'sweep' } });
   } else if (kind === 'gate') {

@@ -391,19 +391,11 @@ export const CHOREO = {
    *  instead of arriving alone. A full bar between the two is the whole
    *  move: driven off centre, then hauled back.
    *
-   *  The disc tightens act by act — EXCEPT on EXPERT, which serves ONE
-   *  donut all night: the tight disc, first bar to last. The donut is the
-   *  move you run BACK INTO, off the memory of where the middle was, and a
-   *  target that quietly resizes between phrases is a target nobody can
-   *  learn. Expert gets the honest version — the same disc every time, and
-   *  the smallest one the game serves. */
-  donutInnerR: 0.42,
-  donutInnerRLate: 0.34,
-  /** EXPERT's one and only donut, and the tightest disc in the game — and
-   *  the DUCK DONUT's disc wherever THAT deals, on every difficulty: the
-   *  finale combination never opens a roomier middle than the plain donut
-   *  it out-ranks. */
-  donutInnerRExpert: 0.3,
+   *  ONE disc, every act, every difficulty — and the DUCK DONUT's too. The
+   *  donut is the move you run BACK INTO, off the memory of where the
+   *  middle was, so the target never resizes between phrases — and it is
+   *  always the small one, tighter than expert's old disc (0.3). */
+  donutInnerR: 0.26,
   donutRadius: 1.15,
   donutFollowBeats: 4,
   donutOpenChance: 0.7,

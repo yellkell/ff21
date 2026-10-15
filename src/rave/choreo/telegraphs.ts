@@ -76,6 +76,20 @@ export const HEAT_GLSL = /* glsl */ `
   const vec3 CHALK = ${vec3(HEAT.chalk)};
 `;
 
+/** The platform's own silhouette as a soft mask, `q` in deck metres — the
+ *  octagon from config (half-width .86, half-depth .75, chamfer plane
+ *  0.375|x|+0.485|z| = 0.5044, normalised by its length). Shared with the
+ *  strikes, so no wall of light ever pokes past the rim either. */
+export const OCT_GLSL = /* glsl */ `
+  float octMask(vec2 q){
+    q = abs(q);
+    float m = smoothstep(0.0, 0.045, 0.86 - q.x);
+    m = min(m, smoothstep(0.0, 0.045, 0.75 - q.y));
+    m = min(m, smoothstep(0.0, 0.045, (0.5044 - (0.375 * q.x + 0.485 * q.y)) / 0.613));
+    return m;
+  }
+`;
+
 /** Shared vertex shader — UVs through, plus the fragment's position in
  *  DECK space (uPlace = the mesh's transform relative to the platform). */
 const VERT = /* glsl */ `
@@ -91,11 +105,7 @@ const VERT = /* glsl */ `
  * The kit. F = the charge (0..1), B = the afterburn (0..1, zero until the
  * landing). heat() is the ramp, envelope() the pulse that becomes the
  * ignition flash, ink() composes a scrim (wash) and neon lines (line).
- *
- * octMask is the platform's own silhouette as a soft mask — `q` in deck
- * metres; constants are the octagon from config (half-width .86,
- * half-depth .75, chamfer plane 0.375|x|+0.485|z| = 0.5044, normalised by
- * its length).
+ * octMask (OCT_GLSL) trims every mark to the deck.
  */
 const COMMON = /* glsl */ `
   ${HEAT_GLSL}
@@ -120,13 +130,7 @@ const COMMON = /* glsl */ `
     float b = 1.0 - B();
     return mix(pulse(), b * b * (1.0 + 1.6 * b), landed());
   }
-  float octMask(vec2 q){
-    q = abs(q);
-    float m = smoothstep(0.0, 0.045, 0.86 - q.x);
-    m = min(m, smoothstep(0.0, 0.045, 0.75 - q.y));
-    m = min(m, smoothstep(0.0, 0.045, (0.5044 - (0.375 * q.x + 0.485 * q.y)) / 0.613));
-    return m;
-  }
+  ${OCT_GLSL}
   // The deck's own edge, as a band just inside the rim.
   float deckRim(vec2 q){ return octMask(q) - octMask(q * 1.075); }
   // The one hazard texture: diagonal stripes laid in deck space, drifting.
