@@ -25,6 +25,7 @@ import {
   PlaneGeometry,
   PointLight,
   Scene,
+  type ShaderMaterial,
   Vector3,
 } from 'three';
 import {
@@ -70,8 +71,8 @@ export interface Arena {
   /** The stage podium root (boss stands on top). */
   stage: Group;
   stageFootlightMat: MeshStandardMaterial;
-  stageNeonMat: MeshStandardMaterial;
-  stageHaloMat: MeshBasicMaterial;
+  /** The riser's rim — part of the light show (stage.ts driveRim). */
+  stageRimMat: ShaderMaterial;
   /** Stage top surface height (boss feet). */
   stageTopY: number;
   dispose(): void;
@@ -235,7 +236,7 @@ export function buildArena(scene: Scene, seats: number, mySeat: number, names: (
     platforms.push(handle);
   }
 
-  const { stage, footlightMat, neonMat, haloMat, topY, dispose: disposeStage } = buildStage();
+  const { stage, footlightMat, rimMat, topY, dispose: disposeStage } = buildStage();
   // The practical wash travels with the riser when ranking lowers the room.
   stage.add(stageLight);
   stage.position.set(0, 0, -ringRadius(seats));
@@ -248,8 +249,7 @@ export function buildArena(scene: Scene, seats: number, mySeat: number, names: (
     platforms,
     stage,
     stageFootlightMat: footlightMat,
-    stageNeonMat: neonMat,
-    stageHaloMat: haloMat,
+    stageRimMat: rimMat,
     stageTopY: topY,
     dispose() {
       root.removeFromParent();

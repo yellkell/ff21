@@ -12,17 +12,24 @@
  *              square to you (so it reads as a true disc with its label
  *              dead centre, not a skewed ellipse), spinning, grooves lit
  *              by the band they'd carry, a sheen sweeping round as it
- *              spins. It DANCES on purpose: a slow pendulum sway across
- *              the sky every 16 bars, a breathing rise and fall, a kick
- *              on every beat and the lazy wobble of a warped pressing.
+ *              spins. It MOVES on purpose — a slow pendulum sway across
+ *              the sky every 16 bars, a breathing rise and fall, the lazy
+ *              wobble of a warped pressing — but it never THROBS: no jump
+ *              on the kick, no flashing playhead, and its light follows
+ *              the music and the danger duck on a slow ease. It is the
+ *              biggest thing in the sky; anything it does on the beat
+ *              pulls the eye off the landings.
  *              The playhead IS the set's progress: the tone-arm laser
  *              starts at the outer groove on the first beat and reaches
  *              the label on the last — you can read how much set is left
  *              in the sky.
  *   THE GLASS  every kick sends a ring racing out across the floor from the
  *              edge of the ring, bent into the waveform of the moment.
- *   THE AIR    laser fans from the wall's crest cross over the ring; the
- *              horizon glows with the bass.
+ *   THE AIR    a ring of laser fans all the way round the wall's crest —
+ *              behind you too — crossing over the ring, conducted with the
+ *              stage's crown by ../lightshow.ts: one look a phrase, a
+ *              gather onto the record over its last bar, a burst on the
+ *              next one. The horizon glows with the bass.
  *
  * Every song wears its own sleeve (palettes.ts) — wall gradient, grooves,
  * ripples, horizon, lasers — eased in as the record changes.
@@ -38,7 +45,6 @@ import {
   CanvasTexture,
   CircleGeometry,
   Color,
-  CylinderGeometry,
   DoubleSide,
   Group,
   InstancedBufferAttribute,
@@ -57,6 +63,8 @@ import {
 import { currentTrack } from '../../audio/music.js';
 import { readBands } from '../../audio/spectrum.js';
 import { setEndBeat } from '../../game/state.js';
+import { LaserBeams, LaserFlares } from '../laserBeams.js';
+import { aimBeam, cueAt, emitterRing, newAim, newCue, seedOf, type Cue } from '../lightshow.js';
 import { paletteFor, type Palette } from './palettes.js';
 
 const WALL_R = 52;
@@ -81,18 +89,26 @@ const REC = {
   /** The breath: metres up and down, over this many beats. */
   rise: 3,
   riseBeats: 32,
-  /** The kick: metres the disc jumps on the beat. */
-  kick: 0.9,
-  /** The warp: radians the face wobbles off square, once a bar. */
-  warp: 0.07,
+  /** The warp: radians the face wobbles off square, over this many beats. */
+  warp: 0.06,
+  warpBeats: 16,
+  /** How fast the record's light follows the music and the duck (1/s) —
+   *  slow, so it swells instead of flickering. */
+  ease: 1.2,
 };
 /** Who the record turns to face: the dancer's eye, at the world origin (the
  *  raid seats everyone there; the foyer and VOIDSTEP spawn there). */
 const VIEWER = new Vector3(0, 1.6, 0);
 const _viewer = new Vector3();
-const FANS = [-1.05, -0.35, 0.35, 1.05];
-const BEAMS_PER_FAN = 6;
+/** THE CREST: emitters round the whole wall top, beams per fan, reach. */
+const CREST_N = 12;
+const CREST_BEAMS = 5;
+const CREST_Y = 31;
 const LASER_LEN = 140;
+const _o = new Vector3();
+const _d = new Vector3();
+const _col = new Color();
+const _aim = newAim();
 
 /* ── shared GLSL ──────────────────────────────────────────────────────── */
 const RAMP = /* glsl */ `
@@ -188,7 +204,6 @@ function vinylMaterial(): ShaderMaterial {
       uAccent: { value: new Color() },
       uRot: { value: 0 },
       uPlay: { value: REC.rOut },
-      uPulse: { value: 0 },
       uGain: { value: 1 },
       uBands: { value: new Float32Array(GROOVE_BANDS) },
     },
@@ -203,7 +218,6 @@ function vinylMaterial(): ShaderMaterial {
       uniform vec3 uAccent;
       uniform float uRot;
       uniform float uPlay;
-      uniform float uPulse;
       uniform float uGain;
       uniform float uBands[${GROOVE_BANDS}];
       varying vec2 vP;
@@ -224,7 +238,7 @@ function vinylMaterial(): ShaderMaterial {
         vec3 col = ramp(1.0 - t);
         vec3 c = col * groove * (0.16 + band * 0.9 + sheen * 0.9) * played;
         // The playhead: a lit ring where the needle is.
-        float head = exp(-abs(r - uPlay) * 1.4) * (1.2 + uPulse * 1.8);
+        float head = exp(-abs(r - uPlay) * 1.4) * 1.4;
         c += uAccent * head;
         // The lead-out and lead-in edges.
         c += col * (exp(-abs(r - ${REC.rOut.toFixed(1)}) * 2.0) + exp(-abs(r - ${REC.rIn.toFixed(1)}) * 2.0)) * 0.8;
@@ -377,13 +391,16 @@ export class SpectrumSet {
   private colGain = new Float32Array(WALL_N);
   private bands = new Float32Array(BANDS);
   private grooves = new Float32Array(GROOVE_BANDS);
+  /** The record's slow copies (see REC.ease). */
+  private recBands = new Float32Array(GROOVE_BANDS);
+  private recGain = 0.7;
 
   private disc: Mesh;
   private vinyl: ShaderMaterial;
   private label: Mesh;
   private labelCanvas = document.createElement('canvas');
   private labelTex: CanvasTexture;
-  private arm: Mesh;
+  private arm: LaserBeams;
   private armMat: MeshBasicMaterial;
   private flare: Mesh;
 
@@ -392,9 +409,17 @@ export class SpectrumSet {
   private lastBeat = -Infinity;
 
   private sky: ShaderMaterial;
-  private lasers: InstancedMesh;
-  private laserMat: MeshBasicMaterial;
-  private emitters: Vector3[] = [];
+  private lasers: LaserBeams;
+  private lenses: LaserFlares;
+  private crest = emitterRing('crest', CREST_N, WALL_R - 1, CREST_Y);
+  /** This moment of the light show — DiscoSystem hands it to the stage's
+   *  crown so the two rigs are one show. */
+  readonly cue: Cue = newCue();
+  /** Where the gather pulls every beam: the record's centre (root frame). */
+  readonly focus = new Vector3(0, REC.y, REC.z);
+  /** The bass right now, 0..1 — the lasers breathe with the real kick. */
+  bass = 0;
+  private seed = 0;
 
   private trackId: string | null = null;
   private target = { s: [new Color(), new Color(), new Color(), new Color()], peak: new Color(), accent: new Color(), horizon: new Color() };
@@ -461,13 +486,11 @@ export class SpectrumSet {
     this.disc.add(this.label);
     this.label.position.z = 0.05;
 
-    // The tone arm: a laser from the wall's crest to the needle.
+    // The tone arm: a laser from the wall's crest to the needle — the same
+    // beam as the show's, just steady.
     this.armMat = new MeshBasicMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, fog: false });
-    const armGeo = new CylinderGeometry(0.16, 0.16, 1, 8, 1, true);
-    armGeo.translate(0, 0.5, 0);
-    this.arm = new Mesh(armGeo, this.armMat);
-    this.arm.frustumCulled = false;
-    this.root.add(this.arm);
+    this.arm = new LaserBeams(1, { width: 0.45, fade: 600, hot: 4, haze: 0.15, segments: 8 });
+    this.root.add(this.arm.mesh);
     this.flare = new Mesh(new SphereGeometry(1.1, 16, 12), this.armMat);
     this.root.add(this.flare);
 
@@ -486,15 +509,11 @@ export class SpectrumSet {
     dome.frustumCulled = false;
     this.root.add(dome);
 
-    // ── laser fans off the wall's crest ──────────────────────────────────
-    const beam = new CylinderGeometry(0.07, 0.07, 1, 5, 1, true);
-    beam.translate(0, 0.5, 0);
-    this.laserMat = new MeshBasicMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, fog: false });
-    this.lasers = new InstancedMesh(beam, this.laserMat, FANS.length * BEAMS_PER_FAN);
-    this.lasers.frustumCulled = false;
-    for (const th of FANS) this.emitters.push(new Vector3(Math.sin(th) * (WALL_R - 1), 31, -Math.cos(th) * (WALL_R - 1)));
-    for (let i = 0; i < FANS.length * BEAMS_PER_FAN; i++) this.lasers.setColorAt(i, new Color());
-    this.root.add(this.lasers);
+    // ── THE CREST: laser fans all the way round the wall's top ───────────
+    this.lasers = new LaserBeams(CREST_N * CREST_BEAMS, { width: 0.22, fade: 110, hot: 6, haze: 0.3, segments: 10 });
+    this.root.add(this.lasers.mesh);
+    this.lenses = new LaserFlares(CREST_N, 5);
+    this.root.add(this.lenses.points);
 
     this.setPalette(paletteFor(null), null, true);
     parent.add(this.root);
@@ -541,6 +560,13 @@ export class SpectrumSet {
     this.armMat.color.copy(this.live.accent);
   }
 
+  /** This frame's sleeve laser colour for a slot, hit-whitened. */
+  private laserColor(slot: number, hit: number, out: Color): Color {
+    const n = this.laserCols.length;
+    out.copy(this.laserCols[((slot % n) + n) % n]);
+    return hit > 0.01 ? out.lerp(this.live.peak, hit * 0.55) : out;
+  }
+
   /**
    * `beat` is the continuous song beat, `act` 0..3, `energy` 0..1 (pre-ducked).
    * Outside a set (the foyer, VOIDSTEP) the caller names the record
@@ -561,6 +587,7 @@ export class SpectrumSet {
     const id = opts.trackId !== undefined ? opts.trackId : (track?.id ?? null);
     if (id && id !== this.trackId) {
       this.trackId = id;
+      this.seed = seedOf(id);
       this.setPalette(paletteFor(id), opts.title !== undefined ? opts.title : (track?.title ?? id.toUpperCase()));
     }
     this.ease(1 - Math.exp(-dt * 1.6));
@@ -597,6 +624,11 @@ export class SpectrumSet {
 
     // ── the record ──────────────────────────────────────────────────────
     for (let i = 0; i < GROOVE_BANDS; i++) this.grooves[i] = this.bands[Math.floor((i / GROOVE_BANDS) * BANDS)];
+    // The record's own copies of the bands and the gain, eased slowly: the
+    // floor ripples can twitch with the spectrum, the sky must not.
+    const k = 1 - Math.exp(-dt * REC.ease);
+    for (let i = 0; i < GROOVE_BANDS; i++) this.recBands[i] += (this.grooves[i] - this.recBands[i]) * k;
+    this.recGain += (gain - this.recGain) * k;
     const end = setEndBeat();
     const prog = opts.progress ?? (beat > 0 && end > 0 ? Math.min(1, beat / end) : 0);
     const play = REC.rOut - 1.5 - prog * (REC.rOut - REC.rIn - 3);
@@ -608,34 +640,34 @@ export class SpectrumSet {
     this.spin += dt * (0.42 + act * 0.06);
     u.uRot.value = this.spin;
     u.uPlay.value = play;
-    u.uPulse.value = pulse * energy;
-    u.uGain.value = gain;
-    (u.uBands.value as Float32Array).set(this.grooves);
+    u.uGain.value = this.recGain;
+    (u.uBands.value as Float32Array).set(this.recBands);
     this.label.rotation.z = u.uRot.value as number;
-    // The dance: sway, breath and kick, then turn square to the dancer and
+    // The drift: sway and breath, then turn square to the dancer and
     // wobble off it like a warped pressing on the platter.
     const tau = Math.PI * 2;
     this.disc.position.set(
       Math.sin((beat / REC.swayBeats) * tau) * REC.sway,
-      REC.y + Math.sin((beat / REC.riseBeats) * tau) * REC.rise + pulse * energy * REC.kick,
+      REC.y + Math.sin((beat / REC.riseBeats) * tau) * REC.rise,
       REC.z,
     );
     this.root.updateMatrixWorld();
     this.disc.lookAt(_viewer.copy(VIEWER));
-    const wob = (beat / 4) * tau;
+    const wob = (beat / REC.warpBeats) * tau;
     this.disc.rotateX(Math.sin(wob) * REC.warp);
     this.disc.rotateY(Math.cos(wob) * REC.warp);
     // The needle: a fixed point on the record's frame at the playhead.
     this.disc.updateMatrix();
     const needle = new Vector3(Math.cos(-2.3) * play, Math.sin(-2.3) * play, 0).applyMatrix4(this.disc.matrix);
-    const from = new Vector3(Math.sin(-0.62) * (WALL_R - 1), 34, -Math.cos(-0.62) * (WALL_R - 1));
-    const span = needle.clone().sub(from);
-    this.arm.position.copy(from);
-    this.arm.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), span.clone().normalize());
-    this.arm.scale.set(1, span.length(), 1);
+    const from = _o.set(Math.sin(-0.62) * (WALL_R - 1), 34, -Math.cos(-0.62) * (WALL_R - 1));
+    const span = _d.copy(needle).sub(from);
+    const reach = span.length();
+    this.arm.set(0, from, span.normalize(), reach, this.live.accent, 0.5 + this.recGain * 0.7);
+    this.arm.commit(dt);
     this.flare.position.copy(needle);
-    this.flare.scale.setScalar(1 + pulse * 0.6);
-    this.armMat.opacity = 0.55 + energy * 0.35;
+    this.armMat.opacity = 0.35 + this.recGain * 0.5;
+    // The gather's target: the record's centre, wherever its sway has it.
+    this.focus.copy(this.disc.position);
 
     // ── the glass: a ring away on every kick ────────────────────────────
     if (Math.floor(beat) !== Math.floor(this.lastBeat) && beat > this.lastBeat) {
@@ -652,34 +684,25 @@ export class SpectrumSet {
     const bass = (this.bands[0] + this.bands[1] + this.bands[2]) / 3;
     this.sky.uniforms.uGain.value = gain * (0.55 + bass * 0.7);
 
-    // ── lasers: fans sweep with the bars; the acts open more of them ────
-    const shown = 2 + Math.min(2, act);
-    const o = new Object3D();
-    const c = new Color();
-    for (let f = 0; f < FANS.length; f++) {
-      const on = f === 1 || f === 2 || (f === 0 && shown > 2) || (f === 3 && shown > 3);
-      const e = this.emitters[f];
-      const toward = Math.atan2(-e.x, -e.z);
-      const sweep = Math.sin(beat * (Math.PI / 4) + f * 1.3) * 0.32;
-      const lift = 0.06 + 0.12 * (0.5 + 0.5 * Math.sin(beat * (Math.PI / 8) + f));
-      for (let b = 0; b < BEAMS_PER_FAN; b++) {
-        const i = f * BEAMS_PER_FAN + b;
-        const yaw = toward + sweep + (b / (BEAMS_PER_FAN - 1) - 0.5) * 0.9;
-        const d = new Vector3(Math.sin(yaw) * Math.cos(lift), Math.sin(lift), Math.cos(yaw) * Math.cos(lift));
-        o.position.copy(e);
-        o.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), d);
-        o.scale.set(1, on ? LASER_LEN : 0.0001, 1);
-        o.updateMatrix();
-        this.lasers.setMatrixAt(i, o.matrix);
-        // The count-in runs on negative beats: wrap the index into range.
-        const n = this.laserCols.length;
-        c.copy(this.laserCols[(((f + b + Math.floor(beat / 4)) % n) + n) % n]);
-        this.lasers.setColorAt(i, c);
+    // ── THE CREST: the light show's wall half (../lightshow.ts) ─────────
+    this.bass = Math.min(1, Math.max(0, ((this.bands[0] + this.bands[1] + this.bands[2]) / 3 - 0.3) / 0.6));
+    const cue = cueAt(this.cue, beat, act, this.seed);
+    const pump = Math.max(cue.kick, this.bass);
+    for (const em of this.crest) {
+      _o.set(em.x, em.y, em.z);
+      let lens = 0;
+      for (let b = 0; b < CREST_BEAMS; b++) {
+        aimBeam(cue, em, b, CREST_BEAMS, this.focus, _aim);
+        _d.set(_aim.dx, _aim.dy, _aim.dz);
+        const g = _aim.gain * (0.55 + 0.45 * pump);
+        this.lasers.set(em.i * CREST_BEAMS + b, _o, _d, LASER_LEN, this.laserColor(_aim.slot, cue.hit, _col), g);
+        lens = Math.max(lens, g);
       }
+      this.lenses.set(em.i, _o, _col, Math.min(1.6, lens) * energy);
     }
-    this.lasers.instanceMatrix.needsUpdate = true;
-    if (this.lasers.instanceColor) this.lasers.instanceColor.needsUpdate = true;
-    this.laserMat.opacity = energy * (0.35 + pulse * 0.4);
+    this.lasers.gain = energy * 0.9;
+    this.lasers.commit(dt);
+    this.lenses.commit();
   }
 
   dispose(): void {

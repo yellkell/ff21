@@ -64,7 +64,7 @@ async function headset(name) {
   }, name);
   await page.goto(`${base}/rave.html`, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => page.goto(`${base}/rave.html`));
   await page.waitForTimeout(1200);
-  await page.click('#enter-vr');
+  await page.click('#enter-vr', { timeout: 180_000 }); // it lights once the district has loaded
   await page.waitForFunction(() => document.body.classList.contains('app-entered'), { timeout: 30000 });
   await page.waitForTimeout(2000);
   return page;

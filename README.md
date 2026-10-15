@@ -13,6 +13,76 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **A HIT LOOKS LIKE FIRE, AND THE NUMBER LOOKS LIKE A COMIC.**
+  - **The burst** (`fx/effects.ts`) used to be a comic "POW": an
+    eleven-ray starburst, a perfect shockwave ring, flat glowing discs and
+    tumbling gem chunks, which read as a sticker in the photoreal venues.
+    Now it is a flash too short to have a shape, ragged noise-textured
+    flame that rolls back off the struck surface and cools from white
+    through the fire's colour into dark soot, and fine sparks on real
+    gravity and drag that cool as they fly. The soot and flame are one
+    premultiplied shader: a puff is pure light while it burns and starts to
+    hide what's behind it once it is smoke.
+  - **Your own head stays readable.** A hit taken on the head bursts a
+    hand's width from your eyes, so soot thins out near the camera and the
+    flame is gone before it would cover the view; the flash and the damage
+    vignette carry that moment.
+  - **Built for Quest's fill rate.** The headset is fill-bound, so an
+    effect costs the pixels its quads cover, transparent texels included,
+    once per eye. No billboard is drawn wider than about half the view.
+    Anything faded out is drawn at zero size. The puff texture fills its
+    quad. Smoke grows less and clears sooner. Impacts landing close together
+    share a budget: a titan's nova erupts twenty a second, so each gets less
+    detail the busier it is. A full smoke pool drops new puffs instead of
+    growing. Measured with `impact-preview.html?overdraw=1` /
+    `?storm=20`, in screens of fill (peak / mean over 1.6 s):
+
+    | case | old cartoon burst | now |
+    | --- | --- | --- |
+    | rival body hit | 0.75 / 0.086 | 0.23 / 0.038 |
+    | hit taken on body (1.7×) | 4.95 / 0.539 | 1.14 / 0.306 |
+    | hit taken on head (1.7×) | 6.65 / 0.637 | 2.37 / 0.464 |
+    | titan nova, 20 hits/s | 1.41 / 0.320 | 0.36 / 0.051 |
+  - **No upload hitch on the first hit.** The puff texture rides a shader
+    uniform, which the boot-time texture warm never sees. Now `initImpactFx`
+    takes the renderer and pushes every effect texture, and each damage
+    number as it is prewarmed, to the GPU ahead of time.
+  - **The damage number goes pop art, still red.** It now has a flat
+    printed red with Ben-Day dots that swell toward the bottom, a black
+    keyline inside an off-white paper border, a hard offset shadow and a
+    glint. Each number lands a few degrees askew. The X and the GG keep
+    their old style. It stays 256x128 like every popup, since Quest 3 spends
+    only ~150 px on a number. The dot sheet is drawn once and stamped over
+    each number in one call.
+  - **Still no recompiles.** Everything stays pooled and permanently in
+    the scene; `impact-preview.html` still counts 7 programs before and
+    after a landed hit. Its new `?eye=<metres>` option lands the hit at your
+    face, and its randomness is seeded so measurements repeat.
+- **THE MATCH WAITS FOR THE BLACK, AND THE DOOR WAITS FOR THE LOAD.**
+  - **No rival in the alley.** Picking a bout, the tutorial, Aim Training
+    or a titan switched the whole match on at once — the rival, their pad,
+    the scoreboards, the rim — while the curtain was still only starting
+    to fall over the backstreet. Now anything the lobby didn't have is held
+    out of the render (one frame at a time, so its owner never notices)
+    until the site has been swapped behind full black; it all arrives with
+    the lift on the plaza. The desert crosses the same way now, trailhead
+    to flats or boneyard (`systems/DesertSystem.ts`).
+  - **The show starts when you get there.** A titan's klaxon, WARNING card
+    and entrance, and a bout's 3-2-1 (plate and announcer), used to start
+    on the pick and run through the black. They now hold at zero until the
+    curtain starts lifting on the plaza (`experience/stageGate.ts`, read by
+    CampaignSystem and GameStateSystem). The tutorial waits the same way:
+    Ember, her first line and the tutorial music begin with the lift, and
+    until then the bot stands frozen and nobody's trigger fires.
+  - **ENTER VR lights when everything's in.** The button used to light as
+    soon as the code had built, with ~56 MB of neon district still on its
+    way, so an early tap stood you in a violet void. The landing now waits
+    for every three.js load in flight, the chosen backdrop (NEON streamed,
+    THE COVE baked) and the lobby music / tutor voice decodes, then pushes
+    every texture to the GPU, hidden fight district included; the bar
+    tracks the district's bytes (`experience/bootLoad.ts`). A stalled
+    request can't hold the door shut: past 90 s (20 s in the packaged app,
+    whose OS splash is already waiting) it opens anyway.
 - **THE TUTORIAL'S TEXT BOXES STOP HITCHING.** Ember's caption, the BEGIN
   console and the BALL LOADOUT used to be built, painted and uploaded on the
   very frame they popped up, and a new shader compiled for the first one.

@@ -56,6 +56,7 @@ import {
   type Park,
 } from '../campaign/grammar.js';
 import { keepArmsApart, type GuardMemo } from '../campaign/armGuard.js';
+import { stageHeld } from '../experience/stageGate.js';
 import {
   ARM_REST,
   armFor,
@@ -373,6 +374,11 @@ export class CampaignSystem extends createSystem({
   // Beat counters for the staged entrances/deaths (press strokes, winch
   // jerks, the king's stalls) — they gate the one-shot sfx per beat.
   private introStep = 0;
+  /** The intro's klaxon + WARNING have gone off. They wait for the stage
+   *  (experience/stageGate.ts): picked from the lobby, the whole entrance
+   *  holds at zero until the curtain lifts on the fight ground. */
+  private introCued = false;
+  private introWarning = '';
   /** VULTURE wing pose (0 mantled … 1 full span) — starts open for the intro. */
   private wingSpread = 1;
   private outroStep = 0;
@@ -526,6 +532,20 @@ export class CampaignSystem extends createSystem({
     }
     if (this.phase === 'idle') this.begin();
     this.publishView();
+
+    // THE STAGE, HELD: still crossing from the lobby, so the ceremony waits —
+    // the titan stays parked at its mark, its clock at zero (a raid still
+    // trades state, so a host's clock carries a late guest along).
+    if (this.phase === 'intro' && !this.introCued) {
+      if (stageHeld()) {
+        if (this.raid()) this.raidNet(0);
+        return;
+      }
+      this.introCued = true;
+      this.t = 0;
+      this.hud.title('WARNING', this.introWarning, '#ffb000');
+      sfx.klaxon();
+    }
 
     this.t += delta;
     if (this.raid()) this.raidNet(delta);
@@ -1020,8 +1040,8 @@ export class CampaignSystem extends createSystem({
 
     this.phase = 'intro';
     this.t = 0;
-    this.hud.title('WARNING', warning, '#ffb000');
-    sfx.klaxon();
+    this.introCued = false;
+    this.introWarning = warning;
   }
 
   // --- GOOPLIATH body -----------------------------------------------------------
