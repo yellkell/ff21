@@ -219,10 +219,12 @@ const BAR_FRAG = /* glsl */ `
       col = over(col, tone, (0.38 + 0.3 * pulse) * exp(-max(fd, 0.0) / 6.0) * (1.0 - inside));
       float fill = clamp(0.5 - fd, 0.0, 1.0) * inside;
       float down = (hs.y - px.y) / uSize.y; // 0 at the top edge, 1 at the foot
-      // (LOW keeps the top light faint, so the red isn't washed to pink.)
-      vec3 lit = mix(tone, vec3(1.0), mix(0.42, 0.12, uLow) * clamp(1.0 - down / 0.45, 0.0, 1.0));
+      // (LOW drops the white top light, so the red isn't washed to pink.)
+      vec3 lit = mix(tone, vec3(1.0), 0.42 * (1.0 - uLow) * clamp(1.0 - down / 0.45, 0.0, 1.0));
       lit *= mix(1.0, 0.78, clamp((down - 0.5) * 2.0, 0.0, 1.0));
-      col = over(col, mix(lit, vec3(1.0, 0.3, 0.2), 0.3 * pulse), fill);
+      // LOW's pulse is a throb of brightness, never a fade toward white.
+      lit *= 1.0 - 0.35 * uLow * (1.0 - pulse);
+      col = over(col, lit, fill);
     }
     // The trail: what the hit just took — white on the hit, then magenta.
     float ghost = clamp((x01 - uFrac) * len + 0.5, 0.0, 1.0) * clamp((uTrail - x01) * len + 0.5, 0.0, 1.0);
@@ -236,6 +238,8 @@ const BAR_FRAG = /* glsl */ `
     col = over(col, tone, mix(0.4, 0.85, uLow) * clamp(1.3 - abs(d), 0.0, 1.0));
     gl_FragColor = vec4(col.rgb, col.a * uAlpha);
     #include <tonemapping_fragment>
+    // LOW skips the filmic curve: it desaturates a pure red to salmon.
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, clamp(col.rgb, 0.0, 1.0), uLow);
     #include <colorspace_fragment>
   }
 `;
