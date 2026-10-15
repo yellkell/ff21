@@ -13,6 +13,31 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE MATCH WAITS FOR THE BLACK, AND THE DOOR WAITS FOR THE LOAD.**
+  - **No rival in the alley.** Picking a bout, the tutorial, Aim Training
+    or a titan switched the whole match on at once — the rival, their pad,
+    the scoreboards, the rim — while the curtain was still only starting
+    to fall over the backstreet. Now anything the lobby didn't have is held
+    out of the render (one frame at a time, so its owner never notices)
+    until the site has been swapped behind full black; it all arrives with
+    the lift on the plaza. The desert crosses the same way now, trailhead
+    to flats or boneyard (`systems/DesertSystem.ts`).
+  - **The show starts when you get there.** A titan's klaxon, WARNING card
+    and entrance, and a bout's 3-2-1 (plate and announcer), used to start
+    on the pick and run through the black. They now hold at zero until the
+    curtain starts lifting on the plaza (`experience/stageGate.ts`, read by
+    CampaignSystem and GameStateSystem). The tutorial waits the same way:
+    Ember, her first line and the tutorial music begin with the lift, and
+    until then the bot stands frozen and nobody's trigger fires.
+  - **ENTER VR lights when everything's in.** The button used to light as
+    soon as the code had built, with ~56 MB of neon district still on its
+    way, so an early tap stood you in a violet void. The landing now waits
+    for every three.js load in flight, the chosen backdrop (NEON streamed,
+    THE COVE baked) and the lobby music / tutor voice decodes, then pushes
+    every texture to the GPU, hidden fight district included; the bar
+    tracks the district's bytes (`experience/bootLoad.ts`). A stalled
+    request can't hold the door shut: past 90 s (20 s in the packaged app,
+    whose OS splash is already waiting) it opens anyway.
 - **THE TUTORIAL'S TEXT BOXES STOP HITCHING.** Ember's caption, the BEGIN
   console and the BALL LOADOUT used to be built, painted and uploaded on the
   very frame they popped up, and a new shader compiled for the first one.

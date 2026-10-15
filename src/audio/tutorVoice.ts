@@ -52,9 +52,9 @@ function load(ctx: AudioContext): Promise<void> {
 }
 
 /** Decode the clips ahead of time (call when the tutorial begins). */
-export function preloadTutorVoice(): void {
+export function preloadTutorVoice(): Promise<void> {
   const ctx = audioContext();
-  if (ctx) void load(ctx);
+  return ctx ? load(ctx) : Promise.resolve();
 }
 
 let panner: PannerNode | null = null;

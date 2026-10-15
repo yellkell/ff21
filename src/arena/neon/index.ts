@@ -64,6 +64,8 @@ export interface Neon {
   fog: FogExp2;
   /** True once both districts and the traffic have loaded. */
   readonly ready: boolean;
+  /** 0..1: the bytes of the districts and the traffic fleet that are in. */
+  readonly progress: number;
   readonly site: NeonSite;
   setSite(site: NeonSite): void;
   /** NEON is the active environment (plinths only stand in the plaza while it is). */
@@ -94,6 +96,12 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
   const envs: Partial<Record<NeonSite, Texture>> = {};
   let site: NeonSite = 'backstreet';
   let loaded = 0;
+  // Bytes in / expected per file, for the landing's bar (the districts are
+  // ~56 MB between them, so they are most of the boot's wait).
+  const bytes = new Map<string, { got: number; of: number }>();
+  const onBytes = (file: string) => (e: ProgressEvent) => {
+    bytes.set(file, { got: e.loaded, of: e.lengthComputable ? e.total : 0 });
+  };
 
   // Fighters are lit PBR; tint them with the district without touching the
   // (unlit) streets: a pink key off the bar fronts, a cyan rim from the vista.
@@ -170,7 +178,7 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
       });
       group.add(gltf.scene);
       loaded++;
-    });
+    }, onBytes(file));
   };
   dress('backstreet', sites.backstreet, 'backstreet.glb', 'env_backstreet.jpg');
   dress('plaza', sites.plaza, 'neon_plaza.glb', 'env_plaza.jpg');
@@ -178,7 +186,7 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
     traffic.backstreet = new Traffic(sites.backstreet, gltf.scene, BACKSTREET_LANES, envs.backstreet);
     traffic.plaza = new Traffic(sites.plaza, gltf.scene, PLAZA_LANES, envs.plaza);
     loaded++;
-  });
+  }, onBytes('vehicles.glb'));
 
   let shown = false;
   const apply = () => {
@@ -198,6 +206,17 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
     fog,
     get ready() {
       return loaded >= 3;
+    },
+    get progress() {
+      if (loaded >= 3) return 1;
+      let got = 0;
+      let of = 0;
+      for (const b of bytes.values()) {
+        got += b.got;
+        of += b.of;
+      }
+      // Until every file has said how big it is, count files, not bytes.
+      return bytes.size < 3 || of <= 0 ? loaded / 3 : Math.min(0.99, got / of);
     },
     get site() {
       return site;

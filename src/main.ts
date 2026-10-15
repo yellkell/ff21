@@ -12,6 +12,9 @@
 
 import { launchXR, SessionMode, World } from '@iwsdk/core';
 import { installCrashTrap } from './debug/crashTrap.js';
+// First of the app's own imports: it starts counting three.js loads, and
+// every loader in the game must start after it does.
+import { holdBoot, waitForBootLoads, warmTextures } from './experience/bootLoad.js';
 import { installTownExperienceManager } from './experience/ClubExperienceManager.js';
 import { requestArenaReturn, requestVenueEntry } from './experience/clubNavigation.js';
 import { initLeaderboard, myName } from './net/leaderboard.js';
@@ -98,8 +101,9 @@ const loadBar = document.getElementById('bar-fill') as HTMLElement | null;
 /**
  * The loading bar, 0 to 1, and it never goes back. index.html creeps it along
  * on its own until the code is in; from the first call here it's the real
- * thing: the code (to 0.3), the engine (to 0.45), the arena (to 0.9), then
- * the headset check (to 1).
+ * thing: the code (to 0.3), the engine (to 0.45), the arena (to 0.75), the
+ * district, the music and every other asset (to 0.95), then the headset
+ * check (to 1).
  */
 let loadShown = 0;
 function loadProgress(f: number, text?: string): void {
@@ -298,7 +302,32 @@ World.create(container, {
     document.body.append(controls);
   }
 
-  await loadStep(0.9, 'Checking for a headset…');
+  // THE LOAD, BEFORE THE DOOR (experience/bootLoad.ts): the district, the
+  // pad kit, the sign art, the lobby music — all of it in before ENTER VR
+  // lights, so you never step into a half-built street. The music only
+  // decodes here (a suspended context decodes fine); the tap still starts it.
+  // Inside the packaged app the OS splash is already up and waiting on us,
+  // so its cap is shorter.
+  const packaged =
+    document.referrer.startsWith('android-app://') ||
+    window.matchMedia?.('(display-mode: standalone)')?.matches === true;
+  holdBoot(preloadMenuMusic());
+  if (!app.tutorialDone) holdBoot(preloadTutorVoice());
+  const desert = world.getSystem(DesertSystem)!;
+  await loadStep(0.75, 'Loading the district…');
+  const loadedAll = await waitForBootLoads({
+    ready: () => desert.backdropReady,
+    progress: () => desert.backdropProgress,
+    onProgress: (f) => loadProgress(0.75 + 0.2 * f),
+    cap: packaged ? 20_000 : 90_000,
+  });
+  // eslint-disable-next-line no-console
+  if (!loadedAll) console.warn('[FIRE FIGHT] still loading at the cap — opening the door anyway');
+  // Every texture up to the GPU now — the fight district's too, hidden as it
+  // is — so the first crossing doesn't stall on uploads behind the curtain.
+  warmTextures(world.renderer, world.scene);
+
+  await loadStep(0.95, 'Checking for a headset…');
 
   // Opaque arenas launch in immersive VR. Running a painted-in world through
   // Quest's AR compositor exposes grey reprojection strips at the eye edges
@@ -319,13 +348,14 @@ World.create(container, {
     // context starts running here; on fresh headsets this fails silently and
     // the first trigger pull unlocks it instead — same as before.
     ensureAudio();
-    // Decode starts NOW; playback waits for the boot intro's music cue.
-    preloadMenuMusic();
-    // A boxer who hasn't run the tutorial is headed straight for it — warm
-    // Ember's voice clips now (decode works while the context is young), so
-    // her very first "Over here." speaks instead of falling back to caption.
+    // Decoded behind the landing already; this only joins a decode the
+    // load cap cut short. Playback waits for the boot intro's music cue.
+    void preloadMenuMusic();
+    // A boxer who hasn't run the tutorial is headed straight for it — Ember's
+    // voice clips (decoded at boot the same way), so her very first
+    // "Over here." speaks instead of falling back to caption.
     if (!app.tutorialDone) {
-      preloadTutorVoice();
+      void preloadTutorVoice();
     }
     const sessionMode =
       app.environment === 'ar' && arSupported
@@ -390,9 +420,6 @@ World.create(container, {
   // path never runs and the landing button behaves exactly as before. If the
   // runtime does demand a gesture after all, the request rejects harmlessly
   // and the 4s re-arm above hands control back to the button.
-  const packaged =
-    document.referrer.startsWith('android-app://') ||
-    window.matchMedia?.('(display-mode: standalone)')?.matches === true;
   if (packaged && xrSupported) {
     // Settle the mic permission FIRST, in the one moment this app is still
     // flat. Once we're presenting, a permission prompt has nowhere to appear

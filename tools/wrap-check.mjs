@@ -57,7 +57,7 @@ const enterUrl = `${base}/?floorPatience=4000`;
 async function enter() {
   await page.goto(enterUrl, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => page.goto(enterUrl));
   await page.waitForTimeout(1200);
-  await page.click('#enter-vr');
+  await page.click('#enter-vr', { timeout: 180_000 }); // it lights once the district has loaded
   await page.waitForFunction(() => document.body.classList.contains('app-entered'), { timeout: 20000 });
   await page.waitForTimeout(2200);
 }
