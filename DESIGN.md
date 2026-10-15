@@ -174,11 +174,17 @@ the match **without leaving the venue** (see 3.2). The floor never closes:
 stay-behinds keep talking, newcomers keep arriving, finished players fold
 back home automatically.
 
-**The match UI** (`ui/scoreboard.ts`): every fighter gets a CARD — smoked
-glass with a lit team notch, the callsign, a big numeric health readout,
-a health bar with a DAMAGE TRAIL, the round pips, LOW (hazard chevrons
-breathing under the bar) and OUT (the card dims under a red stamp), and
-a rim flash on every hit. 1V1 hangs the classic pair over the rival's pad
+**The match UI** (`ui/scoreboard.ts`, `ui/campaignHud.ts`) is painted
+in the neon district's own hand — the menu's HOLO GLASS, shared from
+`ui/kit/holo.ts` (see-through blue-black pane, scanlines, a lit edge
+tube, magenta corner brackets, Rajdhani). Every fighter gets a CARD
+whose tube burns in their team colour: a YOU / ALLY / RIVAL tag, the
+callsign, a big numeric health readout, a skewed SOLID health bar
+with a magenta DAMAGE TRAIL, the rounds as lit skewed cells, LOW (bar
+and number go red and pulse) and OUT (the card dims), and a glitch tear
+on every hit (chromatic-split edge, scan rows flashing). Headline words
+with no neon plate are set in GLITCH type; the raid HUD's titan name,
+bars and beats speak the same language. 1V1 hangs the classic pair over the rival's pad
 with the ROUND PLAQUE (round, first-to, a clock that goes amber then red)
 between; 2V2 stacks the columns with TEAM totals; FFA hangs the east and
 west fighters' cards OVER THEIR OWN PADS, turned to face you, with a

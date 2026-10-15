@@ -1,17 +1,21 @@
 /**
- * MATCH UI — the fight cards, in the MENU's own language (ui/kit): the
- * same near-black glass with one soft sheen, the same white hairline, the
- * same Rajdhani at the same weights, and colour only where it means
- * something. A team's colour is the card's EDGE TICK and its health bar —
- * the job the amber tick does on a menu button — never a glowing rim.
+ * MATCH UI — the fight cards, painted with the MENU's own holo glass
+ * (ui/kit/holo.ts) so the bout reads like the neon district it is fought
+ * in: a see-through blue-black pane with scanlines and a diagonal sheen,
+ * a lit edge tube, the "on" light bar, magenta corner brackets, Rajdhani
+ * at the menu's weights. On a card the TUBE is the fighter's colour —
+ * the edge, the rail down its left side, the light bar, the bar and the
+ * round cells all burn in it, so whose card you are reading is one glance.
  *
- * Every fighter in the bout gets a CARD: their callsign, a big numeric
- * health readout, a slim health pill with a DAMAGE TRAIL (a white ghost of
- * what they just lost, easing away behind the live level), the rounds they
- * hold as pills, and the two states a glance has to catch — LOW (the bar
- * and the number go red and a LOW label breathes) and OUT (the card dims;
- * the dim is the word). A hit brightens the card's hairline and washes the
- * glass for a beat.
+ * Every fighter in the bout gets a CARD: a YOU / ALLY / RIVAL tag, their
+ * callsign, a big numeric health readout, a skewed SOLID health bar
+ * with a DAMAGE TRAIL (a magenta ghost of what they just lost, flaring
+ * white on the hit and easing away behind the live level), the rounds
+ * they hold as lit cells, and the two states a glance has to catch — LOW
+ * (the bar, its bloom and the number go red and pulse; a LOW label
+ * breathes) and OUT (the card dims; the dim is the word). A hit tears the
+ * glass: its edge flares white on a cyan / magenta chromatic split, a few
+ * scan rows glitch bright and the fighter's colour spills off the rim.
  *
  * WHERE THE CARDS HANG depends on the format:
  *
@@ -28,7 +32,8 @@
  *         one whose health you read — and a STANDINGS strip over the
  *         plaque ranks all four by rounds taken, then by health.
  *
- * The short metallic verdict (KO, YOU WIN…) floats above everything.
+ * The neon verdict plates (KO, TIME, DRAW…) float above everything; a
+ * verdict with no plate is set in GLITCH type (white on a chromatic split).
  *
  * Every board is a canvas texture and a canvas redraw + upload is the most
  * expensive UI op we have, so each board fingerprints what it drew and
@@ -64,6 +69,7 @@ import { app, training } from '../menu/appState.js';
 import { UI } from './industrial.js';
 import { font, fontsReady } from './kit/fonts.js';
 import { KIT } from './kit/panel.js';
+import { glitchText, holoGlass, neonBar, neonCell, readoutTicks, rgbOf } from './kit/holo.js';
 import { countdownArt } from './countdownArt.js';
 import { drawContentPlate as drawPlateArt } from './plateArt.js';
 import { verdictArt } from './verdictArt.js';
@@ -80,8 +86,8 @@ const WORD_PLATE_H = 357;
 const NUMBER_PLATE_H = 300;
 const PLATE_MARGIN = 26;
 
-/** Below this fraction a fighter is LOW: the bar goes red and the hazard
- *  strip breathes under it. */
+/** Below this fraction a fighter is LOW: the bar goes red and pulses, and
+ *  a LOW label breathes under it. */
 const LOW_HP = 0.25;
 /** The damage trail holds for this long after a hit, then eases away. */
 const TRAIL_HOLD = 0.28;
@@ -150,12 +156,14 @@ interface CardMotion {
 
 /* ── the live overlays ─────────────────────────────────────────────────── */
 
-/** The health pill on the card canvas (px): where the bar overlay sits. */
-const BAR = { x: 64, y: 176, w: W - 128, h: 52 };
-/** Room round the pill for its hairline and anti-aliasing (px). */
-const BAR_PAD = 4;
+/** The health bar on the card canvas (px): where the bar overlay sits. */
+const BAR = { x: 64, y: 184, w: W - 128, h: 42 };
+/** Room round the bar for its bloom and anti-aliasing (px). */
+const BAR_PAD = 16;
 /** The card's glass on the canvas (px): where the flash overlay traces. */
-const GLASS = { x: 10, y: 10, w: W - 20, h: H - 20, r: 34 };
+const GLASS = { x: 10, y: 10, w: W - 20, h: H - 20, r: 30 };
+/** The verdict's hot second tube, as hex (three's Color won't take rgba). */
+const HOT = '#ff3da6';
 
 const SDF_GLSL = /* glsl */ `
   float sdRound(vec2 p, vec2 halfSize, float r) {
@@ -175,41 +183,54 @@ const UV_VERT = /* glsl */ `
 `;
 
 /**
- * THE HEALTH READOUT, live: a slim pill — a faint track, the damage trail
- * (a ghost of what was just lost that flares white on the hit, then eases
- * away), the live level in the team colour (red once LOW) with the menu
- * CTA's soft top sheen, hairline quarter marks and a hairline rim.
+ * THE HEALTH READOUT, live: one solid skewed block — leaning like every
+ * cell in the district — inside a thin tube of the fighter's colour. The
+ * live level burns in that colour (red, and pulsing, once LOW) with a
+ * glassy top light, a bloom spilling off it and a white-hot leading edge; the damage trail is a magenta ghost of what
+ * the hit just took, flaring white for an instant, then easing away.
  */
 const BAR_FRAG = /* glsl */ `
   uniform vec2 uSize;
-  uniform float uPad, uFrac, uTrail, uFlash, uAlpha, uLow;
+  uniform float uPad, uFrac, uTrail, uFlash, uAlpha, uLow, uTime;
   uniform vec3 uColor, uDanger;
   varying vec2 vUv;
   ${SDF_GLSL}
+  const float SKEW = 0.45; // run per rise — the kit's cell lean
   void main() {
     vec2 hs = uSize * 0.5;
     vec2 px = (vUv - 0.5) * (uSize + 2.0 * uPad);
-    float d = sdRound(px, hs, hs.y);
+    // Unshear into the bar's own frame; hb is the upright half-size.
+    vec2 q = vec2(px.x - px.y * SKEW, px.y);
+    vec2 hb = vec2(hs.x - hs.y * SKEW, hs.y);
+    float d = sdRound(q, hb, 2.0);
     float inside = clamp(0.5 - d, 0.0, 1.0);
-    float x01 = (px.x + hs.x) / uSize.x;
-    vec4 col = over(vec4(0.0), vec3(1.0), 0.07 * inside);
-    // The trail: what the hit just took, burning white for an instant.
-    float ghost = clamp((x01 - uFrac) * uSize.x + 0.5, 0.0, 1.0) * clamp((uTrail - x01) * uSize.x + 0.5, 0.0, 1.0);
-    col = over(col, vec3(1.0), (0.32 + 0.5 * uFlash) * ghost * inside);
+    float len = 2.0 * hb.x;
+    float x01 = (q.x + hb.x) / len;
+    vec3 tone = mix(uColor, uDanger, uLow);
+    float pulse = uLow * (0.5 + 0.5 * sin(uTime * 6.3));
+    // The dark track, faintly lit, so the empty run still reads.
+    vec4 col = over(vec4(0.0), vec3(0.47, 0.9, 1.0), 0.07 * inside);
+    float lw = len * clamp(uFrac, 0.0, 1.0);
     if (uFrac > 0.0) {
-      float fw = max(uSize.y, uSize.x * uFrac);
-      float fd = sdRound(px - vec2(-hs.x + fw * 0.5, 0.0), vec2(fw * 0.5, hs.y), hs.y);
+      float fd = sdRound(q - vec2(-hb.x + lw * 0.5, 0.0), vec2(lw * 0.5, hb.y), 2.0);
+      // The bloom, out into the pad round the bar.
+      col = over(col, tone, (0.38 + 0.3 * pulse) * exp(-max(fd, 0.0) / 6.0) * (1.0 - inside));
       float fill = clamp(0.5 - fd, 0.0, 1.0) * inside;
-      float down = (hs.y - px.y) / uSize.y;
-      vec3 c = mix(mix(uColor, uDanger, uLow), vec3(1.0), 0.28 * clamp(1.0 - down / 0.55, 0.0, 1.0));
-      col = over(col, c, fill);
+      float down = (hs.y - px.y) / uSize.y; // 0 at the top edge, 1 at the foot
+      vec3 lit = mix(tone, vec3(1.0), 0.42 * clamp(1.0 - down / 0.45, 0.0, 1.0));
+      lit *= mix(1.0, 0.78, clamp((down - 0.5) * 2.0, 0.0, 1.0));
+      col = over(col, mix(lit, vec3(1.0), 0.22 * pulse), fill);
     }
-    for (int q = 1; q < 4; q++) {
-      float qx = uSize.x * float(q) / 4.0 - hs.x;
-      col = over(col, vec3(0.004, 0.003, 0.002), 0.55 * clamp(1.5 - abs(px.x - qx), 0.0, 1.0) * inside);
+    // The trail: what the hit just took — white on the hit, then magenta.
+    float ghost = clamp((x01 - uFrac) * len + 0.5, 0.0, 1.0) * clamp((uTrail - x01) * len + 0.5, 0.0, 1.0);
+    vec3 burn = mix(vec3(1.0, 0.24, 0.65), vec3(1.0), uFlash);
+    col = over(col, burn, (0.5 + 0.45 * uFlash) * ghost * inside);
+    // The leading edge, white-hot where the level stands.
+    if (uFrac > 0.0 && uFrac < 1.0) {
+      col = over(col, vec3(1.0), 0.95 * clamp(2.5 - abs(q.x - (-hb.x + lw)), 0.0, 1.0) * inside);
     }
-    float rim = clamp(1.5 - abs(d), 0.0, 1.0);
-    col = over(col, mix(vec3(1.0), uDanger, uLow), mix(0.10, 0.7, uLow) * rim);
+    // The tube round the whole run.
+    col = over(col, tone, mix(0.4, 0.85, uLow) * clamp(1.3 - abs(d), 0.0, 1.0));
     gl_FragColor = vec4(col.rgb, col.a * uAlpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -217,24 +238,37 @@ const BAR_FRAG = /* glsl */ `
 `;
 
 /**
- * THE HIT FLASH, live: the glass washes pale, its hairline flares white and
- * a glow in the fighter's colour spills off the rim — then all of it
- * settles. Only drawn while a flash is up.
+ * THE HIT FLASH, live: the glass TEARS — the fighter's colour washes the
+ * pane, a few scan rows glitch bright, the edge flares white on a cyan /
+ * magenta chromatic split and a glow in the fighter's colour spills off
+ * the rim — then all of it settles. Only drawn while a flash is up.
  */
 const RIM_FRAG = /* glsl */ `
   uniform vec2 uSize, uGlass;
-  uniform float uRadius, uFlash, uAlpha;
+  uniform float uRadius, uFlash, uAlpha, uTime;
   uniform vec3 uColor;
   varying vec2 vUv;
   ${SDF_GLSL}
+  float hash(float n) { return fract(sin(n) * 43758.5453); }
   void main() {
     vec2 px = (vUv - 0.5) * uSize;
-    float d = sdRound(px, uGlass * 0.5, uRadius);
+    vec2 hg = uGlass * 0.5;
+    float d = sdRound(px, hg, uRadius);
     float inside = clamp(0.5 - d, 0.0, 1.0);
-    vec4 col = over(vec4(0.0), vec3(1.0), 0.12 * uFlash * inside);
-    float halo = d > 0.0 ? exp(-d / 3.5) : exp(d / 14.0) * 0.5;
+    vec4 col = over(vec4(0.0), uColor, 0.10 * uFlash * inside);
+    // Glitch rows: a few scan bands tear bright, reshuffled 24 times a second.
+    float tear = step(0.84, hash(floor(px.y / 9.0) * 7.13 + floor(uTime * 24.0)));
+    col = over(col, vec3(1.0), 0.16 * uFlash * tear * inside);
+    float halo = d > 0.0 ? exp(-d / 4.0) : exp(d / 16.0) * 0.5;
     col = over(col, uColor, 0.8 * uFlash * halo);
-    col = over(col, vec3(1.0), 0.75 * uFlash * clamp(1.0 + 2.0 * uFlash - abs(d), 0.0, 1.0));
+    // The chromatic split: the edge doubled in cyan and magenta, then white.
+    float w = 1.0 + 2.0 * uFlash;
+    float off = 6.0 * uFlash;
+    float dc = sdRound(px + vec2(off, 0.0), hg, uRadius);
+    float dm = sdRound(px - vec2(off, 0.0), hg, uRadius);
+    col = over(col, vec3(0.25, 0.95, 1.0), 0.7 * uFlash * clamp(w - abs(dc), 0.0, 1.0));
+    col = over(col, vec3(1.0, 0.24, 0.65), 0.7 * uFlash * clamp(w - abs(dm), 0.0, 1.0));
+    col = over(col, vec3(1.0), 0.75 * uFlash * clamp(w - abs(d), 0.0, 1.0));
     gl_FragColor = vec4(col.rgb, col.a * uAlpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -261,6 +295,7 @@ function addCardFx(board: Board, wMeters: number, hMeters: number): void {
       uFlash: { value: 0 },
       uAlpha: { value: 1 },
       uLow: { value: 0 },
+      uTime: { value: 0 },
       uColor: { value: new Color() },
       uDanger: { value: new Color(KIT.danger) },
     },
@@ -279,6 +314,7 @@ function addCardFx(board: Board, wMeters: number, hMeters: number): void {
       uRadius: { value: GLASS.r },
       uFlash: { value: 0 },
       uAlpha: { value: 1 },
+      uTime: { value: 0 },
       uColor: { value: new Color() },
     },
     vertexShader: UV_VERT,
@@ -295,14 +331,17 @@ function addCardFx(board: Board, wMeters: number, hMeters: number): void {
 }
 
 /** Drive a card's live overlays for this frame. */
-function setCardFx(fx: CardFx, neon: string, frac: number, trail: number, flash: number, low: boolean, dim: boolean): void {
+function setCardFx(fx: CardFx, neon: string, frac: number, trail: number, flash: number, low: boolean, dim: boolean, now: number): void {
   const alpha = dim ? 0.5 : 1;
+  // Seconds, wrapped so a long session never costs the shader precision.
+  const time = (now / 1000) % 1000;
   const b = fx.barMat.uniforms;
   b.uFrac.value = Math.max(0, frac);
   b.uTrail.value = Math.max(frac, trail);
   b.uFlash.value = flash;
   b.uLow.value = low ? 1 : 0;
   b.uAlpha.value = alpha;
+  b.uTime.value = time;
   (b.uColor.value as Color).set(neon);
   fx.bar.visible = true;
   fx.rim.visible = flash > 0.002;
@@ -310,6 +349,7 @@ function setCardFx(fx: CardFx, neon: string, frac: number, trail: number, flash:
     const r = fx.rimMat.uniforms;
     r.uFlash.value = flash;
     r.uAlpha.value = alpha;
+    r.uTime.value = time;
     (r.uColor.value as Color).set(neon);
   }
 }
@@ -352,16 +392,15 @@ function fmtTime(seconds: number): string {
 }
 
 function verdictAccent(message: string): string {
-  if (message.includes('LOSE') || message === 'LOSS' || message === "KO'D") return UI.coolBright;
-  // Match the neon plate art: the countdown digits 3 & 2 glow blue, 1 glows red
-  // (like FIGHT); the verdict plates (KO / WIN / TIME) are all blue neon, so
-  // their auras glow blue to sit under them cleanly.
-  if (message === '3' || message === '2') return UI.cool;
-  if (message === '1') return UI.danger;
-  if (message === 'FIGHT') return UI.danger;
+  if (message.includes('LOSE') || message === 'LOSS' || message === "KO'D") return KIT.danger;
+  // Match the neon plate art: the countdown digits 3 & 2 glow cyan, 1 glows
+  // red (like FIGHT); the verdict plates (KO / TIME / DRAW) and the glitch
+  // WIN are cyan neon, so their auras sit under them cleanly.
+  if (message === '3' || message === '2') return KIT.accent;
+  if (message === '1' || message === 'FIGHT') return KIT.danger;
   if (message === 'KO' || message === 'WIN' || message === 'YOU WIN' || message === 'TIME' || message === 'DRAW')
-    return UI.cool;
-  return UI.emberBright;
+    return KIT.accent;
+  return HOT;
 }
 
 /** Soft additive aura that sits behind the verdict and pulses with it. A
@@ -418,56 +457,32 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   ctx.letterSpacing = '0px';
 }
 
-/** THE GLASS — the menu panel's surface: near-black with a warm cast, one
- *  soft sheen of depth across the top, a white hairline. (A hit's flash
- *  rides the card's live overlay, not the canvas.) */
-function glass(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-  ctx.fillStyle = KIT.panel;
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  const sheen = ctx.createLinearGradient(0, y, 0, y + h * 0.45);
-  sheen.addColorStop(0, 'rgba(255,255,255,0.06)');
-  sheen.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = sheen;
-  ctx.fillRect(x, y, w, h * 0.45);
-  ctx.restore();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = KIT.line;
-  ctx.stroke();
-}
-
-/** The card's glass and its team EDGE TICK. */
+/** THE CARD'S GLASS — the kit's holo pane with its edge tube, light bar
+ *  and rail burning in the fighter's colour. (A hit's flash rides the
+ *  card's live overlay, not the canvas.) */
 function cardGlass(ctx: CanvasRenderingContext2D, neon: string, dim: boolean): void {
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   if (dim) ctx.globalAlpha = 0.5;
-  glass(ctx, GLASS.x, GLASS.y, GLASS.w, GLASS.h, GLASS.r);
+  holoGlass(ctx, GLASS.x, GLASS.y, GLASS.w, GLASS.h, { r: GLASS.r, edge: rgbOf(neon), fill: KIT.panel, arm: 26, ticks: false });
+  // The RAIL: a lit tube down the left edge, clear of the corner brackets.
   ctx.fillStyle = neon;
+  ctx.shadowColor = neon;
+  ctx.shadowBlur = 14;
   ctx.beginPath();
-  ctx.roundRect(26, 44, 7, H - 88, 3.5);
+  ctx.roundRect(26, 76, 6, H - 152, 3);
   ctx.fill();
   ctx.restore();
 }
 
-/** Rounds held: a row of pills, lit in the team colour per round taken. */
+/** Rounds held: a row of skewed cells, lit in the team colour per round taken. */
 function scorePips(ctx: CanvasRenderingContext2D, x: number, y: number, won: number, target: number, color: string): void {
-  for (let i = 0; i < target; i++) {
-    ctx.beginPath();
-    ctx.roundRect(x + i * 70, y - 10, 56, 20, 10);
-    if (i < won) {
-      ctx.fillStyle = color;
-      ctx.fill();
-    } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.07)';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = KIT.lineFaint;
-      ctx.stroke();
-    }
-  }
+  for (let i = 0; i < target; i++) neonCell(ctx, x + i * 66, y - 12, 54, 24, i < won, color);
+}
+
+/** The small holo pill the clock sits in (between the two cards). */
+function clockGlass(ctx: CanvasRenderingContext2D, w: number, edge: string): void {
+  holoGlass(ctx, 56, 34, w - 112, 136, { r: 20, edge: rgbOf(edge), fill: KIT.panel, arm: 16, ticks: false, inner: false, bloom: 0.7 });
 }
 
 /* ── the board ────────────────────────────────────────────────────────── */
@@ -673,7 +688,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
     const hot = live && secs <= CLOCK_HOT;
     const warn = live && secs <= CLOCK_WARN;
     const text = state.phase === 'countdown' ? 'READY' : fmtTime(state.roundTimer);
-    const key = `p|${text}|${hot ? 'h' : warn ? 'w' : ''}|${fontsReady() ? 1 : 0}`;
+    const key = `p|${text}|${state.round}|${hot ? 'h' : warn ? 'w' : ''}|${fontsReady() ? 1 : 0}`;
     // The hot clock's pulse rides the mesh, not the canvas.
     plaque.mesh.scale.setScalar(hot ? 1 + 0.05 * Math.sin(now * 0.012) : 1);
     if (plaque.key === key) return;
@@ -681,33 +696,34 @@ export function createScoreboard(scene: Scene): Scoreboard {
     const { ctx, tex, w, h } = plaque;
     ctx.clearRect(0, 0, w, h);
     ctx.textBaseline = 'middle';
-    // The clock, and only the clock, in a glass pill: white digits, warn
-    // amber and then red as the round runs out, and the accent's short
-    // underline beneath — the one thing on the board the accent marks.
+    // The clock in a small holo pill, its tube cyan, then amber and red as
+    // the round runs out; the round it belongs to tagged above the digits.
     // Sized to the gap between the two cards (the board is 0.62 m; the
     // gap ~0.5 m), so the pill never laps a card's edge.
-    glass(ctx, 56, 40, w - 112, 124, 62);
-    const colour = hot ? KIT.danger : warn ? KIT.warn : KIT.text;
-    const px = text === 'READY' ? 44 : 84;
-    label(ctx, text, w / 2, 100, 700, px, colour, text === 'READY' ? 6 : 2, 'center');
-    ctx.fillStyle = hot ? KIT.danger : KIT.accent;
-    ctx.beginPath();
-    ctx.roundRect(w / 2 - 30, 150, 60, 5, 2.5);
-    ctx.fill();
+    const colour = hot ? KIT.danger : warn ? KIT.warn : KIT.accent;
+    clockGlass(ctx, w, colour);
+    label(ctx, `ROUND ${state.round}`, w / 2, 68, 600, 20, KIT.faint, 5, 'center');
+    ctx.shadowColor = colour;
+    ctx.shadowBlur = 16;
+    const px = text === 'READY' ? 44 : 76;
+    label(ctx, text, w / 2, 116, 700, px, live && (hot || warn) ? colour : KIT.text, text === 'READY' ? 6 : 2, 'center');
+    ctx.shadowBlur = 0;
     tex.needsUpdate = true;
   };
 
   /** THE CARD — one fighter. */
-  const drawCard = (board: Board, f: FighterHud, target: number, now: number, teamTotal?: string): void => {
+  const drawCard = (board: Board, f: FighterHud, target: number, now: number, teamTotal?: string, tagAs?: string): void => {
     const { trail, flash } = advance(f, now);
     const low = f.alive && f.hpFrac < LOW_HP && f.hpFrac > 0;
     const dim = !f.alive;
     const hp = Math.max(0, Math.round(f.hp));
     // The bar, its trail and the hit flash are live — uniforms, every frame.
-    if (board.fx) setCardFx(board.fx, f.neon, f.hpFrac, trail, flash, low, dim);
-    // The LOW strip breathes at ~1 Hz, quantised to four steps a beat.
+    if (board.fx) setCardFx(board.fx, f.neon, f.hpFrac, trail, flash, low, dim, now);
+    // The LOW label breathes at ~1 Hz, quantised to four steps a beat.
     const lowPhase = low ? Math.round((0.5 + 0.5 * Math.sin(now * 0.0063)) * 3) / 3 : 0;
-    const key = `c|${f.name}|${f.neon}|${hp}|${f.pips}|${target}|${f.alive ? 1 : 0}|${low ? 1 : 0}|${lowPhase}|${teamTotal ?? ''}|${fontsReady() ? 1 : 0}`;
+    // Who this is to you: the tag rides the card's own tube colour.
+    const tag = tagAs ?? (f.slot === 0 ? 'YOU' : f.team === 0 ? 'ALLY' : 'RIVAL');
+    const key = `c|${f.name}|${f.neon}|${tag}|${hp}|${f.pips}|${target}|${f.alive ? 1 : 0}|${low ? 1 : 0}|${lowPhase}|${teamTotal ?? ''}|${fontsReady() ? 1 : 0}`;
     if (board.key === key) return;
     board.key = key;
     const { ctx, tex } = board;
@@ -715,24 +731,41 @@ export function createScoreboard(scene: Scene): Scoreboard {
     ctx.save();
     if (dim) ctx.globalAlpha = 0.5;
     ctx.textBaseline = 'middle';
-    // The callsign, left; the health number, right — white, red when LOW.
-    const namePx = fitText(ctx, f.name, W - 400, 58, 30, 600, 2);
-    label(ctx, f.name, 64, 102, 600, namePx, KIT.text, 2);
-    label(ctx, String(hp), W - 64, 98, 700, 96, low ? KIT.danger : KIT.text, 1, 'right');
-    // (The health pill is the live overlay, over BAR.) A hairline, then the rounds row.
-    ctx.fillStyle = KIT.lineFaint;
-    ctx.fillRect(64, 276, W - 128, 2);
+    ctx.shadowColor = f.neon;
+    ctx.shadowBlur = 10;
+    label(ctx, tag, 64, 64, 700, 22, f.neon, 7);
+    // The callsign, left; the health number, right — white, red when LOW —
+    // each lit by a breath of the fighter's colour.
+    const namePx = fitText(ctx, f.name, W - 420, 56, 30, 600, 2);
+    ctx.shadowBlur = 12;
+    label(ctx, f.name, 64, 120, 600, namePx, KIT.text, 2);
+    const hpInk = low ? KIT.danger : KIT.text;
+    ctx.shadowColor = low ? KIT.danger : f.neon;
+    ctx.shadowBlur = 18;
+    label(ctx, String(hp), W - 64, 108, 700, 104, hpInk, 1, 'right');
+    ctx.shadowBlur = 0;
+    ctx.font = font(700, 104);
+    ctx.letterSpacing = '1px';
+    const numW = ctx.measureText(String(hp)).width;
+    ctx.letterSpacing = '0px';
+    label(ctx, 'HP', W - 64 - numW - 14, 130, 600, 24, KIT.faint, 4, 'right');
+    // (The health bar is the live overlay, over BAR.) Readout ticks, then the rounds row.
+    readoutTicks(ctx, 64, 252, W - 128, KIT.lineFaint);
     if (target > 0) {
-      label(ctx, 'ROUNDS', 64, 334, 600, 28, KIT.faint, 4);
-      scorePips(ctx, 224, 334, f.pips, target, f.neon);
+      label(ctx, 'ROUNDS', 64, 330, 600, 24, KIT.faint, 5);
+      scorePips(ctx, 210, 330, f.pips, target, f.neon);
     }
     if (!f.alive) {
-      label(ctx, 'OUT', W - 64, 334, 700, 34, KIT.dim, 5, 'right');
+      ctx.shadowColor = KIT.danger;
+      ctx.shadowBlur = 12;
+      label(ctx, 'OUT', W - 64, 330, 700, 36, KIT.danger, 7, 'right');
     } else if (low) {
-      ctx.globalAlpha = (dim ? 0.5 : 1) * (0.55 + 0.45 * lowPhase);
-      label(ctx, 'LOW', W - 64, 334, 700, 34, KIT.danger, 5, 'right');
+      ctx.globalAlpha = 0.55 + 0.45 * lowPhase;
+      ctx.shadowColor = KIT.danger;
+      ctx.shadowBlur = 14;
+      label(ctx, 'LOW', W - 64, 330, 700, 36, KIT.danger, 7, 'right');
     } else if (teamTotal) {
-      label(ctx, teamTotal, W - 64, 334, 600, 30, KIT.dim, 3, 'right');
+      label(ctx, teamTotal, W - 64, 330, 600, 28, KIT.dim, 4, 'right');
     }
     ctx.restore();
     tex.needsUpdate = true;
@@ -748,49 +781,32 @@ export function createScoreboard(scene: Scene): Scoreboard {
     standings.key = key;
     const { ctx, tex, w, h } = standings;
     ctx.clearRect(0, 0, w, h);
-    glass(ctx, 8, 8, w - 16, h - 16, 26);
+    holoGlass(ctx, 8, 8, w - 16, h - 16, { r: 20, fill: KIT.panel, arm: 16, ticks: false });
     ctx.textBaseline = 'middle';
-    label(ctx, 'STANDINGS', 34, 38, 600, 20, KIT.faint, 4);
-    const rowH = (h - 70) / Math.max(1, ranked.length);
+    ctx.shadowColor = KIT.accent;
+    ctx.shadowBlur = 10;
+    label(ctx, 'STANDINGS', 40, 42, 700, 20, KIT.accent, 6);
+    ctx.shadowBlur = 0;
+    if (target > 0) label(ctx, `FIRST TO ${target}`, w - 40, 42, 600, 18, KIT.faint, 4, 'right');
+    const rowH = (h - 96) / Math.max(1, ranked.length);
     ranked.forEach((f, i) => {
-      const y = 64 + rowH * i + rowH / 2;
+      const y = 66 + rowH * i + rowH / 2;
       const ink = f.alive ? KIT.text : KIT.disabled;
-      label(ctx, String(i + 1), 34, y, 700, 26, ink);
+      label(ctx, String(i + 1).padStart(2, '0'), 44, y, 700, 24, ink, 1);
       ctx.globalAlpha = f.alive ? 1 : 0.35;
-      ctx.fillStyle = f.neon;
-      ctx.beginPath();
-      ctx.roundRect(64, y - 12, 5, 24, 2.5);
-      ctx.fill();
+      neonCell(ctx, 76, y - 11, 16, 22, true, f.neon);
       ctx.globalAlpha = 1;
       const px = fitText(ctx, f.name, 290, 26, 18, 600, 1);
-      label(ctx, f.name, 84, y, 600, px, ink, 1);
+      label(ctx, f.name, 104, y, 600, px, ink, 1);
       if (!f.alive) {
         ctx.font = font(600, px);
+        ctx.letterSpacing = '1px';
         const nameW = ctx.measureText(f.name).width;
-        label(ctx, 'OUT', 84 + nameW + 16, y, 700, 18, KIT.danger, 3);
+        ctx.letterSpacing = '0px';
+        label(ctx, 'OUT', 104 + nameW + 16, y, 700, 18, KIT.danger, 4);
       }
-      for (let p = 0; p < target; p++) {
-        ctx.beginPath();
-        ctx.roundRect(410 + p * 30, y - 5, 22, 10, 5);
-        if (p < f.pips) {
-          ctx.fillStyle = f.neon;
-          ctx.fill();
-        } else {
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = KIT.lineFaint;
-          ctx.stroke();
-        }
-      }
-      ctx.beginPath();
-      ctx.roundRect(520, y - 5, 150, 10, 5);
-      ctx.fillStyle = 'rgba(255,255,255,0.07)';
-      ctx.fill();
-      if (f.hpFrac > 0) {
-        ctx.beginPath();
-        ctx.roundRect(520, y - 5, Math.max(10, 150 * f.hpFrac), 10, 5);
-        ctx.fillStyle = f.hpFrac < LOW_HP ? KIT.danger : f.neon;
-        ctx.fill();
-      }
+      for (let p = 0; p < target; p++) neonCell(ctx, 410 + p * 30, y - 6, 24, 12, p < f.pips, f.neon);
+      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? KIT.danger : f.neon);
     });
     tex.needsUpdate = true;
   };
@@ -816,16 +832,13 @@ export function createScoreboard(scene: Scene): Scoreboard {
       // the VISIBLE word to a shared cap height so all three read consistently.
       drawContentPlate(ctx, (cd ?? vd) as HTMLImageElement, WORD_PLATE_H);
     } else if (message) {
-      // No art plate: the word in the menu's own headline type — white,
-      // tracked wide, on a soft halo of its accent.
+      // No art plate: GLITCH type — the word in the menu's headline face,
+      // white, tracked wide, lit by its accent on a cyan / magenta split.
       const accent = verdictAccent(message);
       const px = fitText(ctx, message, W - 120, message.includes('YOU') ? 120 : 150, 44, 700, 8);
       const midY = sub ? 188 : 216;
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = accent;
-      ctx.shadowBlur = 28;
-      label(ctx, message, W / 2, midY, 700, px, KIT.text, 8, 'center');
-      ctx.shadowBlur = 0;
+      glitchText(ctx, message, W / 2, midY, px, accent, { track: 8 });
       if (sub) label(ctx, sub, W / 2, 304, 600, 40, KIT.dim, 5, 'center');
     }
     tex.needsUpdate = true;
@@ -941,12 +954,12 @@ export function createScoreboard(scene: Scene): Scoreboard {
         const { ctx, tex, w } = plaque;
         ctx.clearRect(0, 0, w, plaque.h);
         ctx.textBaseline = 'middle';
-        glass(ctx, 56, 40, w - 112, 124, 62);
-        label(ctx, fmtTime(training.timeLeft), w / 2, 100, 700, 84, KIT.text, 2, 'center');
-        ctx.fillStyle = KIT.accent;
-        ctx.beginPath();
-        ctx.roundRect(w / 2 - 30, 150, 60, 5, 2.5);
-        ctx.fill();
+        clockGlass(ctx, w, KIT.accent);
+        label(ctx, 'AIM', w / 2, 68, 600, 20, KIT.faint, 5, 'center');
+        ctx.shadowColor = KIT.accent;
+        ctx.shadowBlur = 16;
+        label(ctx, fmtTime(training.timeLeft), w / 2, 116, 700, 76, KIT.text, 2, 'center');
+        ctx.shadowBlur = 0;
         tex.needsUpdate = true;
       }
       // Left card: score + streak — no health on it.
@@ -958,17 +971,23 @@ export function createScoreboard(scene: Scene): Scoreboard {
         const { ctx, tex } = left;
         cardGlass(ctx, UI.emberBright, false);
         ctx.textBaseline = 'middle';
-        label(ctx, 'AIM TRAINING', 64, 96, 600, 42, KIT.text, 4);
-        label(ctx, String(training.score), 64, 200, 700, 124, KIT.text, 2);
-        ctx.fillStyle = KIT.lineFaint;
-        ctx.fillRect(64, 276, W - 128, 2);
-        label(ctx, `STREAK ×${training.streak}`, 64, 334, 600, 32, KIT.accent, 3);
-        label(ctx, `BEST ${best}`, W - 64, 334, 600, 32, KIT.dim, 3, 'right');
+        ctx.shadowColor = UI.emberBright;
+        ctx.shadowBlur = 10;
+        label(ctx, 'AIM TRAINING', 64, 64, 700, 22, UI.emberBright, 7);
+        ctx.shadowBlur = 18;
+        label(ctx, String(training.score), 64, 170, 700, 124, KIT.text, 2);
+        ctx.shadowBlur = 0;
+        readoutTicks(ctx, 64, 252, W - 128, KIT.lineFaint);
+        ctx.shadowColor = KIT.accent;
+        ctx.shadowBlur = 10;
+        label(ctx, `STREAK ×${training.streak}`, 64, 330, 600, 30, KIT.accent, 4);
+        ctx.shadowBlur = 0;
+        label(ctx, `BEST ${best}`, W - 64, 330, 600, 30, KIT.dim, 4, 'right');
         tex.needsUpdate = true;
       }
       // Right card: dodge readout (health only matters with shoot-back on).
       const frac = app.shootBack ? hp / hpMax : 1;
-      drawCard(right, { slot: 1, name: 'DODGE', neon: UI.cool, hpFrac: frac, hp: app.shootBack ? hp : hpMax, pips: 0, team: 1, alive: true }, 0, now);
+      drawCard(right, { slot: 1, name: 'DODGE', neon: UI.cool, hpFrac: frac, hp: app.shootBack ? hp : hpMax, pips: 0, team: 1, alive: true }, 0, now, undefined, 'DRILL');
       drawCentre('', '');
       animateVerdict('');
     },

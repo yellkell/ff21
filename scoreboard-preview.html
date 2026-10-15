@@ -2,7 +2,7 @@
 <!-- DEV-ONLY harness: hangs the in-match scoreboard in front of a camera at
      the fighter's head, fed with a fake bout, for screenshots.
      Not part of the game; never ship or link this page.
-     ?mode=1v1|2v2|ffa|low|verdict|training -->
+     ?mode=1v1|2v2|ffa|low|verdict|win|hit|training -->
 <html>
   <body style="margin:0; background:#0b0a0f">
     <script type="module">
@@ -42,6 +42,10 @@
       } else if (mode === 'low') {
         state.roundTimer = 8;
         fighters = [F(0, 'kellbot', EMBER, 18, 1, 0), F(1, 'NIGHTSHIFT', COOL, 55, 1, 1)];
+      } else if (mode === 'win') {
+        state.phase = 'matchOver';
+        state.message = 'YOU WIN';
+        fighters = [F(0, 'kellbot', EMBER, 46, 2, 0), F(1, 'NIGHTSHIFT', COOL, 0, 1, 1, false)];
       } else if (mode === 'verdict') {
         state.phase = 'matchOver';
         state.message = 'DRAW';
@@ -56,11 +60,18 @@
       };
       draw();
       // A hit on the rival mid-trail, to show the damage trail.
-      if (mode === '1v1') {
+      if (mode === '1v1' || mode === 'hit') {
         fighters[1] = { ...fighters[1], hpFrac: 0.62, hp: 62 };
         setTimeout(() => { draw(); }, 50);
       }
       onFontsReady(() => {
+        // ?mode=hit lands a second hit and freezes the frame mid-flash.
+        if (mode === 'hit') {
+          fighters[1] = { ...fighters[1], hpFrac: 0.62, hp: 62 };
+          draw();
+          setTimeout(() => { fighters[1] = { ...fighters[1], hpFrac: 0.41, hp: 41 }; draw(); setTimeout(() => { draw(); window.__ready = true; }, 70); }, 120);
+          return;
+        }
         setTimeout(() => { draw(); window.__ready = true; }, 120);
       });
     </script>

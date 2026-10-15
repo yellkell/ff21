@@ -1,6 +1,7 @@
 /**
- * The EMBER tutorial — a voiced guide orb (a warm little ball of light, see
- * docs/tutorial-ember.md) walks the player through ignite → throw → recall →
+ * The EMBER tutorial — a voiced guide orb (a little holo construct: a
+ * white-hot core in a neon-ember halo, a cyan wireframe shell and two
+ * gyroscope rings, see docs/tutorial-ember.md) walks the player through ignite → throw → recall →
  * a real block drill → a left/right footwork drill → the ball loadout, then a
  * graduation knockdown against a half-health bot.
  *
@@ -25,11 +26,15 @@
 
 import { createSystem, type Entity, InputComponent } from '@iwsdk/core';
 import {
+  AdditiveBlending,
   BufferGeometry,
   CanvasTexture,
+  EdgesGeometry,
   Group,
+  IcosahedronGeometry,
   Line,
   LineBasicMaterial,
+  LineSegments,
   LinearFilter,
   Mesh,
   MeshBasicMaterial,
@@ -38,6 +43,8 @@ import {
   Raycaster,
   SphereGeometry,
   Sprite,
+  SRGBColorSpace,
+  TorusGeometry,
   Vector3,
 } from 'three';
 import { Fireball, BallState } from '../components/Fireball.js';
@@ -50,7 +57,9 @@ import { reportTutorial } from '../net/leaderboard.js';
 import { playCash } from '../audio/cash.js';
 import { startTutorialMusic, stopTutorialMusic } from '../audio/tutorialMusic.js';
 import { CAMPAIGN, FIREBALL, MATCH, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
-import { UI, buttonPlate, plate, stencilFont } from '../ui/industrial.js';
+import { font } from '../ui/kit/fonts.js';
+import { ctaPlate, holoGlass, neonCell, rgbOf } from '../ui/kit/holo.js';
+import { KIT } from '../ui/kit/panel.js';
 import { glowSprite } from '../materials/glow.js';
 import { emberBurst, spawnEmber } from '../fx/fire.js';
 import * as sfx from '../audio/sfx.js';
@@ -118,7 +127,7 @@ const CAP_LINE_H = 38;
 /** Below the last row: the descender, then the plate's own bottom margin. */
 const CAP_TAIL = 36;
 /** Measured with, and drawn with — the two must not drift apart. */
-const CAP_FONT = '600 31px system-ui, sans-serif';
+const CAP_FONT = font(600, 31);
 const CON_W = 384;
 const CON_H = 300;
 const BEGIN_BTN = { x: 72, y: 206, w: 240, h: 64 };
@@ -138,6 +147,13 @@ const DODGE_DIST = 0.35;
 /** Ember's body: a fist-and-a-half of light (playtest: 0.17 read too small). */
 const ORB_HALO = 0.26;
 const ORB_CORE = 0.105;
+/** Her colour: still an ember, but a neon one — the district's signage
+ *  orange, hot enough to read against the cyan the menus burn in. */
+const EMBER_NEON = 0xff6a2b;
+const EMBER_NEON_CSS = '#ff6a2b';
+/** The holo hardware round her core: the kit's cyan and magenta tubes. */
+const EMBER_SHELL = 0x3ff2ff;
+const EMBER_RING = 0xff3da6;
 
 /** The explain line a stalled beat replays (the 14 s "want that again?"). */
 const NUDGE_LINE: Partial<Record<Beat, LineKey>> = {
@@ -214,6 +230,11 @@ export class TutorialSystem extends createSystem({
   private orb: Group | null = null;
   private halo: Sprite | null = null;
   private core: Sprite | null = null;
+  /** Her holo hardware: the wireframe shell and the two gyroscope rings. */
+  private shell: LineSegments | null = null;
+  private rings: Mesh[] = [];
+  /** Alternates her trail between ember sparks and cyan data sparks. */
+  private trailCool = false;
   private orbPos = new Vector3();
   private orbTarget = new Vector3();
   private emberAcc = 0;
@@ -612,7 +633,8 @@ export class TutorialSystem extends createSystem({
         // Park at the podium, flare, say hello.
         this.podium();
         if (this.orbPos.distanceTo(this.orbTarget) < 0.35) {
-          emberBurst(this.orbPos, 14);
+          emberBurst(this.orbPos, 7);
+          emberBurst(this.orbPos, 7, true);
           this.say('hello');
           this.toSub(4);
         }
@@ -641,7 +663,8 @@ export class TutorialSystem extends createSystem({
         if (over && hit!.clicked) {
           sfx.uiClick();
           tutorChime();
-          emberBurst(this.orbPos, 16);
+          emberBurst(this.orbPos, 8);
+          emberBurst(this.orbPos, 8, true);
           this.removePanel('console');
           // holdFire stays true THIS frame so FireballSystem (which runs
           // after us) can't turn the click's trigger edge into an ignite;
@@ -767,6 +790,7 @@ export class TutorialSystem extends createSystem({
         this.saidFightTaken = false;
         this.saidFightLow = false;
         if (this.halo) this.halo.material.opacity = 0.55; // dimmed to a spark
+        this.setRigOpacity(0.35);
         break;
     }
   }
@@ -992,11 +1016,22 @@ export class TutorialSystem extends createSystem({
       const pulse = talking ? 1 + 0.14 * Math.abs(Math.sin(this.time * 7)) : 1;
       this.halo?.scale.setScalar(ORB_HALO * pulse);
       this.core?.scale.setScalar(ORB_CORE * (talking ? 1 + 0.1 * Math.abs(Math.sin(this.time * 7 + 1)) : 1));
-      // Ember trail while she's on the move.
+      // The holo hardware turns: the shell tumbles, the rings gyre on
+      // crossed axes — and everything spins up while she talks.
+      const spin = (talking ? 2.6 : 1) * delta;
+      if (this.shell) {
+        this.shell.rotation.x += 0.7 * spin;
+        this.shell.rotation.y += 1.1 * spin;
+        this.shell.scale.setScalar(talking ? 1 + 0.08 * Math.abs(Math.sin(this.time * 7 + 2)) : 1);
+      }
+      if (this.rings[0]) this.rings[0].rotation.y += 1.6 * spin;
+      if (this.rings[1]) this.rings[1].rotation.x -= 1.25 * spin;
+      // Her trail while she's on the move: ember sparks and cyan data sparks.
       this.emberAcc += delta;
       if (this.emberAcc > 0.12 && wasAt.distanceTo(this.orbPos) > 0.02) {
         this.emberAcc = 0;
-        spawnEmber(this.orb.position, 0.25);
+        this.trailCool = !this.trailCool;
+        spawnEmber(this.orb.position, 0.25, this.trailCool);
       }
       setTutorVoicePosition(this.orb.position);
     }
@@ -1170,13 +1205,35 @@ export class TutorialSystem extends createSystem({
   private makeOrb(): void {
     const orb = new Group();
     orb.name = 'ember-orb';
-    this.halo = glowSprite(0xffc04d, ORB_HALO, 0.9);
-    this.core = glowSprite(0xfff4dc, ORB_CORE, 1);
+    // The light: a white-hot core in a neon-ember halo.
+    this.halo = glowSprite(EMBER_NEON, ORB_HALO, 0.9);
+    this.core = glowSprite(0xfff1ea, ORB_CORE, 1);
     this.halo.renderOrder = 22;
     this.core.renderOrder = 23;
-    orb.add(this.halo, this.core);
+    // The hardware: a faceted cyan wireframe shell round the core, and two
+    // thin gyroscope rings (magenta, cyan) turning on crossed axes. All of
+    // it additive and out of the depth buffer, like the glow.
+    const lit = (color: number, opacity: number): MeshBasicMaterial =>
+      new MeshBasicMaterial({ color, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false });
+    const shellMat = new LineBasicMaterial({ color: EMBER_SHELL, transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false });
+    this.shell = new LineSegments(new EdgesGeometry(new IcosahedronGeometry(0.058, 0)), shellMat);
+    this.shell.renderOrder = 23;
+    const outer = new Mesh(new TorusGeometry(0.1, 0.0035, 6, 64), lit(EMBER_RING, 0.9));
+    outer.rotation.x = Math.PI / 2 - 0.35;
+    const inner = new Mesh(new TorusGeometry(0.082, 0.0028, 6, 56), lit(EMBER_SHELL, 0.75));
+    inner.rotation.y = 0.5;
+    this.rings = [outer, inner];
+    for (const r of this.rings) r.renderOrder = 23;
+    orb.add(this.halo, this.core, this.shell, outer, inner);
     this.scene.add(orb);
     this.orb = orb;
+  }
+
+  /** Fade her holo hardware (the graduation fight dims her to a spark). */
+  private setRigOpacity(k: number): void {
+    if (this.shell) (this.shell.material as LineBasicMaterial).opacity = 0.85 * k;
+    if (this.rings[0]) (this.rings[0].material as MeshBasicMaterial).opacity = 0.9 * k;
+    if (this.rings[1]) (this.rings[1].material as MeshBasicMaterial).opacity = 0.75 * k;
   }
 
   private removeOrb(): void {
@@ -1184,9 +1241,16 @@ export class TutorialSystem extends createSystem({
     this.scene.remove(this.orb);
     this.halo?.material.dispose(); // the radial texture is shared+cached — leave it
     this.core?.material.dispose();
+    for (const m of [this.shell, ...this.rings]) {
+      if (!m) continue;
+      m.geometry.dispose();
+      (m.material as MeshBasicMaterial | LineBasicMaterial).dispose();
+    }
     this.orb = null;
     this.halo = null;
     this.core = null;
+    this.shell = null;
+    this.rings = [];
   }
 
   // --- caption plate ----------------------------------------------------------
@@ -1222,31 +1286,42 @@ export class TutorialSystem extends createSystem({
     this.sizeCaption(capH);
     ctx.clearRect(0, 0, CAP_W, capH);
     if (this.captionText) {
-      plate(ctx, 6, 6, CAP_W - 12, capH - 12, {
-        cut: 14,
-        fill: 'rgba(8,9,13,0.8)',
-        stroke: 'rgba(255,192,77,0.55)',
-        rivets: false,
+      // The menu's holo glass, its tube burning in her neon — a touch
+      // more opaque than a menu pane: she talks over a lit, moving arena.
+      holoGlass(ctx, 6, 6, CAP_W - 12, capH - 12, {
+        r: 16,
+        edge: rgbOf(EMBER_NEON_CSS),
+        fill: 'rgba(6,10,22,0.7)',
+        arm: 22,
+        bloom: 0.8,
+        ticks: false,
       });
-      // Her name tag: a lit ember notch, stencil, and a rule that fades
-      // out to the right — the subtitle reads as one of the house's cards.
-      ctx.fillStyle = UI.emberBright;
-      ctx.shadowColor = UI.emberBright;
-      ctx.shadowBlur = 12;
-      ctx.fillRect(30, 26, 6, 30);
-      ctx.shadowBlur = 0;
+      // Her name tag: a lit neon cell, her name in her colour, a quiet
+      // GUIDE tag, and a rule that fades out to the right.
+      neonCell(ctx, 34, 31, 24, 22, true, EMBER_NEON_CSS);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
-      ctx.font = stencilFont(26);
-      ctx.fillStyle = UI.emberBright;
-      ctx.fillText('EMBER', 46, 50);
-      const rule = ctx.createLinearGradient(46, 0, CAP_W - 40, 0);
-      rule.addColorStop(0, 'rgba(255,192,77,0.7)');
-      rule.addColorStop(1, 'rgba(255,192,77,0)');
+      ctx.save();
+      ctx.font = font(700, 28);
+      ctx.letterSpacing = '6px';
+      ctx.fillStyle = EMBER_NEON_CSS;
+      ctx.shadowColor = EMBER_NEON_CSS;
+      ctx.shadowBlur = 12;
+      ctx.fillText('EMBER', 68, 52);
+      const nameW = ctx.measureText('EMBER').width;
+      ctx.restore();
+      ctx.font = font(600, 17);
+      ctx.letterSpacing = '4px';
+      ctx.fillStyle = KIT.faint;
+      ctx.fillText('// GUIDE', 68 + nameW + 14, 51);
+      ctx.letterSpacing = '0px';
+      const rule = ctx.createLinearGradient(34, 0, CAP_W - 40, 0);
+      rule.addColorStop(0, `rgba(${rgbOf(EMBER_NEON_CSS)},0.75)`);
+      rule.addColorStop(1, `rgba(${rgbOf(EMBER_NEON_CSS)},0)`);
       ctx.fillStyle = rule;
-      ctx.fillRect(46, 62, CAP_W - 86, 2);
+      ctx.fillRect(34, 64, CAP_W - 74, 2);
       ctx.font = CAP_FONT;
-      ctx.fillStyle = UI.text;
+      ctx.fillStyle = KIT.text;
       wrapText(ctx, this.captionText, 34, CAP_TEXT_Y, CAP_W - 68, CAP_LINE_H);
     }
     this.caption.tex.needsUpdate = true;
@@ -1269,6 +1344,7 @@ export class TutorialSystem extends createSystem({
     this.caption.tex.dispose();
     const tex = new CanvasTexture(canvas);
     tex.minFilter = LinearFilter;
+    tex.colorSpace = SRGBColorSpace; // as makePanel: the kit paints in sRGB
     this.caption.tex = tex;
     const mat = this.caption.mesh.material as MeshBasicMaterial;
     mat.map = tex;
@@ -1286,6 +1362,9 @@ export class TutorialSystem extends createSystem({
     const ctx = canvas.getContext('2d')!;
     const tex = new CanvasTexture(canvas);
     tex.minFilter = LinearFilter;
+    // Painted in sRGB, like the menu's panels — untagged, the holo glass
+    // comes out a washed grey instead of the kit's blue-black.
+    tex.colorSpace = SRGBColorSpace;
     const mesh = new Mesh(new PlaneGeometry(worldW, (worldW * ch) / cw), new MeshBasicMaterial({ map: tex, transparent: true }));
     mesh.name = name;
     mesh.renderOrder = 20;
@@ -1311,31 +1390,29 @@ export class TutorialSystem extends createSystem({
     if (!this.console) return;
     const ctx = this.console.ctx;
     ctx.clearRect(0, 0, CON_W, CON_H);
-    plate(ctx, 8, 8, CON_W - 16, CON_H - 16, { cut: 18, fill: 'rgba(10,12,16,0.92)', stroke: UI.emberBright });
-    // The keying notch and the title, the way every card in the house opens.
-    ctx.fillStyle = UI.emberBright;
-    ctx.shadowColor = UI.emberBright;
-    ctx.shadowBlur = 14;
-    ctx.fillRect(30, 40, 7, 40);
-    ctx.shadowBlur = 0;
+    // The menu's own holo glass (ui/kit/holo.ts): this console is the first
+    // panel a new fighter ever touches, so it speaks the lobby's language.
+    holoGlass(ctx, 6, 6, CON_W - 12, CON_H - 12, { r: 18, fill: KIT.panel, arm: 20, bloom: 0.8, ticks: false });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = stencilFont(38);
-    ctx.fillStyle = UI.emberBright;
-    ctx.fillText('TUTORIAL', 50, 72);
-    ctx.font = '600 20px system-ui, sans-serif';
-    ctx.fillStyle = UI.textDim;
-    ctx.fillText('EMBER shows you the ropes.', 50, 106);
-    // The seven beats, in the amber the console keys everything with.
-    ctx.font = '700 15px system-ui, sans-serif';
-    ctx.letterSpacing = '1px';
-    ctx.fillStyle = UI.amberSoft;
-    wrapText(ctx, CONSOLE_BEATS, 50, 140, CON_W - 100, 22);
+    ctx.font = font(700, 36);
+    ctx.letterSpacing = '4px';
+    ctx.fillStyle = KIT.textHi;
+    ctx.fillText('TUTORIAL', 40, 70);
     ctx.letterSpacing = '0px';
-    ctx.font = '500 17px system-ui, sans-serif';
-    ctx.fillStyle = UI.textDim;
-    ctx.fillText('Graduate and the house pays fifty.', 50, 190);
-    buttonPlate(ctx, BEGIN_BTN.x, BEGIN_BTN.y, BEGIN_BTN.w, BEGIN_BTN.h, 'BEGIN', UI.amber, this.console.hot);
+    ctx.font = font(500, 21);
+    ctx.fillStyle = KIT.dim;
+    ctx.fillText('EMBER shows you the ropes.', 40, 104);
+    // The seven beats, as quiet data under the title.
+    ctx.font = font(600, 16);
+    ctx.letterSpacing = '1.5px';
+    ctx.fillStyle = KIT.faint;
+    wrapText(ctx, CONSOLE_BEATS, 40, 138, CON_W - 80, 22);
+    ctx.letterSpacing = '0px';
+    ctx.font = font(500, 18);
+    ctx.fillStyle = KIT.dim;
+    ctx.fillText('Graduate and the house pays fifty.', 40, 190);
+    ctaPlate(ctx, BEGIN_BTN.x, BEGIN_BTN.y, BEGIN_BTN.w, BEGIN_BTN.h, 'BEGIN', { hover: this.console.hot ? 1 : 0, px: 34, r: 16 });
     this.console.tex.needsUpdate = true;
   }
 
@@ -1354,7 +1431,7 @@ export class TutorialSystem extends createSystem({
     // The lobby's exact BALL LOADOUT panel, re-hosted: one implementation,
     // painted off screen by the kit and blitted here (menu/ballsFace.ts).
     ctx.drawImage(renderBallsPanel(null), 0, 0, BALLS_W, BALLS_H);
-    buttonPlate(ctx, READY_BTN.x, READY_BTN.y, READY_BTN.w, READY_BTN.h, 'READY', UI.emberBright, this.loadout.hot);
+    ctaPlate(ctx, READY_BTN.x, READY_BTN.y, READY_BTN.w, READY_BTN.h, 'READY', { hover: this.loadout.hot ? 1 : 0, px: 36 });
     this.loadout.tex.needsUpdate = true;
   }
 
