@@ -1152,14 +1152,19 @@ export class MenuSystem extends createSystem({}) {
         campaignModal.pending = action === 'campaign-hardcore' ? 'hardcore' : 'gauntlet';
         break;
       case 'campaign-launch-cancel':
+      case 'campaign-belts-back':
         campaignModal.pending = null;
+        break;
+      case 'campaign-belts':
+        // THE BELT RACK takes the panel; BACK returns to the career.
+        campaignModal.pending = 'belts';
         break;
       case 'campaign-launch-start': {
         // Launch the armed fight (a run from stage I, or the goop) at the
         // difficulty the pop-up's chips picked (diff-<tier> saved it).
         const kind = campaignModal.pending;
         campaignModal.pending = null;
-        if (!kind) break;
+        if (!kind || kind === 'belts') break;
         app.mode = 'campaign';
         app.campaignMode = kind;
         app.campaignStage = 0;

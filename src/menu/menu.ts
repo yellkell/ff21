@@ -65,6 +65,8 @@ export type MenuAction =
   /** The pick-your-damage launch pop-up the run buttons open. */
   | 'campaign-launch-start'
   | 'campaign-launch-cancel'
+  | 'campaign-belts'
+  | 'campaign-belts-back'
   /** The sealed entry beneath the line-up: GOOPLIATH's own fight. */
   | 'campaign-goopliath'
   | `campaign-${number}`

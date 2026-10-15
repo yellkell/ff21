@@ -21,7 +21,7 @@ import { xpForArcade, xpForBot, xpForCampaign, xpForMatch, xpForTraining, xpForT
 import { myPackedLook } from '../avatar/paint.js';
 import { customization, myPackedGear } from '../menu/customization.js';
 import { addCoins } from '../menu/wallet.js';
-import { bestHeldBelt } from '../campaign/belts.js';
+import { bestHeldBelt, type ClearTiers } from '../campaign/belts.js';
 import { CURRENCY, LADDER, seasonIndex, seasonScoreField, TV, type ArcadeMode, type Difficulty } from '../config.js';
 
 export interface LbRow {
@@ -818,9 +818,9 @@ export function reportRunClear(kind: 'gauntlet' | 'raid' | 'goopliath', difficul
   if (Object.keys(patch).length) writeMine(patch);
 }
 
-/** Your gauntlet clear tiers [any run, hardcore] — the belt rack reads them. */
-export function myGauntletTiers(): [number, number] {
-  return [profile.gauntletBest, profile.gauntletBestHc];
+/** Your synced clear tiers and best belt — what proves your belts. */
+export function myClearTiers(): ClearTiers {
+  return profile;
 }
 
 /**
@@ -829,7 +829,7 @@ export function myGauntletTiers(): [number, number] {
  * it. Call after a belt is won; it's a no-op when nothing's better.
  */
 export function syncBeltBest(): void {
-  const best = bestHeldBelt(profile.gauntletBest, profile.gauntletBestHc);
+  const best = bestHeldBelt(profile);
   if (!best || best.rank <= profile.beltBest) return;
   profile.beltBest = best.rank;
   if (profile.id) writeMine({ beltBest: best.rank });

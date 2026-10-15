@@ -13,27 +13,35 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
-- **CHAMPIONSHIP BELTS** (FIRE FIGHT FLUX's title belts, brought to the
-  campaign and grown into a set of twelve — `src/campaign/belts.ts`).
-  - **Title belts**: the first time you defeat each boss — SCRAPYARD
-    (CHROMEHOOK), FOUNDRY (PISTONKAISER), TALON (VULTURE), BULWARK
-    (JUGGERNAUT), CROWN (GOLIATH) and TIDE (GOOPLIATH). Bosses beaten
-    before belts existed hand theirs over from the save.
-  - **Run belts**: one per run per difficulty, Normal and up — IRONCLAD /
-    TITANSTEEL / SUNFORGED for the gauntlet on Normal / Hard / Blazing,
-    BLOODIRON / WARBRAND / INFERNO for hardcore. Hardcore belts burn.
-  - **Painted in detail** (`ui/beltArt.ts`): tooled, stitched leather with
-    snaps, keeper and eyelets; four side plates struck with the titans'
-    emblems; a centre plate (octagon, crest or sunburst by tier) with
-    engine-turned enamel, a laurel, the boss's mark, a faceted stone,
-    corner stones, a ribbon and a plaque.
+- **THE CAREER AND ITS BELTS** (FIRE FIGHT FLUX's title run and title
+  belts, brought to the campaign — `src/campaign/career.ts`,
+  `src/campaign/belts.ts`).
+  - **Seven bouts**: I AMATEUR (CHROMEHOOK) · II LOCAL (PISTONKAISER) ·
+    III NATIONAL (VULTURE) · IV INTERCONTINENTAL (JUGGERNAUT) · V TITLE
+    DEFENSE against a supercharged, bigger VULTURE+ · VI WORLD (GOLIATH) ·
+    VII WORLD TITLE DEFENSE against a supercharged GOLIATH+. Supercharged
+    titans are bigger, tougher, quicker and carry the elite attacks.
+    Five-titan saves are remapped onto the career.
+  - **Winning the career** (bout VII, first time) pays a 1500 iron-dollar
+    purse.
+  - **23 belts**: one per career title (AMATEUR, LOCAL, NATIONAL,
+    INTERCONTINENTAL, WORLD); TIDE for first defeating GOOPLIATH; RIPTIDE
+    and MAELSTROM for his fight on Hard and Blazing; and one per tier
+    (Normal · Hard · Blazing) for the gauntlet, hardcore, the titan raid,
+    the hardcore raid and the GOOPLIATH raid. Belts are kept forever;
+    defenses are counted on their belt.
+  - **Neon** (`ui/beltArt.ts`): dark see-through glass with every edge a
+    lit tube — strap, stitch line, side plates with the titans' emblems in
+    light, a centre plate (octagon, crest or sunburst by tier), a glowing
+    stone, a lit ribbon and plaque; hardcore belts burn.
   - **Held up when you win one** (`ui/beltModel.ts`,
-    `campaign/beltCeremony.ts`): a 3D belt — bowed strap, extruded metal
-    plates, a real cut stone — rises in front of you over the wreck, and
-    the card names it.
-  - **The belt rack** on the campaign panel shows all twelve, yours lit and
-    the rest as ghosts; hover one for what it is or how to win it. The
-    launch card shows the belt a run is for.
+    `campaign/beltCeremony.ts`): the belt in 3D — bowed strap, dark glass
+    plates, glowing paint and stone — rises in front of you and the card
+    names it (or counts the defense).
+  - **THE BELT RACK** on the campaign panel: your best belt and count;
+    open it for all 23, yours lit, the rest as ghosts, hover for what each
+    is or how to win it. Career cards and the launch card show the belt at
+    stake.
   - **The profile shows your best belt** in place of the old SPEEDRUN
     badge; hover it and it says what it is. Its rank syncs as `beltBest`.
   - **"FELLED" reads "DEFEATED"** across the campaign.

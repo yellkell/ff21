@@ -132,7 +132,8 @@ import { announce } from '../audio/announcer.js';
 import { playCash } from '../audio/cash.js';
 import { BOSS_BATTLE_VOLUME, playVictory, startBattleMusic, startFinaleTrack, stopBattleTrack } from '../audio/battleMusic.js';
 import { emberBurst } from '../fx/fire.js';
-import { awardRunBelt, beltName, titleBeltOf, type Belt } from '../campaign/belts.js';
+import { awardTierBelt, bankDefense, beltName, beltOf, type Belt } from '../campaign/belts.js';
+import { BOUT_OF_TITAN, CAREER, CAREER_PRIZE, supercharge } from '../campaign/career.js';
 import { BeltCeremony } from '../campaign/beltCeremony.js';
 import { spawnFireImpact } from '../fx/effects.js';
 import { feedback } from '../fx/feedback.js';
@@ -291,6 +292,8 @@ export class CampaignSystem extends createSystem({
    *  the card should still say. */
   private freshBelt: Belt | null = null;
   private beltNote = '';
+  /** A title defense just won: the belt held up, and its count. */
+  private defendedBelt: { belt: Belt; count: number } | null = null;
 
   private phase: Phase = 'idle';
   private t = 0;
@@ -685,10 +688,28 @@ export class CampaignSystem extends createSystem({
    *  the five titans otherwise. Used for stage → boss resolution off the
    *  bout floor (names, cleared flags). */
   private lineup(): RunStage[] {
-    return this.runMode() ? runLineup(this.activeDifficulty()) : BOSSES.map((_, i) => ({ kind: 'titan', index: i }));
+    return this.runMode() ? runLineup(this.activeDifficulty()) : CAREER.map((b) => ({ kind: 'titan', index: b.boss }));
   }
 
-  /** The boss at run stage `i` — its display name for the FELLED card. */
+  /** The CAREER bout being fought (single titan bouts only). */
+  private careerBout(): (typeof CAREER)[number] | null {
+    if (app.campaignMode !== 'single' || this.raid()) return null;
+    return CAREER[clamp(app.campaignStage, 0, CAREER.length - 1)] ?? null;
+  }
+
+  /** The klaxon's line for a career bout: what it is, and what's at stake
+   *  (fff's "FOR THE NATIONAL BELT" / "YOUR BELT ON THE LINE"). */
+  private boutWarning(): string {
+    const bout = this.careerBout();
+    if (!bout) return 'a titan approaches the pit';
+    const belt = beltOf(bout.wins ?? bout.defends ?? '');
+    if (!belt) return bout.title.toLowerCase();
+    return bout.defends
+      ? `${bout.title} · your ${belt.name} belt on the line`.toLowerCase()
+      : `${bout.title} · for the ${belt.name} belt`.toLowerCase();
+  }
+
+  /** The boss at run stage `i` — its display name for the DEFEATED card. */
   private stageName(i: number): string {
     const l = this.lineup();
     const rs = l[clamp(i, 0, l.length - 1)];
@@ -961,7 +982,7 @@ export class CampaignSystem extends createSystem({
     app.arcade = '1v1';
     applyRoster();
     applyArenaLayout(this.scene);
-    this.stageSetup(true, this.goopSolo() ? 'something stirs beneath the pit' : 'a titan approaches the pit');
+    this.stageSetup(true, this.goopSolo() ? 'something stirs beneath the pit' : this.runMode() || this.raid() ? 'a titan approaches the pit' : this.boutWarning());
   }
 
   /** Chain to the next titan mid-run — no lobby, straight into its intro. */
@@ -1022,9 +1043,12 @@ export class CampaignSystem extends createSystem({
         this.def = this.raid() ? raidBoss(base, app.campaignStage, this.raidSize()) : base;
       }
     } else {
-      // A single campaign stage.
-      this.def = BOSSES[clamp(app.campaignStage, 0, BOSSES.length - 1)];
-      this.runLen = BOSSES.length;
+      // A single CAREER bout (campaign/career.ts): its titan, supercharged
+      // for a title defense.
+      const bout = CAREER[clamp(app.campaignStage, 0, CAREER.length - 1)];
+      const base = BOSSES[bout.boss];
+      this.def = bout.charged ? supercharge(base, bout.charged) : base;
+      this.runLen = CAREER.length;
     }
     this.park = { x: 0, z: 0 }; // THE FLOOR MANAGER: everyone spawns centre
     // HARD+ shares the elite attacks (nova / seesaw / surge) to every boss.
@@ -1210,6 +1234,7 @@ export class CampaignSystem extends createSystem({
     this.phase = 'idle';
     this.ceremony.stop();
     this.freshBelt = null;
+    this.defendedBelt = null;
     this.beltNote = '';
     this.meleeGlow?.removeFromParent();
     (this.meleeGlow?.material as SpriteMaterial | undefined)?.dispose();
@@ -1353,7 +1378,7 @@ export class CampaignSystem extends createSystem({
       this.entrancePose(1);
       // Just the name, big and centred — the epithet sub-lines ("arena
       // executioner" and kin) are gone; the chassis does the talking.
-      this.hud.title(this.def.name, '', this.accentCss());
+      this.hud.title(this.def.name, this.careerBout()?.charged ? 'SUPERCHARGED' : '', this.accentCss());
       if (!playBossVoice(this.def.name)) sfx.bossRoar(this.def.scale * 0.8);
     }
 
@@ -4691,14 +4716,16 @@ export class CampaignSystem extends createSystem({
     // TITLE BELTS (campaign/belts.ts): a boss's belt, the first time it's
     // defeated — the five titans and GOOPLIATH. (A run's belt comes below.)
     const titles: Belt[] = [];
-    let runWon: { belt: Belt; fresh: boolean } | null = null;
+    let tierWon: { belt: Belt; fresh: boolean } | null = null;
+    let defended: { belt: Belt; count: number } | null = null;
+    let prize = '';
     if (solo) {
       firstClear = this.raid() ? !campaignProgress.raidGoopliathCleared : !campaignProgress.goopliathCleared;
       if (firstClear) {
         if (this.raid()) campaignProgress.raidGoopliathCleared = true;
         else campaignProgress.goopliathCleared = true;
         saveCampaignProgress();
-        if (!this.raid()) titles.push(titleBeltOf(5)!);
+        if (!this.raid()) titles.push(beltOf('tide')!);
       }
       addCoins(CURRENCY.perGame * (firstClear ? 2 : 1));
     } else if (this.raid()) {
@@ -4717,17 +4744,32 @@ export class CampaignSystem extends createSystem({
         if (firstClear) {
           campaignProgress.goopliathCleared = true;
           saveCampaignProgress();
-          titles.push(titleBeltOf(5)!);
+          titles.push(beltOf('tide')!);
         }
         addCoins(CURRENCY.perGame * (firstClear ? 2 : 1)); // off the boards
       } else {
-        const ti = rs.kind === 'titan' ? rs.index : app.campaignStage;
+        // The save is indexed by CAREER bout: a single bout is its own
+        // index; a run's titan marks the bout that first beats it.
+        const ti = run ? BOUT_OF_TITAN[rs.kind === 'titan' ? rs.index : 0] : app.campaignStage;
         firstClear = campaignProgress.cleared[ti] !== true;
         if (firstClear) {
           campaignProgress.cleared[ti] = true;
           saveCampaignProgress();
-          const tb = titleBeltOf(ti);
-          if (tb) titles.push(tb);
+        }
+        const bout = CAREER[ti];
+        if (firstClear && bout?.wins) titles.push(beltOf(bout.wins)!);
+        // A career DEFENSE won (every time, not just the first): counted.
+        const isDefense = !run && bout?.defends;
+        if (isDefense) {
+          const belt = beltOf(bout.defends!)!;
+          defended = { belt, count: bankDefense(belt.id) };
+        }
+        // The last bout of the career, won for the first time: the purse.
+        if (!run && ti === CAREER.length - 1 && !campaignProgress.careerPrized) {
+          campaignProgress.careerPrized = true;
+          saveCampaignProgress();
+          addCoins(CAREER_PRIZE);
+          prize = ` · $${CAREER_PRIZE} CAREER PURSE`;
         }
         reportCampaign(true, firstClear);
       }
@@ -4745,6 +4787,8 @@ export class CampaignSystem extends createSystem({
     // blazing achievements are earnable against the tide solo too.
     if (app.campaignMode === 'goopliath' && lastStage) {
       reportRunClear('goopliath', this.activeDifficulty());
+      // …and his fight pays a belt on Hard and Blazing.
+      tierWon = awardTierBelt('goopliath', this.activeDifficulty());
     }
 
     // One earned pad. BLAZING: finish any run or raid with the blazing
@@ -4802,6 +4846,8 @@ export class CampaignSystem extends createSystem({
       // Every raider banks the clear badge (easy earns nothing); a hardcore
       // titan raid burns the shield red.
       reportRunClear(solo ? 'goopliath' : 'raid', this.activeDifficulty(), !solo && app.raidHardcore);
+      // Every raider banks the raid's belt too: one per raid kind per tier.
+      tierWon = awardTierBelt(solo ? 'goopraid' : app.raidHardcore ? 'raidhc' : 'raid', this.activeDifficulty());
       this.hud.title(
         solo ? 'THE TIDE RECEDES' : 'RAID CLEARED',
         (solo
@@ -4820,7 +4866,7 @@ export class CampaignSystem extends createSystem({
       reportRun('gauntlet', this.runClock, [myName()], this.activeDifficulty(), hardcore);
       reportRunClear('gauntlet', this.activeDifficulty(), hardcore); // the profile's belt
       // The run's championship belt (Normal and up): banked, and held up.
-      runWon = awardRunBelt(hardcore ? 'hardcore' : 'gauntlet', this.activeDifficulty());
+      tierWon = awardTierBelt(hardcore ? 'hardcore' : 'gauntlet', this.activeDifficulty());
       if (!hardcore && !campaignProgress.hardcoreUnlocked) {
         campaignProgress.hardcoreUnlocked = true;
         saveCampaignProgress();
@@ -4838,7 +4884,7 @@ export class CampaignSystem extends createSystem({
         this.accentCss(),
       );
     }
-    this.holdUpBelt(titles, runWon, padTag);
+    this.holdUpBelt(titles, tierWon, defended, padTag + prize);
     playVictory(); // stops the battle score and rings the end-of-game sting
     sfx.matchEnd(true);
     // The gel's own KO splat (deathPose → setKo) is the tide's death bellow.
@@ -4989,12 +5035,18 @@ export class CampaignSystem extends createSystem({
    * beats one you already held (the best of them, if a fell won two); a run
    * you'd already won still raises its belt — just without the new card.
    */
-  private holdUpBelt(titles: Belt[], runWon: { belt: Belt; fresh: boolean } | null, note: string): void {
-    const fresh = [...titles, ...(runWon?.fresh ? [runWon.belt] : [])].sort((a, b) => b.rank - a.rank);
-    const show = fresh[0] ?? runWon?.belt ?? null;
+  private holdUpBelt(
+    titles: Belt[],
+    tierWon: { belt: Belt; fresh: boolean } | null,
+    defended: { belt: Belt; count: number } | null,
+    note: string,
+  ): void {
+    const fresh = [...titles, ...(tierWon?.fresh ? [tierWon.belt] : [])].sort((a, b) => b.rank - a.rank);
+    const show = fresh[0] ?? defended?.belt ?? tierWon?.belt ?? null;
     if (!show) return;
     if (fresh.length) syncBeltBest();
     this.freshBelt = fresh.length ? show : null;
+    this.defendedBelt = !fresh.length && defended ? defended : null;
     const more = fresh.length - 1;
     this.beltNote = (more > 0 ? ` · +${more} MORE BELT${more > 1 ? 'S' : ''}` : '') + note;
     this.ceremony.start(show, BELT_RISE_DELAY);
@@ -5029,11 +5081,18 @@ export class CampaignSystem extends createSystem({
         }
       }
       this.light.intensity = Math.max(0, 5 * (1 - k));
-      if (this.ceremony.update(delta, this.world.camera) && this.freshBelt) {
-        // A belt you didn't hold: its name takes the card.
+      if (this.ceremony.update(delta, this.world.camera)) {
+        // A belt you didn't hold: its name takes the card. A defense: the
+        // belt you kept, and how many times now.
         const b = this.freshBelt;
-        this.hud.title(beltName(b), `NEW BELT · ${b.feat}${this.beltNote}`, b.metal.mid);
-        playCash();
+        const d = this.defendedBelt;
+        if (b) {
+          this.hud.title(beltName(b), `NEW BELT · ${b.feat}${this.beltNote}`, b.strap);
+          playCash();
+        } else if (d) {
+          this.hud.title(`${d.belt.name} BELT DEFENDED`, `DEFENSE ×${d.count}${this.beltNote}`, d.belt.strap);
+          playCash();
+        }
       }
       if (this.t >= this.victoryDelay) {
         if (this.advanceAfterVictory) {

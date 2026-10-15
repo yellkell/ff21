@@ -396,11 +396,9 @@ export function profileSpots(row: LbRow, x: number, y: number, w: number): Profi
   // their card syncs; yours also counts the belts in your save.
   let bx = x0;
   let by = ay + CHIP_H + 14;
-  const synced = bestBeltOfRow(row);
-  const mine = row.me ? bestHeldBelt(row.gauntletBest ?? 0, row.gauntletBestHc ?? 0) : null;
-  const belt = mine && (!synced || mine.rank > synced.rank) ? mine : synced;
+  const belt = row.me ? bestHeldBelt(row) : bestBeltOfRow(row);
   if (belt) {
-    spots.push({ kind: 'belt', id: 'badge-belt', x: bx, y: by, w: CLEAR_W, h: CHIP_H + 4, belt, tip: beltTip(belt) });
+    spots.push({ kind: 'belt', id: 'badge-belt', x: bx, y: by, w: CLEAR_W, h: CHIP_H + 4, belt, tip: beltTip(belt, row.me) });
     bx += CLEAR_W + 8;
   }
   const clears: Array<['star' | 'shield' | 'drop', string, string, number, number]> = [
@@ -563,7 +561,7 @@ export function drawProfileBlock(g: CanvasRenderingContext2D, row: LbRow, x: num
       // The belt laid across its plate, a touch bigger than the chip: no
       // words on it — hover it and it says what it is.
       const hot = hover === s.id;
-      chip(g, s.x, s.y, s.w, s.h, hot ? s.belt.metal.hi : s.belt.metal.mid);
+      chip(g, s.x, s.y, s.w, s.h, hot ? s.belt.strap : s.belt.metal);
       if (hot) {
         g.fillStyle = 'rgba(255,255,255,0.06)';
         g.fill();

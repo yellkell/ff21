@@ -582,7 +582,8 @@ export const BOT_MERCY = {
  * signature mechanic) live in campaign/bosses.ts.
  */
 export const CAMPAIGN = {
-  stages: 5,
+  /** The career's bouts (campaign/career.ts): five titans, two defenses. */
+  stages: 7,
 
   // Intro staging: klaxon + strobes, the titan rises, the title card, FIGHT.
   klaxonTime: 1.2, // warning strobes before anything moves

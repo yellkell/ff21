@@ -1,61 +1,59 @@
 /**
- * THE BELTS — championship belts for the campaign, ported from FIRE FIGHT
- * FLUX's title belts (fff game/career.ts) and grown into a full set. They
- * come three ways:
+ * THE BELTS — championship belts, carried over from FIRE FIGHT FLUX's title
+ * belts (fff game/career.ts) and grown into a full set. Neon, like fff's:
+ * dark glass with every edge a lit tube (ui/beltArt.ts paints them,
+ * ui/beltModel.ts builds the one held up when you win it). Each belt is
+ * three neon colours — the STRAP, the PLATE metal, the STONE — and a centre
+ * plate shape: an octagon (Normal), a crest (Hard) or a sunburst (Blazing).
+ * Hardcore belts burn.
  *
- *  THE TITLE BELTS — one for each boss, the first time you defeat it (fff's
- *  title run: amateur, national, intercontinental, world):
+ *  THE CAREER (campaign/career.ts) — a title for each bout that wins one:
+ *   1  AMATEUR            CHROMEHOOK, bout I
+ *   2  LOCAL              PISTONKAISER, bout II
+ *   3  NATIONAL           VULTURE, bout III
+ *   4  INTERCONTINENTAL   JUGGERNAUT, bout IV (defended in bout V)
+ *   5  WORLD              GOLIATH, bout VI (defended in bout VII)
+ *  GOOPLIATH, solo:
+ *   6  TIDE               the first time you defeat him (any tier)
+ *   12 RIPTIDE / 18 MAELSTROM   his fight on Hard / Blazing
+ *  THE RUNS AND RAIDS, one per tier (Normal · Hard · Blazing):
+ *   gauntlet          IRONCLAD   · TITANSTEEL · SUNFORGED
+ *   hardcore          BLOODIRON  · WARBRAND   · INFERNO
+ *   titan raid        VANGUARD   · PHALANX    · LEGION
+ *   hardcore raid     BLOODOATH  · DEATHGRIP  · ASHFALL
+ *   GOOPLIATH raid    FLOODGATE  · UNDERTOW   · LEVIATHAN
  *
- *   rank  belt         won by                          plate     strap / metal
- *   1     SCRAPYARD    defeating CHROMEHOOK            octagon   denim / steel
- *   2     FOUNDRY      defeating PISTONKAISER          octagon   brown / brass
- *   3     TALON        defeating VULTURE               octagon   green / silver
- *   4     BULWARK      defeating JUGGERNAUT            crest     purple / silver
- *   5     CROWN        defeating GOLIATH, the king     crest     red / gold
- *   6     TIDE         defeating GOOPLIATH             sun       green / pearl
+ * Rank is prestige: the profile shows the highest belt you hold, and syncs
+ * its rank as `beltBest` so everyone else sees it on your card. Belts are
+ * kept forever.
  *
- *  THE RUN BELTS — one per run per difficulty, Normal and up (Easy earns
- *  nothing, same as the boards):
- *
- *   7     IRONCLAD     the GAUNTLET on Normal          octagon   black / bronze
- *   8     BLOODIRON    HARDCORE on Normal              octagon   oxblood / gunmetal
- *   9     TITANSTEEL   the GAUNTLET on Hard            crest     navy / steel
- *   10    WARBRAND     HARDCORE on Hard                crest     crimson / black chrome
- *   11    SUNFORGED    the GAUNTLET on Blazing         sun       ivory / gold
- *   12    INFERNO      HARDCORE on Blazing             sun       black / red gold
- *
- * A Hardcore belt burns: flames behind its centre plate. The art is in
- * ui/beltArt.ts (the painting) and ui/beltModel.ts (the 3D one, held up over
- * the wreck when you win it — campaign/beltCeremony.ts).
- *
- * WHICH YOU HOLD: run belts are kept in the campaign save
- * (`campaignProgress.belts`); title belts are read off the save's own
- * defeat flags, so a boss beaten before belts existed still hands its belt
- * over. THE PROFILE shows your BEST belt (highest rank) and syncs its rank
- * as `beltBest`, so other players see it on your card.
+ * WHICH YOU HOLD: tier belts are kept in the campaign save
+ * (`campaignProgress.belts`); career belts and TIDE are read off the save's
+ * own wins, so a bout won before belts existed still hands its belt over;
+ * and the clear tiers the profile has always synced prove your best run and
+ * raid belts.
  */
 
 import type { Difficulty } from '../config.js';
 import { campaignProgress, saveCampaignProgress } from './campaignState.js';
+import { CAREER } from './career.js';
 
-export type BeltMode = 'gauntlet' | 'hardcore';
 export type BeltTier = 'normal' | 'hard' | 'blazing';
 export type PlateShape = 'octagon' | 'crest' | 'sun';
-export type BeltKind = 'titan' | 'goop' | 'run';
+/** The runs and fights that pay one belt per tier. */
+export type BeltFamily = 'gauntlet' | 'hardcore' | 'raid' | 'raidhc' | 'goopraid' | 'goopliath';
+export type BeltKind = 'career' | 'tide' | 'tier';
 
 export interface Belt {
   id: string;
   kind: BeltKind;
-  /** Run belts: which run and tier. */
-  mode?: BeltMode;
+  family?: BeltFamily;
   tier?: BeltTier;
-  /** Title belts: whose (BOSSES index; 5 = GOOPLIATH). */
-  boss?: number;
-  /** 1 (SCRAPYARD) … 12 (INFERNO): the profile shows the highest you hold. */
+  /** 1 … 23: the profile shows the highest you hold. */
   rank: number;
   /** "IRONCLAD" — said as "THE IRONCLAD BELT". */
   name: string;
-  /** What winning it makes you, on the award card. */
+  /** What winning it makes you. */
   title: string;
   /** How it was won (the tooltip) … */
   feat: string;
@@ -64,244 +62,230 @@ export interface Belt {
   /** The word on the centre plate's ribbon, and the plaque under it. */
   ribbon: string;
   plaque: string;
-  /** The emblem in the centre plate (icons.ts index), and on the four side
-   *  plates, left to right. */
+  /** The emblem in the centre plate (campaign/icons.ts index), and on the
+   *  four side plates, left to right. */
   emblem: number;
   sides: [number, number, number, number];
   plate: PlateShape;
-  /** Leather: the strap's face, its shadowed edge, the tooling, the thread. */
-  strap: { face: string; edge: string; tool: string; thread: string };
-  /** Metal ramp, highlight → mid → shadow. */
-  metal: { hi: string; mid: string; lo: string };
-  /** The enamel field inside the plates. */
-  enamel: { face: string; deep: string };
-  /** The centre stone and the glow round it. */
-  gem: { core: string; glow: string };
-  /** Hardcore belts burn: flames licking out behind the centre plate. */
+  /** Neon, #rrggbb: the strap's tubes, the plates' tubes, the stone. */
+  strap: string;
+  metal: string;
+  gem: string;
+  /** Hardcore belts burn: neon flames behind the centre plate. */
   flames: boolean;
 }
 
-const LINEUP: [number, number, number, number] = [0, 1, 2, 3];
-const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+// The neon palette (config.ts / fff), spelled out.
+const CYAN = '#19f0ff';
+const EMBER = '#ff7a1a';
+const MAGENTA = '#ff2bd6';
+const RED = '#ff2b4e';
+const GOLD = '#ffc84a';
+const SILVER = '#cfe6ff';
+const LIME = '#7cff4a';
+const VIOLET = '#b26bff';
+const BLUE = '#4a6bff';
+const GOO = '#36e05a';
+const TEAL = '#2fe0d0';
+const WHITE = '#ffffff';
+const AMBER = '#ffb000';
+const MOLTEN = '#ff9a3c';
 
-/** A boss's title belt: its emblem on every plate, its numeral on the plaque. */
-function titleBelt(
-  boss: number,
-  who: string,
-  name: string,
-  look: Pick<Belt, 'plate' | 'strap' | 'metal' | 'enamel' | 'gem'>,
-): Belt {
-  const goop = boss === 5;
+const TITANS = ['CHROMEHOOK', 'PISTONKAISER', 'VULTURE', 'JUGGERNAUT', 'GOLIATH'];
+const PLATE: Record<BeltTier, PlateShape> = { normal: 'octagon', hard: 'crest', blazing: 'sun' };
+const TIER_METAL: Record<BeltTier, string> = { normal: SILVER, hard: GOLD, blazing: MOLTEN };
+
+/** A career title's belt. */
+function careerBelt(id: string, name: string, rank: number, plate: PlateShape, strap: string, metal: string, gem: string): Belt {
+  const bout = CAREER.find((b) => b.wins === id)!;
+  const who = TITANS[bout.boss];
   return {
-    id: goop ? 'goopliath' : `titan-${boss}`,
-    kind: goop ? 'goop' : 'titan',
-    boss,
-    rank: boss + 1,
+    id,
+    kind: 'career',
+    rank,
     name,
     title: `${name} CHAMPION`,
-    feat: `DEFEATED ${who}`,
-    goal: `DEFEAT ${who} TO WIN IT`,
-    ribbon: who,
-    plaque: goop ? '★ VI ★' : `★ ${ROMAN[boss]} ★`,
-    emblem: boss,
-    sides: [boss, boss, boss, boss],
+    feat: `WON THE ${name} TITLE FROM ${who}`,
+    goal: `DEFEAT ${who} IN THE ${bout.title} TO WIN IT`,
+    ribbon: name,
+    plaque: 'CHAMPION',
+    emblem: bout.boss,
+    sides: [bout.boss, bout.boss, bout.boss, bout.boss],
+    plate,
+    strap,
+    metal,
+    gem,
     flames: false,
-    ...look,
   };
 }
 
-/** A run's belt: the line-up on its side plates, the king in the middle. */
-function runBelt(
-  mode: BeltMode,
-  tier: BeltTier,
-  rank: number,
-  name: string,
-  look: Pick<Belt, 'plate' | 'strap' | 'metal' | 'enamel' | 'gem'>,
-): Belt {
+const FAMILY: Record<BeltFamily, { ribbon: string; title: string; won: string; win: string; strap: string; gem: string; goop: boolean; flames: boolean }> = {
+  gauntlet: { ribbon: 'GAUNTLET', title: 'GAUNTLET CHAMPION', won: 'RAN THE GAUNTLET', win: 'RUN THE GAUNTLET', strap: CYAN, gem: WHITE, goop: false, flames: false },
+  hardcore: { ribbon: 'HARDCORE', title: 'HARDCORE CHAMPION', won: 'SURVIVED HARDCORE', win: 'SURVIVE HARDCORE', strap: RED, gem: AMBER, goop: false, flames: true },
+  raid: { ribbon: 'TITAN RAID', title: 'RAID CHAMPION', won: 'BEAT THE TITAN RAID', win: 'BEAT THE TITAN RAID', strap: VIOLET, gem: CYAN, goop: false, flames: false },
+  raidhc: { ribbon: 'HARDCORE RAID', title: 'HARDCORE RAID CHAMPION', won: 'BEAT THE HARDCORE RAID', win: 'BEAT THE HARDCORE RAID', strap: MAGENTA, gem: GOLD, goop: false, flames: true },
+  goopraid: { ribbon: 'GOOP RAID', title: 'TIDEBREAKER', won: 'BROKE THE GOOPLIATH RAID', win: 'BREAK THE GOOPLIATH RAID', strap: GOO, gem: LIME, goop: true, flames: false },
+  goopliath: { ribbon: 'GOOPLIATH', title: 'TIDE MASTER', won: 'DEFEATED GOOPLIATH', win: 'DEFEAT GOOPLIATH', strap: TEAL, gem: GOO, goop: true, flames: false },
+};
+
+/** A run's, raid's or fight's belt for one tier. */
+function tierBelt(family: BeltFamily, tier: BeltTier, rank: number, name: string): Belt {
+  const f = FAMILY[family];
   const word = tier.toUpperCase();
-  const hc = mode === 'hardcore';
+  const goop = f.goop ? 5 : -1;
   return {
-    id: `${mode}-${tier}`,
-    kind: 'run',
-    mode,
+    id: `${family}-${tier}`,
+    kind: 'tier',
+    family,
     tier,
     rank,
     name,
-    title: hc ? 'HARDCORE CHAMPION' : 'GAUNTLET CHAMPION',
-    feat: hc ? `SURVIVED HARDCORE ON ${word}` : `RAN THE GAUNTLET ON ${word}`,
-    goal: hc ? `SURVIVE HARDCORE ON ${word} TO WIN IT` : `RUN THE GAUNTLET ON ${word} TO WIN IT`,
-    ribbon: hc ? 'HARDCORE' : 'GAUNTLET',
-    plaque: `★ ${word} ★`,
-    emblem: 4,
-    sides: LINEUP,
-    flames: hc,
-    ...look,
+    title: f.title,
+    feat: `${f.won} ON ${word}`,
+    goal: `${f.win} ON ${word} TO WIN IT`,
+    ribbon: f.ribbon,
+    plaque: word,
+    emblem: f.goop ? 5 : 4,
+    sides: f.goop ? [goop, goop, goop, goop] : [0, 1, 2, 3],
+    plate: PLATE[tier],
+    strap: f.strap,
+    metal: TIER_METAL[tier],
+    gem: f.gem,
+    flames: f.flames,
   };
 }
 
 export const BELTS: readonly Belt[] = [
-  titleBelt(0, 'CHROMEHOOK', 'SCRAPYARD', {
+  careerBelt('amateur', 'AMATEUR', 1, 'octagon', CYAN, SILVER, WHITE),
+  careerBelt('local', 'LOCAL', 2, 'octagon', LIME, SILVER, AMBER),
+  careerBelt('national', 'NATIONAL', 3, 'crest', EMBER, GOLD, RED),
+  careerBelt('intercontinental', 'INTERCONTINENTAL', 4, 'crest', MAGENTA, GOLD, CYAN),
+  careerBelt('world', 'WORLD', 5, 'sun', BLUE, GOLD, RED),
+  {
+    id: 'tide',
+    kind: 'tide',
+    rank: 6,
+    name: 'TIDE',
+    title: 'TIDE CHAMPION',
+    feat: 'DEFEATED GOOPLIATH',
+    goal: 'DEFEAT GOOPLIATH TO WIN IT',
+    ribbon: 'GOOPLIATH',
+    plaque: 'THE TIDE',
+    emblem: 5,
+    sides: [5, 5, 5, 5],
     plate: 'octagon',
-    strap: { face: '#1f3550', edge: '#0a1422', tool: '#3e5f86', thread: '#e8eef5' },
-    metal: { hi: '#ffffff', mid: '#a9b4c2', lo: '#3c4552' },
-    enamel: { face: '#0f2c4a', deep: '#04101e' },
-    gem: { core: '#4fb7ff', glow: '#a8dcff' },
-  }),
-  titleBelt(1, 'PISTONKAISER', 'FOUNDRY', {
-    plate: 'octagon',
-    strap: { face: '#4a2a14', edge: '#1e0f06', tool: '#7a4a26', thread: '#ffcf6a' },
-    metal: { hi: '#fff0b8', mid: '#d8a83a', lo: '#6a4410' },
-    enamel: { face: '#2a1a0c', deep: '#0c0603' },
-    gem: { core: '#ffb000', glow: '#ffd76a' },
-  }),
-  titleBelt(2, 'VULTURE', 'TALON', {
-    plate: 'octagon',
-    strap: { face: '#16301a', edge: '#06120a', tool: '#2f5a34', thread: '#c9ffb0' },
-    metal: { hi: '#f4fff0', mid: '#a8b8aa', lo: '#3a463c' },
-    enamel: { face: '#0e2a12', deep: '#030c05' },
-    gem: { core: '#7cff4a', glow: '#c4ff9a' },
-  }),
-  titleBelt(3, 'JUGGERNAUT', 'BULWARK', {
-    plate: 'crest',
-    strap: { face: '#2c1846', edge: '#10071c', tool: '#4e2f78', thread: '#e2c8ff' },
-    metal: { hi: '#ffffff', mid: '#b9b4c8', lo: '#46405a' },
-    enamel: { face: '#25104a', deep: '#0a0418' },
-    gem: { core: '#b26bff', glow: '#dcb8ff' },
-  }),
-  titleBelt(4, 'GOLIATH', 'CROWN', {
-    plate: 'crest',
-    strap: { face: '#5c0c10', edge: '#220305', tool: '#8a2228', thread: '#ffd76a' },
-    metal: { hi: '#fff3c0', mid: '#e8b438', lo: '#6e4408' },
-    enamel: { face: '#3a0508', deep: '#120102' },
-    gem: { core: '#e8352a', glow: '#ff8a7a' },
-  }),
-  titleBelt(5, 'GOOPLIATH', 'TIDE', {
-    plate: 'sun',
-    strap: { face: '#0e3a1e', edge: '#03140a', tool: '#1f6a38', thread: '#9affb8' },
-    metal: { hi: '#ffffff', mid: '#cfe8dc', lo: '#4e6a5e' },
-    enamel: { face: '#0b4a24', deep: '#021a0b' },
-    gem: { core: '#36e05a', glow: '#a8ffbc' },
-  }),
-  runBelt('gauntlet', 'normal', 7, 'IRONCLAD', {
-    plate: 'octagon',
-    strap: { face: '#2a211b', edge: '#120d0a', tool: '#5a4334', thread: '#d9b07a' },
-    metal: { hi: '#ffe0b0', mid: '#c98a4e', lo: '#5a3418' },
-    enamel: { face: '#1d3b3a', deep: '#081816' },
-    gem: { core: '#ffb000', glow: '#ffcf5a' },
-  }),
-  runBelt('hardcore', 'normal', 8, 'BLOODIRON', {
-    plate: 'octagon',
-    strap: { face: '#4a0d12', edge: '#1e0407', tool: '#7a2028', thread: '#c8ccd2' },
-    metal: { hi: '#eef1f5', mid: '#7c838d', lo: '#24282e' },
-    enamel: { face: '#1a1a1e', deep: '#060608' },
-    gem: { core: '#ff1f3d', glow: '#ff6a7a' },
-  }),
-  runBelt('gauntlet', 'hard', 9, 'TITANSTEEL', {
-    plate: 'crest',
-    strap: { face: '#13244a', edge: '#060d1e', tool: '#2c4a86', thread: '#e6edf7' },
-    metal: { hi: '#ffffff', mid: '#b6c0ce', lo: '#4a5464' },
-    enamel: { face: '#0e2a5c', deep: '#030b1e' },
-    gem: { core: '#2f6bff', glow: '#8fb4ff' },
-  }),
-  runBelt('hardcore', 'hard', 10, 'WARBRAND', {
-    plate: 'crest',
-    strap: { face: '#7a0f18', edge: '#2e0408', tool: '#a8303a', thread: '#1a1a1a' },
-    metal: { hi: '#c4cad4', mid: '#3c414a', lo: '#0c0e12' },
-    enamel: { face: '#5a0a0e', deep: '#1a0204' },
-    gem: { core: '#ff3b1e', glow: '#ff8a5a' },
-  }),
-  runBelt('gauntlet', 'blazing', 11, 'SUNFORGED', {
-    plate: 'sun',
-    strap: { face: '#e9e1cf', edge: '#9c9078', tool: '#c9b98f', thread: '#c9962a' },
-    metal: { hi: '#fff6c8', mid: '#f0bf3c', lo: '#7a4a08' },
-    enamel: { face: '#f6f0e0', deep: '#bfae86' },
-    gem: { core: '#e6fbff', glow: '#ffffff' },
-  }),
-  runBelt('hardcore', 'blazing', 12, 'INFERNO', {
-    plate: 'sun',
-    strap: { face: '#141012', edge: '#000000', tool: '#6a1a10', thread: '#ff7a2a' },
-    metal: { hi: '#ffd8b0', mid: '#e0743e', lo: '#5e180a' },
-    enamel: { face: '#2a0604', deep: '#0a0101' },
-    gem: { core: '#ff5a1f', glow: '#ffb05a' },
-  }),
+    strap: GOO,
+    metal: SILVER,
+    gem: GOO,
+    flames: false,
+  },
+  tierBelt('gauntlet', 'normal', 7, 'IRONCLAD'),
+  tierBelt('hardcore', 'normal', 8, 'BLOODIRON'),
+  tierBelt('raid', 'normal', 9, 'VANGUARD'),
+  tierBelt('raidhc', 'normal', 10, 'BLOODOATH'),
+  tierBelt('goopraid', 'normal', 11, 'FLOODGATE'),
+  tierBelt('goopliath', 'hard', 12, 'RIPTIDE'),
+  tierBelt('gauntlet', 'hard', 13, 'TITANSTEEL'),
+  tierBelt('hardcore', 'hard', 14, 'WARBRAND'),
+  tierBelt('raid', 'hard', 15, 'PHALANX'),
+  tierBelt('raidhc', 'hard', 16, 'DEATHGRIP'),
+  tierBelt('goopraid', 'hard', 17, 'UNDERTOW'),
+  tierBelt('goopliath', 'blazing', 18, 'MAELSTROM'),
+  tierBelt('gauntlet', 'blazing', 19, 'SUNFORGED'),
+  tierBelt('hardcore', 'blazing', 20, 'INFERNO'),
+  tierBelt('raid', 'blazing', 21, 'LEGION'),
+  tierBelt('raidhc', 'blazing', 22, 'ASHFALL'),
+  tierBelt('goopraid', 'blazing', 23, 'LEVIATHAN'),
 ];
 
 export const beltOf = (id: string): Belt | undefined => BELTS.find((b) => b.id === id);
 export const beltOfRank = (rank: number): Belt | undefined => BELTS.find((b) => b.rank === rank);
 
-/** The belt a run at this difficulty is for — null on Easy. */
-export function beltFor(mode: BeltMode, difficulty: Difficulty): Belt | null {
+/** The belt a family pays at this difficulty — null when it pays none. */
+export function beltFor(family: BeltFamily, difficulty: Difficulty): Belt | null {
   if (difficulty === 'easy') return null;
-  return beltOf(`${mode}-${difficulty}`) ?? null;
-}
-
-/** A boss's title belt (BOSSES index 0–4; 5 = GOOPLIATH). */
-export function titleBeltOf(boss: number): Belt | null {
-  return beltOf(boss === 5 ? 'goopliath' : `titan-${boss}`) ?? null;
+  return beltOf(`${family}-${difficulty}`) ?? null;
 }
 
 /** "THE TITANSTEEL BELT". */
 export const beltName = (b: Belt): string => `THE ${b.name} BELT`;
 
-/** The full hover line: what it is, and how it was won. */
-export const beltTip = (b: Belt): string => `${beltName(b)} · ${b.feat}`;
+/** Title defenses won with a career belt. */
+export const defensesOf = (b: Belt): number => campaignProgress.defenses[b.id] ?? 0;
 
-/** Clear tier (0 none · 1 normal · 2 hard · 3 blazing) → difficulty. */
+/** The full hover line: what it is, and how it was won. */
+export function beltTip(b: Belt, mine = false): string {
+  const def = mine ? defensesOf(b) : 0;
+  return `${beltName(b)} · ${b.feat}${def ? ` · DEFENDED ×${def}` : ''}`;
+}
+
+/* ── which belts a player holds ───────────────────────────────────────── */
+
+/** The clear tiers a profile row has always synced (0 none … 3 blazing). */
+export interface ClearTiers {
+  gauntletBest?: number;
+  gauntletBestHc?: number;
+  raidBest?: number;
+  raidBestHc?: number;
+  beltBest?: number;
+}
+
 const TIER_OF: Array<BeltTier | null> = [null, 'normal', 'hard', 'blazing'];
+const tierOf = (n: number | undefined): BeltTier | null => TIER_OF[Math.max(0, Math.min(3, (n ?? 0) | 0))];
 
 /**
- * A player's best RUN belt from the two clear tiers their profile has synced
- * since before belts (gauntletBest / gauntletBestHc). `gauntletBest` is
- * raised by every run (hardcore included), `gauntletBestHc` by hardcore runs
- * alone — so a gauntlet tier above the hardcore one can only have come from
- * a plain gauntlet run, and a hardcore belt beats the gauntlet belt of its
- * own tier.
+ * The best belt one pair of clear tiers proves. The plain tier is raised by
+ * every clear (hardcore included), the hardcore tier by hardcore clears
+ * alone — so a plain tier above the hardcore one can only have come from a
+ * plain clear, and the hardcore belt beats the plain belt of its own tier.
  */
-export function bestRunBeltFromTiers(gauntletBest: number, gauntletBestHc: number): Belt | null {
-  const g = TIER_OF[Math.max(0, Math.min(3, gauntletBest | 0))];
-  const hc = TIER_OF[Math.max(0, Math.min(3, gauntletBestHc | 0))];
-  if (hc && gauntletBestHc >= gauntletBest) return beltOf(`hardcore-${hc}`) ?? null;
-  if (g) return beltOf(`gauntlet-${g}`) ?? null;
-  return null;
+function bestOfPair(plain: BeltFamily, hard: BeltFamily, best = 0, bestHc = 0): Belt | null {
+  const hc = tierOf(bestHc);
+  if (hc && bestHc >= best) return beltOf(`${hard}-${hc}`) ?? null;
+  const t = tierOf(best);
+  return t ? (beltOf(`${plain}-${t}`) ?? null) : null;
 }
 
-/** The best belt a profile row proves: its synced belt rank, or (a row from
- *  before belts) its run tiers. */
-export function bestBeltOfRow(row: { beltBest?: number; gauntletBest?: number; gauntletBestHc?: number }): Belt | null {
-  const synced = beltOfRank(row.beltBest ?? 0) ?? null;
-  const fromTiers = bestRunBeltFromTiers(row.gauntletBest ?? 0, row.gauntletBestHc ?? 0);
-  if (synced && fromTiers) return synced.rank >= fromTiers.rank ? synced : fromTiers;
-  return synced ?? fromTiers;
+/** The belts a profile row PROVES: its synced best, and its best run and
+ *  raid belts read off the clear tiers. */
+function provenBy(row: ClearTiers): Belt[] {
+  return [
+    beltOfRank(row.beltBest ?? 0),
+    bestOfPair('gauntlet', 'hardcore', row.gauntletBest, row.gauntletBestHc),
+    bestOfPair('raid', 'raidhc', row.raidBest, row.raidBestHc),
+  ].filter((b): b is Belt => !!b);
 }
 
-/** Every belt YOU hold: the save's run belts, a title belt for every boss
- *  your save says you've defeated, and the best run belt your profile tiers
- *  prove (a run banked before belts existed still earns its belt). */
-export function heldBelts(gauntletBest = 0, gauntletBestHc = 0): Set<string> {
+const highest = (belts: Iterable<Belt>): Belt | null => {
+  let best: Belt | null = null;
+  for (const b of belts) if (!best || b.rank > best.rank) best = b;
+  return best;
+};
+
+/** Anyone's best belt, from their profile row. */
+export const bestBeltOfRow = (row: ClearTiers): Belt | null => highest(provenBy(row));
+
+/** Every belt YOU hold: the save's tier belts, a career belt for each title
+ *  bout your save has won, TIDE, and what your profile's tiers prove. */
+export function heldBelts(row: ClearTiers = {}): Set<string> {
   const held = new Set<string>();
   for (const id of campaignProgress.belts) if (beltOf(id)) held.add(id);
-  campaignProgress.cleared.forEach((c, i) => {
-    if (c && i < 5) held.add(`titan-${i}`);
+  CAREER.forEach((bout, i) => {
+    if (bout.wins && campaignProgress.cleared[i]) held.add(bout.wins);
   });
-  if (campaignProgress.goopliathCleared) held.add('goopliath');
-  const best = bestRunBeltFromTiers(gauntletBest, gauntletBestHc);
-  if (best) held.add(best.id);
+  if (campaignProgress.goopliathCleared) held.add('tide');
+  for (const b of provenBy(row)) held.add(b.id);
   return held;
 }
 
 /** Your best belt: the highest-ranked one you hold. */
-export function bestHeldBelt(gauntletBest = 0, gauntletBestHc = 0): Belt | null {
-  let best: Belt | null = null;
-  for (const id of heldBelts(gauntletBest, gauntletBestHc)) {
-    const b = beltOf(id);
-    if (b && (!best || b.rank > best.rank)) best = b;
-  }
-  return best;
+export function bestHeldBelt(row: ClearTiers = {}): Belt | null {
+  return highest([...heldBelts(row)].map((id) => beltOf(id)!));
 }
 
-/** A finished run: bank its belt. Null on Easy; `fresh` when it's new. */
-export function awardRunBelt(mode: BeltMode, difficulty: Difficulty): { belt: Belt; fresh: boolean } | null {
-  const belt = beltFor(mode, difficulty);
+/** Bank a tier belt. Null when the fight pays none; `fresh` when it's new. */
+export function awardTierBelt(family: BeltFamily, difficulty: Difficulty): { belt: Belt; fresh: boolean } | null {
+  const belt = beltFor(family, difficulty);
   if (!belt) return null;
   const fresh = !campaignProgress.belts.includes(belt.id);
   if (fresh) {
@@ -309,4 +293,12 @@ export function awardRunBelt(mode: BeltMode, difficulty: Difficulty): { belt: Be
     saveCampaignProgress();
   }
   return { belt, fresh };
+}
+
+/** A title defense won: counted on its belt. Returns the new count. */
+export function bankDefense(beltId: string): number {
+  const n = (campaignProgress.defenses[beltId] ?? 0) + 1;
+  campaignProgress.defenses[beltId] = n;
+  saveCampaignProgress();
+  return n;
 }
