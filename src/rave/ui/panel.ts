@@ -93,6 +93,90 @@ export const UI = {
   danger: '#ff5266',
 };
 
+/**
+ * THE CYBER SKIN — the RAVE RAID board's dress (opt-in per panel; the club
+ * consoles keep the glass). Same roles as UI, a different street: plates
+ * are CUT, not rounded (a 45° chamfer on two opposite corners), the chrome
+ * runs on a cold cyan hairline so the magenta accent still means "this one",
+ * and the glass carries a fine scanline + grid weave baked into one pattern.
+ * The one moving thing beyond the halo is a scan sweep — a separate additive
+ * strip whose y slides down the board, so it costs no canvas upload either.
+ */
+export const CYBER = {
+  panel: 'rgba(6,5,16,0.94)',
+  cyan: '#00f0ff',
+  cyanDim: 'rgba(0,240,255,0.55)',
+  cyanLine: 'rgba(0,240,255,0.28)',
+  cyanFaint: 'rgba(0,240,255,0.10)',
+  /* Acid yellow: hazard marks only — never a label colour of its own. */
+  hazard: '#fcee0a',
+  /* The chamfer sizes: board frame, standard plate, small plate. */
+  cutFrame: 34,
+  cut: 14,
+  cutSmall: 9,
+};
+
+/**
+ * Trace a chamfered rect into the current path (begins a new path). `c` is
+ * the cut; `all` cuts every corner, otherwise only top-left + bottom-right
+ * (the house silhouette — it reads as a direction, a blade, not a box).
+ */
+export function chamfer(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  c: number,
+  all = false,
+): void {
+  const k = Math.max(0, Math.min(c, w / 2, h / 2));
+  g.beginPath();
+  g.moveTo(x + k, y);
+  if (all) {
+    g.lineTo(x + w - k, y);
+    g.lineTo(x + w, y + k);
+  } else g.lineTo(x + w, y);
+  g.lineTo(x + w, y + h - k);
+  g.lineTo(x + w - k, y + h);
+  if (all) {
+    g.lineTo(x + k, y + h);
+    g.lineTo(x, y + h - k);
+  } else g.lineTo(x, y + h);
+  g.lineTo(x, y + k);
+  g.closePath();
+}
+
+/** A row of hazard slashes inside (x, y, w, h) — the CTA's tail mark and the
+ *  header's warning strip. Clipped to the box, so the slashes never spill. */
+export function hazardStripes(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  pitch = 14,
+): void {
+  g.save();
+  g.beginPath();
+  g.rect(x, y, w, h);
+  g.clip();
+  g.fillStyle = color;
+  for (let sx = x - h; sx < x + w; sx += pitch) {
+    g.beginPath();
+    g.moveTo(sx, y + h);
+    g.lineTo(sx + pitch * 0.5, y + h);
+    g.lineTo(sx + pitch * 0.5 + h, y);
+    g.lineTo(sx + h, y);
+    g.closePath();
+    g.fill();
+  }
+  g.restore();
+}
+
+export type PanelSkin = 'glass' | 'cyber';
+
 /* ── motion (research-tuned: M3/Carbon durations, VR-safe amplitudes) ── */
 const HOVER_IN_S = 0.1;
 const HOVER_OUT_S = 0.18;
@@ -124,6 +208,49 @@ function halo(): CanvasTexture {
   return haloTex;
 }
 
+/** The cyber glass weave: 2px scanlines every 4px and a faint 48px grid,
+ *  baked once into a pattern tile and shared by every cyber panel. */
+let weaveTile: HTMLCanvasElement | null = null;
+function weave(): HTMLCanvasElement {
+  if (weaveTile) return weaveTile;
+  const c = document.createElement('canvas');
+  c.width = 48;
+  c.height = 48;
+  const g = c.getContext('2d')!;
+  g.fillStyle = 'rgba(0,0,0,0.22)';
+  for (let y = 0; y < 48; y += 4) g.fillRect(0, y, 48, 2);
+  g.fillStyle = 'rgba(0,240,255,0.035)';
+  g.fillRect(0, 0, 48, 1);
+  g.fillRect(0, 0, 1, 48);
+  weaveTile = c;
+  return c;
+}
+
+/** The scan sweep's strip: a soft cyan band with a bright leading edge,
+ *  tinted by material colour like the halo. */
+let sweepTex: CanvasTexture | null = null;
+function sweep(): CanvasTexture {
+  if (sweepTex) return sweepTex;
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 0, 0, 128);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.8, 'rgba(255,255,255,0.35)');
+  grad.addColorStop(0.97, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 128);
+  sweepTex = new CanvasTexture(c);
+  sweepTex.colorSpace = SRGBColorSpace;
+  return sweepTex;
+}
+
+/** One pass of the sweep, top to bottom, then a rest before the next. */
+const SWEEP_PERIOD_S = 7;
+const SWEEP_RUN_S = 2.6;
+
 export class Panel {
   readonly group = new Group();
   readonly mesh: Mesh;
@@ -134,6 +261,11 @@ export class Panel {
   private buttons: PanelButton[] = [];
   private pxW: number;
   private pxH: number;
+  readonly skin: PanelSkin;
+  private sweepMesh: Mesh | null = null;
+  private sweepMat: MeshBasicMaterial | null = null;
+  private sweepT = 0;
+  private heightM: number;
 
   /* Stored paint args, so transitions can repaint without the caller. */
   private title = '';
@@ -148,7 +280,9 @@ export class Panel {
   private showP = 1;
   private animating = false;
 
-  constructor(widthM: number, heightM: number, pxW = 1024, pxH = 1024) {
+  constructor(widthM: number, heightM: number, pxW = 1024, pxH = 1024, skin: PanelSkin = 'glass') {
+    this.skin = skin;
+    this.heightM = heightM;
     this.pxW = pxW;
     this.pxH = pxH;
     this.canvas.width = pxW;
@@ -184,6 +318,25 @@ export class Panel {
     glow.renderOrder = 29;
     glow.position.z = -0.005;
     this.group.add(glow);
+
+    // The cyber skin's scan sweep: a thin additive strip riding just in
+    // front of the glass, its y animated in tick() — material-level motion,
+    // like the halo, so the canvas stays untouched at rest.
+    if (skin === 'cyber') {
+      this.sweepMat = new MeshBasicMaterial({
+        map: sweep(),
+        transparent: true,
+        opacity: 0,
+        side: DoubleSide,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        color: 0x00f0ff,
+      });
+      this.sweepMesh = new Mesh(new PlaneGeometry(widthM * 0.985, heightM * 0.09), this.sweepMat);
+      this.sweepMesh.renderOrder = 31;
+      this.sweepMesh.position.z = 0.002;
+      this.group.add(this.sweepMesh);
+    }
 
     // First paint may land before the woff2s do — repaint on arrival.
     onFontsReady(() => {
@@ -257,6 +410,16 @@ export class Panel {
     // The halo breathes with the room whenever the panel is up.
     const op = easeOutCubic(clamp01(this.showP / 0.7));
     this.glowMat.opacity = (0.15 + 0.07 * pulse) * op;
+    if (this.sweepMesh && this.sweepMat) {
+      this.sweepT = (this.sweepT + delta) % SWEEP_PERIOD_S;
+      const run = this.sweepT / SWEEP_RUN_S;
+      if (run < 1) {
+        const h = this.heightM;
+        this.sweepMesh.position.y = h * 0.45 - run * h * 0.9;
+        // Fade in off the top edge and out before the bottom one.
+        this.sweepMat.opacity = 0.11 * Math.sin(run * Math.PI) * op;
+      } else this.sweepMat.opacity = 0;
+    }
 
     if (!this.animating) return;
 
@@ -300,6 +463,31 @@ export class Panel {
     const H = this.pxH;
     g.clearRect(0, 0, W, H);
 
+    if (this.skin === 'cyber') this.drawCyberFrame(g, W, H);
+    else this.drawGlassFrame(g, W, H);
+
+    if (this.title) {
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = font(700, 46);
+      g.letterSpacing = '3px';
+      g.fillStyle = UI.textHi;
+      g.fillText(this.title, W / 2, 78);
+      g.letterSpacing = '0px';
+    }
+
+    this.body?.(g);
+
+    for (const b of this.buttons) {
+      if (b.ghost) continue;
+      if (this.skin === 'cyber') this.drawCyberButton(g, b);
+      else this.drawButton(g, b);
+    }
+
+    this.tex.needsUpdate = true;
+  }
+
+  private drawGlassFrame(g: CanvasRenderingContext2D, W: number, H: number): void {
     // Base glass.
     g.beginPath();
     g.roundRect(6, 6, W - 12, H - 12, 30);
@@ -333,25 +521,84 @@ export class Panel {
     g.lineTo(W - 18, H - 18);
     g.lineTo(W - 18, H - 18 - arm);
     g.stroke();
+  }
 
-    if (this.title) {
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      g.font = font(700, 46);
-      g.letterSpacing = '3px';
-      g.fillStyle = UI.textHi;
-      g.fillText(this.title, W / 2, 78);
-      g.letterSpacing = '0px';
+  /** The cyber frame: cut glass, the weave, a cyan hairline with a brighter
+   *  inner rule, magenta brackets on the two cut corners, notch tabs on the
+   *  top and bottom edges and a tick ruler down the left — chrome that
+   *  reads as hardware, all of it static (painted with the canvas). */
+  private drawCyberFrame(g: CanvasRenderingContext2D, W: number, H: number): void {
+    const C = CYBER.cutFrame;
+    const x = 6;
+    const y = 6;
+    const w = W - 12;
+    const h = H - 12;
+
+    chamfer(g, x, y, w, h, C);
+    g.fillStyle = CYBER.panel;
+    g.fill();
+
+    g.save();
+    g.clip();
+    // A cold wash from the top-left corner and a warm one from the bottom-
+    // right: the two neons the board is lit by.
+    const cool = g.createRadialGradient(x, y, 0, x, y, Math.max(W, H) * 0.7);
+    cool.addColorStop(0, 'rgba(0,240,255,0.07)');
+    cool.addColorStop(1, 'rgba(0,240,255,0)');
+    g.fillStyle = cool;
+    g.fillRect(x, y, w, h);
+    const warm = g.createRadialGradient(x + w, y + h, 0, x + w, y + h, Math.max(W, H) * 0.6);
+    warm.addColorStop(0, 'rgba(255,42,213,0.07)');
+    warm.addColorStop(1, 'rgba(255,42,213,0)');
+    g.fillStyle = warm;
+    g.fillRect(x, y, w, h);
+    const pat = g.createPattern(weave(), 'repeat');
+    if (pat) {
+      g.fillStyle = pat;
+      g.fillRect(x, y, w, h);
     }
+    g.restore();
 
-    this.body?.(g);
+    // Outer hairline, then a fainter inset rule — a double edge, like a bezel.
+    chamfer(g, x, y, w, h, C);
+    g.lineWidth = 2;
+    g.strokeStyle = CYBER.cyanLine;
+    g.stroke();
+    chamfer(g, x + 9, y + 9, w - 18, h - 18, C - 4);
+    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(0,240,255,0.10)';
+    g.stroke();
 
-    for (const b of this.buttons) {
-      if (b.ghost) continue;
-      this.drawButton(g, b);
+    // Magenta brackets riding the two cuts.
+    g.strokeStyle = UI.accent;
+    g.lineWidth = 3;
+    g.shadowColor = UI.accentDim;
+    g.shadowBlur = 10;
+    g.beginPath();
+    g.moveTo(x, y + C + 46);
+    g.lineTo(x, y + C);
+    g.lineTo(x + C, y);
+    g.lineTo(x + C + 46, y);
+    g.moveTo(x + w, y + h - C - 46);
+    g.lineTo(x + w, y + h - C);
+    g.lineTo(x + w - C, y + h);
+    g.lineTo(x + w - C - 46, y + h);
+    g.stroke();
+    g.shadowBlur = 0;
+
+    // Notch tabs: a short raised bar on the top edge (right of centre) and
+    // the bottom edge (left of centre).
+    g.fillStyle = CYBER.cyan;
+    g.fillRect(W * 0.62, y - 1, Math.min(120, W * 0.12), 4);
+    g.fillRect(W * 0.26, y + h - 3, Math.min(80, W * 0.08), 4);
+
+    // The tick ruler: every 16 px down the left inset, every fourth long.
+    g.fillStyle = 'rgba(0,240,255,0.22)';
+    const r0 = y + C + 70;
+    const r1 = Math.min(y + h - 40, r0 + 260);
+    for (let ty = r0, i = 0; ty < r1; ty += 16, i++) {
+      g.fillRect(x + 2, ty, i % 4 === 0 ? 10 : 5, 1.5);
     }
-
-    this.tex.needsUpdate = true;
   }
 
   private drawButton(g: CanvasRenderingContext2D, b: PanelButton): void {
@@ -469,6 +716,161 @@ export class Panel {
     }
   }
 
+  /** The cyber edition of drawButton: same roles, cut plates. The CTA is a
+   *  solid magenta blade with a cyan ghost a few px down-right (the split-
+   *  channel misregister every neon sign in the genre has) and hazard
+   *  slashes in its tail; a value chip is bracketed data; a disabled plate
+   *  goes dashed instead of grey. */
+  private drawCyberButton(g: CanvasRenderingContext2D, b: PanelButton): void {
+    const hov = this.hoverAmt.get(b.id) ?? 0;
+    const flash = this.flashId === b.id ? easeOutCubic(this.flashAmt) : 0;
+    const cut = Math.min(b.h, b.w) < 70 ? CYBER.cutSmall : CYBER.cut;
+
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+
+    const compact = !!b.sub && b.h < 72;
+    const labelPx0 = b.px ?? (b.primary ? 40 : b.small ? 27 : 36);
+    const labelPx = compact ? Math.min(labelPx0, Math.round(b.h * 0.42)) : labelPx0;
+    const subPx = compact ? Math.max(14, Math.round(b.h * 0.27)) : b.primary ? 22 : 21;
+    const labelY = compact ? b.y + b.h * 0.36 : b.y + b.h / 2 - (b.sub ? 16 : 0);
+    const subY = compact ? b.y + b.h * 0.74 : b.y + b.h / 2 + 26;
+
+    if (b.display) {
+      // Data in brackets: a dim cyan well, corner ticks, no plate border.
+      chamfer(g, b.x, b.y, b.w, b.h, cut);
+      g.fillStyle = 'rgba(0,240,255,0.04)';
+      g.fill();
+      const a = Math.min(14, b.h / 3);
+      g.strokeStyle = CYBER.cyanDim;
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(b.x + a, b.y + 1);
+      g.lineTo(b.x + 1, b.y + 1);
+      g.lineTo(b.x + 1, b.y + a);
+      g.moveTo(b.x + b.w - a, b.y + b.h - 1);
+      g.lineTo(b.x + b.w - 1, b.y + b.h - 1);
+      g.lineTo(b.x + b.w - 1, b.y + b.h - a);
+      g.stroke();
+      g.fillStyle = b.tone ?? UI.text;
+      g.font = font(600, labelPx);
+      g.letterSpacing = '2px';
+      g.fillText(b.label, b.x + b.w / 2, labelY, b.w - 28);
+      g.letterSpacing = '0px';
+      if (b.sub) {
+        g.font = font(500, 21);
+        g.fillStyle = UI.dim;
+        g.fillText(b.sub, b.x + b.w / 2, subY, b.w - 28);
+      }
+      return;
+    }
+
+    if (b.primary && !b.disabled) {
+      // The misregistered ghost first, then the blade over it.
+      const off = 5 + 2 * hov;
+      chamfer(g, b.x + off, b.y + off, b.w, b.h, cut);
+      g.lineWidth = 2;
+      g.strokeStyle = `rgba(0,240,255,${(0.55 + 0.35 * hov).toFixed(3)})`;
+      g.stroke();
+
+      const grad = g.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+      grad.addColorStop(0, '#ff4fe0');
+      grad.addColorStop(1, '#d413aa');
+      g.shadowColor = UI.accentDim;
+      g.shadowBlur = 18 + 12 * hov + 12 * flash;
+      chamfer(g, b.x, b.y, b.w, b.h, cut);
+      g.fillStyle = grad;
+      g.fill();
+      g.shadowBlur = 0;
+      g.save();
+      g.clip();
+      // Scanlines on the fill itself, so the blade reads as a lit sign.
+      g.fillStyle = 'rgba(40,0,30,0.12)';
+      for (let sy = b.y + 2; sy < b.y + b.h; sy += 4) g.fillRect(b.x, sy, b.w, 1.5);
+      // Hazard slashes in the tail (tall CTAs only — a short one has no room).
+      if (b.w >= 220 && b.h >= 56) {
+        const sw = Math.min(110, b.w * 0.16);
+        hazardStripes(g, b.x + b.w - sw - cut, b.y + b.h - 12, sw, 6, 'rgba(22,4,15,0.55)', 12);
+      }
+      if (hov > 0 || flash > 0) {
+        g.fillStyle = `rgba(255,255,255,${(0.14 * hov + 0.2 * flash).toFixed(3)})`;
+        g.fillRect(b.x, b.y, b.w, b.h);
+      }
+      g.restore();
+      g.fillStyle = UI.onAccent;
+      g.font = font(700, labelPx);
+      g.letterSpacing = '4px';
+      g.fillText(b.label, b.x + b.w / 2, labelY, b.w - 40);
+      g.letterSpacing = '0px';
+      if (b.sub) {
+        g.font = font(600, subPx);
+        g.letterSpacing = '1px';
+        g.fillStyle = 'rgba(24,4,17,0.82)';
+        g.fillText(b.sub, b.x + b.w / 2, subY, b.w - 40);
+        g.letterSpacing = '0px';
+      }
+      return;
+    }
+
+    // Neutral, selected or disabled: a cut plate.
+    chamfer(g, b.x, b.y, b.w, b.h, cut);
+    if (b.disabled) {
+      g.fillStyle = 'rgba(255,255,255,0.015)';
+      g.fill();
+      g.setLineDash([6, 6]);
+      g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(0,240,255,0.14)';
+      g.stroke();
+      g.setLineDash([]);
+    } else {
+      g.fillStyle = b.selected
+        ? 'rgba(255,42,213,0.13)'
+        : `rgba(0,240,255,${(0.035 + 0.06 * hov).toFixed(3)})`;
+      g.fill();
+      if (flash > 0) {
+        g.fillStyle = `rgba(255,42,213,${(0.24 * flash).toFixed(3)})`;
+        g.fill();
+      }
+      g.lineWidth = 2;
+      g.strokeStyle = b.selected ? UI.accent : `rgba(0,240,255,${(0.2 + 0.45 * hov).toFixed(3)})`;
+      if (b.selected || hov > 0.02) {
+        g.shadowColor = b.selected ? UI.accentDim : CYBER.cyanDim;
+        g.shadowBlur = 10 * (b.selected ? 1 : hov);
+      }
+      g.stroke();
+      g.shadowBlur = 0;
+    }
+
+    // The edge tick, slanted to match the cut.
+    const tick = b.disabled ? 0 : b.selected ? 1 : hov;
+    if (tick > 0.02 && b.h >= 36) {
+      g.globalAlpha = tick;
+      g.fillStyle = b.selected ? UI.accent : CYBER.cyan;
+      const tx = b.x + 8;
+      const t0 = b.y + Math.max(cut, 10);
+      const t1 = b.y + b.h - 10;
+      g.beginPath();
+      g.moveTo(tx + 3, t0);
+      g.lineTo(tx + 8, t0);
+      g.lineTo(tx + 5, t1);
+      g.lineTo(tx, t1);
+      g.closePath();
+      g.fill();
+      g.globalAlpha = 1;
+    }
+
+    g.fillStyle = b.disabled ? UI.disabled : (b.tone ?? UI.text);
+    g.font = font(600, labelPx);
+    g.letterSpacing = '2px';
+    g.fillText(b.label, b.x + b.w / 2, labelY, b.w - 28);
+    g.letterSpacing = '0px';
+    if (b.sub) {
+      g.font = font(500, subPx);
+      g.fillStyle = b.disabled ? 'rgba(233,236,244,0.2)' : UI.dim;
+      g.fillText(b.sub, b.x + b.w / 2, subY, b.w - 28);
+    }
+  }
+
   /** What this panel is currently offering, by id — the pressable ones only
    *  (a value chip is not a button, and neither is something greyed out).
    *  Headless checks ask this instead of hunting for shapes in pixels. */
@@ -493,5 +895,7 @@ export class Panel {
     this.mat.map?.dispose();
     this.mat.dispose();
     this.glowMat.dispose();
+    this.sweepMesh?.geometry.dispose();
+    this.sweepMat?.dispose();
   }
 }
