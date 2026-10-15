@@ -13,6 +13,8 @@
 import { KIT, type PanelButton } from '../ui/kit/panel.js';
 import { font } from '../ui/kit/fonts.js';
 import { fmtRunTime } from '../campaign/campaignState.js';
+import { bestBeltOfRow, bestHeldBelt, beltTip, type Belt } from '../campaign/belts.js';
+import { drawBelt } from '../ui/beltArt.js';
 import { SEASON, seasonIndex } from '../config.js';
 import {
   LEADERBOARD_VISIBLE_ROWS,
@@ -346,6 +348,7 @@ export type ProfileSpot = {
 } & (
   | { kind: 'award'; award: SeasonAward; count: number }
   | { kind: 'clear'; glyph: 'star' | 'shield' | 'drop'; tier: number; hardcore: boolean; short: string; tierName: string }
+  | { kind: 'belt'; belt: Belt }
 );
 
 const CHIP_H = 40;
@@ -388,13 +391,22 @@ export function profileSpots(row: LbRow, x: number, y: number, w: number): Profi
   // now: the medallion, the feat's NAME, and the tier it was done on, on
   // one chip wide enough to say so, wrapping to a second row if the card
   // is narrow.
-  const clears: Array<['star' | 'shield' | 'drop', string, string, number, number]> = [
-    ['star', 'SPEEDRUN', 'SPEEDRUN CLEARED', row.gauntletBest ?? 0, row.gauntletBestHc ?? 0],
-    ['shield', 'RAID', 'TITAN RAID CLEARED', row.raidBest ?? 0, row.raidBestHc ?? 0],
-    ['drop', 'GOOPLIATH', 'GOOPLIATH FELLED', row.goopBest ?? 0, 0],
-  ];
+  // The gauntlet's badge is a BELT now (campaign/belts.ts): the best one
+  // they hold, painted, and named in its tooltip. Anyone's is read off what
+  // their card syncs; yours also counts the belts in your save.
   let bx = x0;
   let by = ay + CHIP_H + 14;
+  const synced = bestBeltOfRow(row);
+  const mine = row.me ? bestHeldBelt(row.gauntletBest ?? 0, row.gauntletBestHc ?? 0) : null;
+  const belt = mine && (!synced || mine.rank > synced.rank) ? mine : synced;
+  if (belt) {
+    spots.push({ kind: 'belt', id: 'badge-belt', x: bx, y: by, w: CLEAR_W, h: CHIP_H + 4, belt, tip: beltTip(belt) });
+    bx += CLEAR_W + 8;
+  }
+  const clears: Array<['star' | 'shield' | 'drop', string, string, number, number]> = [
+    ['shield', 'RAID', 'TITAN RAID CLEARED', row.raidBest ?? 0, row.raidBestHc ?? 0],
+    ['drop', 'GOOPLIATH', 'GOOPLIATH DEFEATED', row.goopBest ?? 0, 0],
+  ];
   for (const [glyph, short, what, tier, hcTier] of clears) {
     if (!tier) continue;
     const hardcore = hcTier >= tier;
@@ -518,7 +530,7 @@ export function drawProfileBlock(g: CanvasRenderingContext2D, row: LbRow, x: num
   // WHAT THEY'VE DONE — HONOURS chips, ACHIEVEMENTS glyphs.
   const spots = profileSpots(row, x, y, w);
   const awards = spots.filter((s) => s.kind === 'award');
-  const clears = spots.filter((s) => s.kind === 'clear');
+  const clears = spots.filter((s) => s.kind === 'clear' || s.kind === 'belt');
   const honoursBottom = awards.reduce((m, s) => Math.max(m, s.y), y + BLOCK.honours);
   const clearsY = clears[0]?.y ?? honoursBottom + CHIP_H + 14;
   const label = (text: string, cy: number): void => {
@@ -547,6 +559,16 @@ export function drawProfileBlock(g: CanvasRenderingContext2D, row: LbRow, x: num
       g.font = font(700, 20);
       g.fillStyle = st.color;
       g.fillText(s.count > 1 ? `${st.label} ×${s.count}` : st.label, s.x + s.w / 2, s.y + s.h / 2);
+    } else if (s.kind === 'belt') {
+      // The belt laid across its plate, a touch bigger than the chip: no
+      // words on it — hover it and it says what it is.
+      const hot = hover === s.id;
+      chip(g, s.x, s.y, s.w, s.h, hot ? s.belt.metal.hi : s.belt.metal.mid);
+      if (hot) {
+        g.fillStyle = 'rgba(255,255,255,0.06)';
+        g.fill();
+      }
+      drawBelt(g, s.belt, s.x + s.w / 2, s.y + s.h / 2, s.w - 6);
     } else {
       const color = s.hardcore ? KIT.danger : s.tier >= 3 ? BLAZE : s.tier === 2 ? KIT.accent : KIT.dim;
       chip(g, s.x, s.y, s.w, s.h, color);

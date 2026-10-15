@@ -127,11 +127,13 @@ import { ownPlatform, platformOwned, setPlatformSkin } from '../menu/customizati
 import { addCoins } from '../menu/wallet.js';
 import { mesh } from '../net/mesh.js';
 import type { PeerMessage } from '../net/protocol.js';
-import { myName, reportCampaign, reportRun, reportRunClear } from '../net/leaderboard.js';
+import { myName, reportCampaign, reportRun, reportRunClear, syncBeltBest } from '../net/leaderboard.js';
 import { announce } from '../audio/announcer.js';
 import { playCash } from '../audio/cash.js';
 import { BOSS_BATTLE_VOLUME, playVictory, startBattleMusic, startFinaleTrack, stopBattleTrack } from '../audio/battleMusic.js';
 import { emberBurst } from '../fx/fire.js';
+import { awardRunBelt, beltName, titleBeltOf, type Belt } from '../campaign/belts.js';
+import { BeltCeremony } from '../campaign/beltCeremony.js';
 import { spawnFireImpact } from '../fx/effects.js';
 import { feedback } from '../fx/feedback.js';
 import { glowSprite } from '../materials/glow.js';
@@ -163,6 +165,10 @@ import {
 
 /** 'resurrect' is raid GOLIATH's second wind — fall, shake, rise, phase 2. */
 type Phase = 'idle' | 'intro' | 'fight' | 'victory' | 'defeat' | 'resurrect';
+
+/** Seconds after the last titan falls before its belt rises — long enough to
+ *  read the run's clock first. */
+const BELT_RISE_DELAY = 2.2;
 
 /** rst wire codes for Phase (guests follow the host's machine). */
 const PHASE_CODE: Record<Phase, number> = { idle: 0, intro: 1, fight: 2, victory: 3, defeat: 4, resurrect: 5 };
@@ -278,6 +284,13 @@ export class CampaignSystem extends createSystem({
 }) {
   private hud!: CampaignHud;
   private light!: PointLight;
+  /** A won run's belt, held up over the wreck (campaign/beltCeremony.ts). */
+  private ceremony!: BeltCeremony;
+  /** The belt just won for the first time — its card replaces the clock's
+   *  when it rises (null: none, or one you already held) — and what else
+   *  the card should still say. */
+  private freshBelt: Belt | null = null;
+  private beltNote = '';
 
   private phase: Phase = 'idle';
   private t = 0;
@@ -468,6 +481,7 @@ export class CampaignSystem extends createSystem({
     this.light = new PointLight(0xffffff, 0, 16);
     this.light.visible = false;
     this.scene.add(this.light);
+    this.ceremony = new BeltCeremony(this.scene);
 
   }
 
@@ -1194,6 +1208,9 @@ export class CampaignSystem extends createSystem({
 
   private teardown(): void {
     this.phase = 'idle';
+    this.ceremony.stop();
+    this.freshBelt = null;
+    this.beltNote = '';
     this.meleeGlow?.removeFromParent();
     (this.meleeGlow?.material as SpriteMaterial | undefined)?.dispose();
     this.meleeGlow = null;
@@ -4671,12 +4688,17 @@ export class CampaignSystem extends createSystem({
     // a blazing run merely PASSING THROUGH his slot marks him felled too but
     // still reports the run like any stage.
     let firstClear = false;
+    // TITLE BELTS (campaign/belts.ts): a boss's belt, the first time it's
+    // defeated — the five titans and GOOPLIATH. (A run's belt comes below.)
+    const titles: Belt[] = [];
+    let runWon: { belt: Belt; fresh: boolean } | null = null;
     if (solo) {
       firstClear = this.raid() ? !campaignProgress.raidGoopliathCleared : !campaignProgress.goopliathCleared;
       if (firstClear) {
         if (this.raid()) campaignProgress.raidGoopliathCleared = true;
         else campaignProgress.goopliathCleared = true;
         saveCampaignProgress();
+        if (!this.raid()) titles.push(titleBeltOf(5)!);
       }
       addCoins(CURRENCY.perGame * (firstClear ? 2 : 1));
     } else if (this.raid()) {
@@ -4695,6 +4717,7 @@ export class CampaignSystem extends createSystem({
         if (firstClear) {
           campaignProgress.goopliathCleared = true;
           saveCampaignProgress();
+          titles.push(titleBeltOf(5)!);
         }
         addCoins(CURRENCY.perGame * (firstClear ? 2 : 1)); // off the boards
       } else {
@@ -4703,6 +4726,8 @@ export class CampaignSystem extends createSystem({
         if (firstClear) {
           campaignProgress.cleared[ti] = true;
           saveCampaignProgress();
+          const tb = titleBeltOf(ti);
+          if (tb) titles.push(tb);
         }
         reportCampaign(true, firstClear);
       }
@@ -4711,20 +4736,9 @@ export class CampaignSystem extends createSystem({
     // Clearing a RUN opens the next difficulty (Normal→Hard→Blazing).
     const unlocked = run && lastStage ? bankDifficultyClear(this.activeDifficulty()) : null;
 
-    // Felling the KING crowns you: the CHAMPION pad joins your locker.
-    // Strictly GOLIATH now. The old gate was `lastStage && !stageGoop`, and a
-    // single titan bout is its own last stage — so felling CHROMEHOOK in a
-    // one-off line-up bout handed out the crown. Keyed to the boss instead of
-    // the bout shape, any first GOLIATH fell crowns (line-up bout, run stage,
-    // raid finale) and nothing else does. (The tide crowns no one — that pad
-    // is the KING's bounty.)
-    // It joins the locker and waits there: the pad you stand on is yours to
-    // choose, so the crown is never put on for you.
-    const crowned = this.def.name === 'GOLIATH' && !platformOwned('champion');
-    if (crowned) {
-      ownPlatform('champion');
-      playCash();
-    }
+    // Defeating GOLIATH or GOOPLIATH unlocks no platform for now — their
+    // title belts are the bounty (campaign/belts.ts). The CHAMPION and
+    // TIDEBREAKER pads stay in the game for whoever already owns them.
 
     // The dedicated CAMPAIGN goop fight banks the drop badge at its picked
     // difficulty (raids bank theirs in the raid branch below) — so hard and
@@ -4733,30 +4747,35 @@ export class CampaignSystem extends createSystem({
       reportRunClear('goopliath', this.activeDifficulty());
     }
 
-    // Two more earned pads. TIDEBREAKER: fell GOOPLIATH with a raid squad
-    // (every raider banks it). BLAZING: finish any run, raid, or the blazing
-    // goop fight with the blazing breaker thrown — single titan bouts always
-    // run normal (activeDifficulty), so they can never trip this.
-    const tidebroke = solo && this.raid() && lastStage && !platformOwned('tidebreaker');
-    if (tidebroke) {
-      ownPlatform('tidebreaker');
-      setPlatformSkin('tidebreaker');
-      playCash();
-    }
-    const blazed = lastStage && this.activeDifficulty() === 'blazing' && !platformOwned('blazing');
+    // One earned pad. BLAZING: finish any run or raid with the blazing
+    // breaker thrown — single titan bouts always run normal
+    // (activeDifficulty), so they can never trip this, and neither does a
+    // GOOPLIATH fight (`solo`): beating the tide unlocks no platform.
+    const blazed = !solo && lastStage && this.activeDifficulty() === 'blazing' && !platformOwned('blazing');
     if (blazed) {
       ownPlatform('blazing');
       setPlatformSkin('blazing');
       playCash();
     }
-    const padTag = tidebroke && blazed ? ' · 2 PLATFORMS UNLOCKED' : tidebroke || blazed ? ' · PLATFORM UNLOCKED' : '';
+    const padTag = blazed ? ' · PLATFORM UNLOCKED' : '';
 
     // Mid-run fells chain straight to the next boss after a short collapse.
     this.advanceAfterVictory = run && !lastStage;
     this.victoryDelay = this.advanceAfterVictory ? CAMPAIGN.runVictoryDelay : CAMPAIGN.victoryDelay;
 
     if (this.advanceAfterVictory) {
-      this.hud.title('FELLED', this.stageName(app.campaignStage + 1), this.accentCss());
+      // Mid-run there's no time to hold a belt up (a blazing run's GOOPLIATH
+      // slot can hand his over): it's banked, and the card says so.
+      const mid = titles[0];
+      if (mid) {
+        syncBeltBest();
+        playCash();
+      }
+      this.hud.title(
+        'DEFEATED',
+        mid ? `${beltName(mid)} WON · NEXT ${this.stageName(app.campaignStage + 1)}` : this.stageName(app.campaignStage + 1),
+        this.accentCss(),
+      );
       sfx.roundEnd(true); // the full fanfare waits for the end of the run
       if (!stageGoop) sfx.bossRoar(this.def.scale * 1.0);
       return;
@@ -4786,7 +4805,7 @@ export class CampaignSystem extends createSystem({
       this.hud.title(
         solo ? 'THE TIDE RECEDES' : 'RAID CLEARED',
         (solo
-          ? `GOOPLIATH FELLED · ${fmtRunTime(this.runClock)}`
+          ? `GOOPLIATH DEFEATED · ${fmtRunTime(this.runClock)}`
           : app.raidHardcore
             ? `HARDCORE · ${fmtRunTime(this.runClock)}`
             : fmtRunTime(this.runClock)) +
@@ -4799,7 +4818,9 @@ export class CampaignSystem extends createSystem({
       const hardcore = app.campaignMode === 'hardcore';
       const record = recordRunTime(hardcore, this.runClock);
       reportRun('gauntlet', this.runClock, [myName()], this.activeDifficulty(), hardcore);
-      reportRunClear('gauntlet', this.activeDifficulty(), hardcore); // the profile badge
+      reportRunClear('gauntlet', this.activeDifficulty(), hardcore); // the profile's belt
+      // The run's championship belt (Normal and up): banked, and held up.
+      runWon = awardRunBelt(hardcore ? 'hardcore' : 'gauntlet', this.activeDifficulty());
       if (!hardcore && !campaignProgress.hardcoreUnlocked) {
         campaignProgress.hardcoreUnlocked = true;
         saveCampaignProgress();
@@ -4810,13 +4831,14 @@ export class CampaignSystem extends createSystem({
         this.accentCss(),
       );
     } else {
-      // A single stage: no payout readout — just the fell (and the crown).
+      // A single stage: no payout readout — just the defeat (and its belt).
       this.hud.title(
-        stageGoop ? 'GOOPLIATH FELLED' : 'TITAN FELLED',
-        stageGoop ? 'the tide recedes' : crowned ? 'CHAMPION PLATFORM UNLOCKED' : '',
+        stageGoop ? 'GOOPLIATH DEFEATED' : 'TITAN DEFEATED',
+        stageGoop ? 'the tide recedes' : '',
         this.accentCss(),
       );
     }
+    this.holdUpBelt(titles, runWon, padTag);
     playVictory(); // stops the battle score and rings the end-of-game sting
     sfx.matchEnd(true);
     // The gel's own KO splat (deathPose → setKo) is the tide's death bellow.
@@ -4962,6 +4984,22 @@ export class CampaignSystem extends createSystem({
     // p2 1) lands within ~0.3 s and flips them into the second fight.
   }
 
+  /**
+   * The end of a winning bout: hold a belt up. A belt won for the first time
+   * beats one you already held (the best of them, if a fell won two); a run
+   * you'd already won still raises its belt — just without the new card.
+   */
+  private holdUpBelt(titles: Belt[], runWon: { belt: Belt; fresh: boolean } | null, note: string): void {
+    const fresh = [...titles, ...(runWon?.fresh ? [runWon.belt] : [])].sort((a, b) => b.rank - a.rank);
+    const show = fresh[0] ?? runWon?.belt ?? null;
+    if (!show) return;
+    if (fresh.length) syncBeltBest();
+    this.freshBelt = fresh.length ? show : null;
+    const more = fresh.length - 1;
+    this.beltNote = (more > 0 ? ` · +${more} MORE BELT${more > 1 ? 'S' : ''}` : '') + note;
+    this.ceremony.start(show, BELT_RISE_DELAY);
+  }
+
   private outro(delta: number): void {
     if (this.phase === 'victory') {
       // Each chassis dies its own death (see deathPose), shedding fire — the
@@ -4991,6 +5029,12 @@ export class CampaignSystem extends createSystem({
         }
       }
       this.light.intensity = Math.max(0, 5 * (1 - k));
+      if (this.ceremony.update(delta, this.world.camera) && this.freshBelt) {
+        // A belt you didn't hold: its name takes the card.
+        const b = this.freshBelt;
+        this.hud.title(beltName(b), `NEW BELT · ${b.feat}${this.beltNote}`, b.metal.mid);
+        playCash();
+      }
       if (this.t >= this.victoryDelay) {
         if (this.advanceAfterVictory) {
           // Raid guests hold the collapse until the HOST's stage-change echo

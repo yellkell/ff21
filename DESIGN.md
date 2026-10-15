@@ -484,8 +484,9 @@ marble, black glass, river ice, jade, gold leaf, crimson lacquer, wet
 green stone — each a colour map and a bump map cut from one seeded noise,
 shared per style so swapping skins never uploads. The catalogue is the
 material ladder: SMOULDER / AZURE / INFERNO free; WALNUT, SLATE, MARBLE,
-FROST, OBSIDIAN, JADE, BULLION for coins; CHAMPION, TIDEBREAKER and
-BLAZING earned as before (their living FX — the burning rail, the pool —
+FROST, OBSIDIAN, JADE, BULLION for coins; BLAZING earned as before;
+CHAMPION and TIDEBREAKER not earnable for now (GOLIATH and GOOPLIATH pay
+out championship belts instead), kept by those who own them (their living FX — the burning rail, the pool —
 kept; everything decorative retired). Each skin also sets the neon tube's
 colour and the corner screws' metal (iron, brass, chrome, gold). Tiles
 show a swatch of the material. The player doc mirrors the worn deck as

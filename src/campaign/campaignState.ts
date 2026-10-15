@@ -57,6 +57,8 @@ export interface CampaignProgress {
   hardUnlocked: boolean;
   /** BLAZING unlocks by clearing any run on Hard-or-higher. */
   blazingUnlocked: boolean;
+  /** Championship belts won (campaign/belts.ts ids): one per run per tier. */
+  belts: string[];
 }
 
 const KEY = 'ff-campaign';
@@ -72,6 +74,7 @@ function fresh(): CampaignProgress {
     raidGoopliathCleared: false,
     hardUnlocked: false,
     blazingUnlocked: false,
+    belts: [],
   };
 }
 
@@ -82,6 +85,7 @@ function load(): CampaignProgress {
       const p = { ...fresh(), ...JSON.parse(raw) } as CampaignProgress;
       // Older saves (or a future stage-count bump) may carry a short array.
       while (p.cleared.length < CAMPAIGN.stages) p.cleared.push(false);
+      if (!Array.isArray(p.belts)) p.belts = [];
       return p;
     }
   } catch {

@@ -13,6 +13,33 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **CHAMPIONSHIP BELTS** (FIRE FIGHT FLUX's title belts, brought to the
+  campaign and grown into a set of twelve — `src/campaign/belts.ts`).
+  - **Title belts**: the first time you defeat each boss — SCRAPYARD
+    (CHROMEHOOK), FOUNDRY (PISTONKAISER), TALON (VULTURE), BULWARK
+    (JUGGERNAUT), CROWN (GOLIATH) and TIDE (GOOPLIATH). Bosses beaten
+    before belts existed hand theirs over from the save.
+  - **Run belts**: one per run per difficulty, Normal and up — IRONCLAD /
+    TITANSTEEL / SUNFORGED for the gauntlet on Normal / Hard / Blazing,
+    BLOODIRON / WARBRAND / INFERNO for hardcore. Hardcore belts burn.
+  - **Painted in detail** (`ui/beltArt.ts`): tooled, stitched leather with
+    snaps, keeper and eyelets; four side plates struck with the titans'
+    emblems; a centre plate (octagon, crest or sunburst by tier) with
+    engine-turned enamel, a laurel, the boss's mark, a faceted stone,
+    corner stones, a ribbon and a plaque.
+  - **Held up when you win one** (`ui/beltModel.ts`,
+    `campaign/beltCeremony.ts`): a 3D belt — bowed strap, extruded metal
+    plates, a real cut stone — rises in front of you over the wreck, and
+    the card names it.
+  - **The belt rack** on the campaign panel shows all twelve, yours lit and
+    the rest as ghosts; hover one for what it is or how to win it. The
+    launch card shows the belt a run is for.
+  - **The profile shows your best belt** in place of the old SPEEDRUN
+    badge; hover it and it says what it is. Its rank syncs as `beltBest`.
+  - **"FELLED" reads "DEFEATED"** across the campaign.
+  - **GOLIATH and GOOPLIATH unlock no platform for now** — their belts are
+    the bounty. CHAMPION and TIDEBREAKER stay with anyone who owns them;
+    BLAZING is still earned by a blazing run or raid.
 - **A HIT LOOKS LIKE FIRE, AND THE NUMBER LOOKS LIKE A COMIC.**
   - **The burst** (`fx/effects.ts`) used to be a comic "POW": an
     eleven-ray starburst, a perfect shockwave ring, flat glowing discs and

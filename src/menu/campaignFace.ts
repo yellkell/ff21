@@ -12,8 +12,13 @@
  * each with its best clocks read out beside it, each sealed until the run
  * before it is earned.
  *
+ * Beside the runs, THE BELT RACK (campaign/belts.ts): every championship
+ * belt, lit if it's yours, a ghost if not — the six title belts (a boss's,
+ * the first time you defeat it) over the six run belts. Hover one and it
+ * says what it is, or how to win it.
+ *
  * Pressing a run opens THE LAUNCH CARD rather than firing: the run's name,
- * the four damage tiers, and START. While it is up it owns every click on the panel — the face
+ * the four damage tiers, the belt the run is for, and START. While it is up it owns every click on the panel — the face
  * returns its buttons and nothing else, so there is no clicking through a
  * modal at a titan behind it.
  */
@@ -32,6 +37,9 @@ import {
   stageUnlocked,
 } from '../campaign/campaignState.js';
 import { DIFFICULTY, DIFFICULTY_ORDER } from '../config.js';
+import { BELTS, beltFor, beltName, beltTip, heldBelts, titleBeltOf, type Belt } from '../campaign/belts.js';
+import { drawBelt } from '../ui/beltArt.js';
+import { myGauntletTiers } from '../net/leaderboard.js';
 
 export const CAMP_W = 1280;
 export const CAMP_H = 800;
@@ -69,7 +77,73 @@ function clocks(times: number[]): string {
     .join('   ·   ');
 }
 
-const LAUNCH = { x: CAMP_W / 2 - 450, y: 190, w: 900, h: 360 };
+/** The launch card: the run's name, the tiers, the belt at stake, START. */
+const LAUNCH = { x: CAMP_W / 2 - 450, y: 150, w: 900, h: 480 };
+
+/* ── THE BELT RACK ────────────────────────────────────────────────────── */
+
+const RACK_X = M + RUN_W + 48;
+const RACK_W = CAMP_W - M - RACK_X;
+const RACK_STEP = RACK_W / 6;
+const RACK_BELT_W = RACK_STEP - 10;
+/** Row centres: the title belts, then the run belts; each under its label. */
+const RACK_ROWS = [{ label: 'TITLE BELTS', y: 546 }, { label: 'RUN BELTS', y: 630 }];
+
+/** Each belt's slot on the rack (the same list drives the drawing, the ghost
+ *  buttons and the tooltip). */
+function rackSlots(): Array<{ belt: Belt; x: number; y: number; w: number; h: number }> {
+  const titles = BELTS.filter((b) => b.kind !== 'run');
+  const runs = BELTS.filter((b) => b.kind === 'run');
+  const h = RACK_BELT_W * 0.5;
+  return [titles, runs].flatMap((row, r) =>
+    row.map((belt, i) => ({ belt, x: RACK_X + i * RACK_STEP + 5, y: RACK_ROWS[r].y - h / 2, w: RACK_BELT_W, h })),
+  );
+}
+
+function drawRack(g: CanvasRenderingContext2D, hover: string | null): void {
+  const held = heldBelts(...myGauntletTiers());
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.font = font(700, 16);
+  g.letterSpacing = '3px';
+  g.fillStyle = KIT.faint;
+  const h = RACK_BELT_W * 0.5;
+  for (const r of RACK_ROWS) g.fillText(r.label, RACK_X + 6, r.y - h / 2 - 10);
+  g.letterSpacing = '0px';
+  g.textAlign = 'right';
+  g.fillText(`${held.size} / ${BELTS.length}`, RACK_X + RACK_W - 6, RACK_ROWS[0].y - h / 2 - 10);
+  const slots = rackSlots();
+  for (const s of slots) {
+    const mine = held.has(s.belt.id);
+    const hot = hover === `badge-belt-${s.belt.id}`;
+    if (hot) {
+      g.fillStyle = KIT.plateHover;
+      g.beginPath();
+      g.roundRect(s.x - 3, s.y - 3, s.w + 6, s.h + 6, 10);
+      g.fill();
+    }
+    drawBelt(g, s.belt, s.x + s.w / 2, s.y + s.h / 2, s.w, { ghost: !mine });
+  }
+  // The hovered belt's tooltip, over everything.
+  const hot = slots.find((s) => hover === `badge-belt-${s.belt.id}`);
+  if (hot) {
+    const tip = held.has(hot.belt.id) ? beltTip(hot.belt) : `${beltName(hot.belt)} · ${hot.belt.goal}`;
+    g.font = font(600, 20);
+    const tw = g.measureText(tip).width + 30;
+    const tx = Math.max(M, Math.min(CAMP_W - M - tw, hot.x + hot.w / 2 - tw / 2));
+    const ty = hot.y - 44;
+    g.fillStyle = 'rgba(14,11,8,0.96)';
+    g.beginPath();
+    g.roundRect(tx, ty, tw, 36, 8);
+    g.fill();
+    g.lineWidth = 1.5;
+    g.strokeStyle = hot.belt.metal.mid;
+    g.stroke();
+    g.textAlign = 'center';
+    g.fillStyle = held.has(hot.belt.id) ? hot.belt.metal.hi : KIT.dim;
+    g.fillText(tip, tx + tw / 2, ty + 18);
+  }
+}
 
 export function campaignFace(): CampaignFace {
   if (campaignModal.pending) return launchFace(campaignModal.pending);
@@ -96,7 +170,7 @@ export function campaignFace(): CampaignFace {
     {
       id: 'campaign-speedrun',
       label: gauntlet ? 'RUN THE GAUNTLET' : 'GAUNTLET SEALED',
-      sub: gauntlet ? clocks(campaignProgress.runTimesGauntlet) : 'fell all five titans to unlock',
+      sub: gauntlet ? clocks(campaignProgress.runTimesGauntlet) : 'defeat all five titans to unlock',
       x: M, y: RUN_Y, w: RUN_W, h: RUN_H,
       small: true,
       disabled: !gauntlet,
@@ -115,9 +189,9 @@ export function campaignFace(): CampaignFace {
       label: goop ? 'FIGHT GOOPLIATH' : 'SOMETHING STIRS',
       sub: goop
         ? campaignProgress.goopliathCleared
-          ? 'felled ✓ — fight it again'
+          ? 'defeated ✓ — fight it again'
           : 'it waits beneath the pit'
-        : 'fell all five titans',
+        : 'defeat all five titans',
       x: M, y: RUN_Y + (RUN_H + RUN_GAP) * 2, w: RUN_W, h: RUN_H,
       small: true,
       tone: goop ? GOOP_GREEN : undefined,
@@ -125,6 +199,9 @@ export function campaignFace(): CampaignFace {
     },
     { id: 'campaign-close', label: 'CLOSE', x: CAMP_W - M - 240, y: CAMP_H - 116, w: 240, h: 84, small: true },
   );
+  for (const s of rackSlots()) {
+    buttons.push({ id: `badge-belt-${s.belt.id}`, label: '', ghost: true, x: s.x, y: s.y, w: s.w, h: s.h });
+  }
 
   return {
     title: 'THE TITAN GAUNTLET',
@@ -138,6 +215,7 @@ export function campaignFace(): CampaignFace {
       const felled = campaignProgress.goopliathCleared;
       drawBossIcon(g, 5, M + RUN_W + 60, iy, 30, felled ? KIT.accent : goop ? GOOP_GREEN : KIT.disabled);
       if (!goop) padlock(g, M + RUN_W + 60, iy, 0.7);
+      drawRack(g, hover);
     },
   };
 }
@@ -175,13 +253,13 @@ function drawCard(g: CanvasRenderingContext2D, i: number, done: boolean, hover: 
   g.font = font(600, 22);
   if (done) {
     g.fillStyle = KIT.accent;
-    g.fillText('FELLED ✓', cx, CARD_Y + 292);
+    g.fillText('DEFEATED ✓', cx, CARD_Y + 292);
   } else if (open) {
     g.fillStyle = hot ? tint : KIT.dim;
     g.fillText('FIGHT', cx, CARD_Y + 292);
   } else {
     g.fillStyle = KIT.disabled;
-    g.fillText('fell the last', cx, CARD_Y + 292);
+    g.fillText('defeat the last', cx, CARD_Y + 292);
   }
 
   // The path between the cards: lit once the one behind it has fallen.
@@ -217,6 +295,37 @@ function padlock(g: CanvasRenderingContext2D, cx: number, cy: number, s = 1): vo
 }
 
 /* ── THE LAUNCH CARD: pick the damage, then go ────────────────────────── */
+
+/** What the run is FOR, under the tiers: its belt (fff's "FOR THE NATIONAL
+ *  BELT"), and whether it's already yours. GOOPLIATH's fight is for his
+ *  title belt at any tier; a run's belt changes with the tier, and Easy
+ *  earns none. */
+function drawStake(g: CanvasRenderingContext2D, kind: 'gauntlet' | 'hardcore' | 'goopliath'): void {
+  const belt = kind === 'goopliath' ? titleBeltOf(5) : beltFor(kind, app.difficulty);
+  const cy = LAUNCH.y + 292;
+  g.textBaseline = 'middle';
+  if (!belt) {
+    g.textAlign = 'center';
+    g.font = font(600, 24);
+    g.fillStyle = KIT.faint;
+    g.fillText('EASY EARNS NO BELT — NORMAL AND UP EACH WIN ONE', CAMP_W / 2, cy);
+    return;
+  }
+  const mine = heldBelts(...myGauntletTiers()).has(belt.id);
+  const bw = 270;
+  drawBelt(g, belt, LAUNCH.x + 56 + bw / 2, cy, bw);
+  const tx = LAUNCH.x + 56 + bw + 32;
+  const tw = LAUNCH.x + LAUNCH.w - 48 - tx;
+  g.textAlign = 'left';
+  g.font = font(700, 30);
+  g.letterSpacing = '2px';
+  g.fillStyle = belt.metal.hi;
+  g.fillText(mine ? `${beltName(belt)} · YOURS` : `FOR ${beltName(belt)}`, tx, cy - 18, tw);
+  g.letterSpacing = '0px';
+  g.font = font(600, 21);
+  g.fillStyle = KIT.dim;
+  g.fillText(mine ? 'win it again — it stays on your rack' : belt.title, tx, cy + 20, tw);
+}
 
 function launchFace(kind: 'gauntlet' | 'hardcore' | 'goopliath'): CampaignFace {
   const accent = kind === 'hardcore' ? KIT.danger : kind === 'goopliath' ? GOOP_GREEN : KIT.accent;
@@ -276,6 +385,7 @@ function launchFace(kind: 'gauntlet' | 'hardcore' | 'goopliath'): CampaignFace {
       g.fillStyle = accent;
       g.fillText(title, CAMP_W / 2, LAUNCH.y + 62);
       g.letterSpacing = '0px';
+      drawStake(g, kind);
     },
   };
 }
