@@ -637,7 +637,7 @@ export class CampaignSystem extends createSystem({
       this.introCued = true;
       this.t = 0;
       this.hud.title('WARNING', this.introWarning, '#ffb000');
-      sfx.klaxon();
+      sfx.titanWarn(this.def.style, this.def.scale); // its own alarm, not a house klaxon
     }
 
     this.t += delta;
@@ -1110,6 +1110,7 @@ export class CampaignSystem extends createSystem({
     // Start the entrance line fetching now — it has the klaxon + rise to
     // arrive before the name card asks for it.
     preloadBossVoice(this.def.name);
+    sfx.preloadTitanLines(this.def.style);
 
     // Health pools: the titan carries its OWN pool (bossEnt — every weak-point
     // hitbox's owner). In a SOLO campaign the slot-1 humanoid also stands down
@@ -1349,8 +1350,7 @@ export class CampaignSystem extends createSystem({
       if (this.t - delta < riseStart) {
         this.introStep = 0;
         if (this.def.style === 'goop') sfx.gooWobble(1);
-        else if (this.def.style === 'vulture') sfx.sweepWhoosh();
-        else sfx.titanRise();
+        else sfx.titanArrive(this.def.style, this.def.scale);
       }
       const k = clamp((this.t - riseStart) / riseTime, 0, 1);
       this.entrancePose(k);
@@ -1361,7 +1361,7 @@ export class CampaignSystem extends createSystem({
         const seg = Math.min(2, Math.floor(k * 3));
         if (seg > this.introStep) {
           this.introStep = seg;
-          sfx.slamImpact();
+          sfx.titanBeat('piston', this.def.scale);
           _v.set(0, 0.1, this.bossZ());
           emberBurst(_v, 22, true);
         }
@@ -1370,14 +1370,14 @@ export class CampaignSystem extends createSystem({
         const seg = Math.min(4, Math.floor(k * 5));
         if (seg > this.introStep) {
           this.introStep = seg;
-          sfx.armorClank();
+          sfx.titanBeat('hook', this.def.scale);
         }
       } else if (this.def.style === 'king') {
         // The ascent stalls twice — each hold breaks with a deeper roar.
         const seg = k < 0.45 ? 0 : k < 0.8 ? 1 : 2;
         if (seg > this.introStep) {
           this.introStep = seg;
-          sfx.bossRoar(this.def.scale * 0.5);
+          sfx.titanBeat('king', this.def.scale);
         }
       }
 
@@ -1421,7 +1421,7 @@ export class CampaignSystem extends createSystem({
       // Just the name, big and centred — the epithet sub-lines ("arena
       // executioner" and kin) are gone; the chassis does the talking.
       this.hud.title(this.def.name, this.careerBout()?.charged ? 'SUPERCHARGED' : '', this.accentCss());
-      if (!playBossVoice(this.def.name)) sfx.bossRoar(this.def.scale * 0.8);
+      if (!playBossVoice(this.def.name)) sfx.titanVoice(this.def.style, 'name', this.def.scale);
     }
 
     // FIGHT flash, then the bell — the same neon FIGHT plate the ring
@@ -1630,7 +1630,7 @@ export class CampaignSystem extends createSystem({
       this.flinch = 0.35;
       this.hud.title('ENRAGED', '', this.accentCss());
       this.cardTimer = 1.3;
-      sfx.bossRoar(this.def.scale * 1.1);
+      sfx.titanVoice(this.def.style, 'rage', this.def.scale);
     }
 
     // Endings are the AUTHORITY's call (guests follow the echo): the kill —
@@ -1713,7 +1713,7 @@ export class CampaignSystem extends createSystem({
         if (this.cycleIdx % CROWN_RING.length === 0) {
           // A full loop closed: the king roars and quickens.
           this.flinch = 0.5;
-          sfx.bossRoar(this.def.scale * 1.1);
+          sfx.titanVoice(this.def.style, 'rage', this.def.scale);
         } else {
           sfx.coreExposed();
         }
@@ -2494,7 +2494,7 @@ export class CampaignSystem extends createSystem({
       thrown: zones.map(() => 0 as const),
     };
     if (this.goop) this.goopTelegraph(this.attack.kind as AttackKind, chargeTime, seats[0]);
-    sfx.chargeWhine(chargeTime);
+    sfx.titanTell(this.def.style, this.attack.kind, chargeTime, this.def.scale);
     // Settle every read NOW, before this frame renders: each telegraph was
     // added to the scene visible and unfilled, and a cascade's later steps
     // (THE WAVE's lanes, a seesaw's far halves) only get hidden by the first
@@ -3404,7 +3404,7 @@ export class CampaignSystem extends createSystem({
     };
     for (const i of arms) rig.fistWorld(i, m.home[i]);
     this.melee = m;
-    sfx.chargeWhine(m.windup);
+    sfx.titanTell(this.def.style, 'melee', m.windup, this.def.scale);
     if (!this.meleeGlow) {
       this.meleeGlow = glowSprite(this.def.accent, 0.4 * this.def.scale, 0);
       this.scene.add(this.meleeGlow);
@@ -3572,7 +3572,7 @@ export class CampaignSystem extends createSystem({
       m.stage = 'windup';
       m.t = 0;
       m.windup = (m.move.beat ?? 0.5) * this.diff.charge;
-      sfx.chargeWhine(m.windup);
+      sfx.titanTell(this.def.style, 'melee', m.windup, this.def.scale);
       return;
     }
     this.endMelee();
@@ -4512,7 +4512,7 @@ export class CampaignSystem extends createSystem({
         this.accentCss(),
       );
       sfx.roundEnd(true); // the full fanfare waits for the end of the run
-      if (!stageGoop) sfx.bossRoar(this.def.scale * 1.0);
+      if (!stageGoop) sfx.titanVoice(this.def.style, 'death', this.def.scale);
       return;
     }
 
@@ -4579,7 +4579,7 @@ export class CampaignSystem extends createSystem({
     playVictory(); // stops the battle score and rings the end-of-game sting
     sfx.matchEnd(true);
     // The gel's own KO splat (deathPose → setKo) is the tide's death bellow.
-    if (!stageGoop) sfx.bossRoar(this.def.scale * 1.0);
+    if (!stageGoop) sfx.titanVoice(this.def.style, 'death', this.def.scale);
   }
 
   private toDefeat(): void {
@@ -4611,7 +4611,7 @@ export class CampaignSystem extends createSystem({
     }
     playVictory(); // stops the battle score and rings the end sting
     sfx.matchEnd(false);
-    if (!this.goopStage) sfx.bossRoar(this.def.scale * 1.2); // it laughs, kind of
+    if (!this.goopStage) sfx.titanVoice(this.def.style, 'gloat', this.def.scale); // it laughs, its own way
   }
 
   /**
@@ -4634,7 +4634,7 @@ export class CampaignSystem extends createSystem({
     stopBattleTrack();
     this.hud.title('GOLIATH FALLS', '', this.accentCss());
     sfx.matchEnd(true); // it SOUNDS like the win it isn't
-    sfx.bossRoar(this.def.scale * 1.0);
+    sfx.titanVoice(this.def.style, 'death', this.def.scale);
   }
 
   /** The resurrection timeline (every client, clock-synced via rst):
@@ -4680,8 +4680,8 @@ export class CampaignSystem extends createSystem({
       if (this.t - delta < shakeEnd) {
         startFinaleTrack();
         this.hud.title('HE RISES', '', '#d9a832');
-        sfx.titanRise();
-        sfx.bossRoar(this.def.scale * 1.2);
+        sfx.titanArrive(this.def.style, this.def.scale);
+        sfx.titanVoice(this.def.style, 'rage', this.def.scale);
       }
       const k = clamp((this.t - shakeEnd) / RAID.resRiseTime, 0, 1);
       this.deathPose(1 - k); // the fall, run backward — up off the deck
@@ -4880,7 +4880,7 @@ export class CampaignSystem extends createSystem({
           root.position.set(fx, -h * (0.16 + 0.38 * e), z);
           if (this.outroStep === 0) {
             this.outroStep = 1;
-            sfx.bossRoar(this.def.scale * 0.9); // the last breath as he goes
+            sfx.titanVoice(this.def.style, 'breath', this.def.scale); // the last breath as he goes
           }
         }
         break;

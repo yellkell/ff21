@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- DEV-ONLY harness: audition board for the arcade titans' voices
+     (audio/sfx.ts titanVoice / titanArrive / titanBeat / titanTell).
+     Not part of the game; never ship or link this page.
+     ?raid=1 auditions at raid-giant scale (deeper voices). -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Titan Voices</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #0d0c12; color: #e8e2d2; font: 14px/1.4 system-ui, sans-serif; }
+      h1 { font: 900 22px Impact, 'Arial Black', sans-serif; letter-spacing: 1px; margin: 0 0 4px; }
+      p { margin: 0 0 16px; color: #9a96a6; }
+      .titan { border-left: 4px solid var(--a); padding: 8px 12px; margin: 0 0 14px; background: #16141d; }
+      .titan h2 { margin: 0 0 8px; font: 800 16px system-ui; color: var(--a); }
+      .row { display: flex; flex-wrap: wrap; gap: 6px; }
+      button { background: #24212e; color: inherit; border: 1px solid #3a3648; border-radius: 4px; padding: 6px 10px; font: inherit; cursor: pointer; }
+      button:hover { border-color: var(--a); }
+      button.big { background: color-mix(in srgb, var(--a) 22%, #24212e); }
+    </style>
+  </head>
+  <body>
+    <h1>TITAN VOICES</h1>
+    <p>Click any cue. The <b>Intro</b> button plays it on the real timeline: warning, arrival, beats, then the name card. Add <code>?raid=1</code> to the URL to hear the raid giants.</p>
+    <div id="board"></div>
+    <script type="module">
+      import * as sfx from '/src/audio/sfx.ts';
+      import { BOSSES, raidBoss } from '/src/campaign/bosses.ts';
+      import { CAMPAIGN } from '/src/config.ts';
+
+      const raid = new URLSearchParams(location.search).get('raid') === '1';
+      const board = document.getElementById('board');
+      const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+      const moods = ['name', 'rage', 'gloat', 'death', 'breath', 'stall'];
+      // One attack per tell family (audio/sfx.ts TELL_FAMILY).
+      const tells = ['beam', 'sweep', 'volley', 'nova', 'seesaw', 'lanes', 'gate', 'wave', 'melee'];
+
+      function intro(def) {
+        sfx.ensureAudio();
+        sfx.titanWarn(def.style, def.scale);
+        const rise = CAMPAIGN.klaxonTime;
+        setTimeout(() => sfx.titanArrive(def.style, def.scale), rise * 1000);
+        const steps = { piston: [1 / 3, 2 / 3], hook: [0.2, 0.4, 0.6, 0.8], king: [0.45, 0.8] }[def.style] ?? [];
+        for (const k of steps) setTimeout(() => sfx.titanBeat(def.style, def.scale), (rise + k * CAMPAIGN.riseTime) * 1000);
+        setTimeout(() => sfx.titanVoice(def.style, 'name', def.scale), (rise + CAMPAIGN.riseTime) * 1000);
+      }
+
+      BOSSES.forEach((base, i) => {
+        const def = raid ? raidBoss(base, i, 4) : base;
+        const box = document.createElement('div');
+        box.className = 'titan';
+        box.style.setProperty('--a', hex(def.accent));
+        box.innerHTML = `<h2>${def.name} <small style="color:#9a96a6">${def.style} · scale ${def.scale.toFixed(2)}</small></h2>`;
+        const row = document.createElement('div');
+        row.className = 'row';
+        const add = (label, fn, big) => {
+          const b = document.createElement('button');
+          b.textContent = label;
+          if (big) b.className = 'big';
+          b.onclick = () => {
+            sfx.ensureAudio();
+            fn();
+          };
+          row.append(b);
+        };
+        // Spoken-line takes: pick one, then hit Intro or name to hear it.
+        const takes = sfx.titanLineTakes(def.style);
+        if (takes.length) {
+          const pick = document.createElement('select');
+          pick.style.cssText = 'background:#24212e;color:inherit;border:1px solid #3a3648;border-radius:4px;padding:6px';
+          for (const url of takes) pick.append(new Option('voice: ' + url.split('/').pop().replace(/^\w+-|\.m4a$/g, ''), url));
+          pick.onchange = () => {
+            sfx.ensureAudio();
+            sfx.setTitanLine(def.style, pick.value);
+          };
+          sfx.preloadTitanLines(def.style);
+          for (const url of takes) sfx.setTitanLine(def.style, url); // decode every take up front
+          sfx.setTitanLine(def.style, takes[0]);
+          row.append(pick);
+        }
+        add('▶ Intro', () => intro(def), true);
+        add('warning', () => sfx.titanWarn(def.style, def.scale));
+        add('arrive', () => sfx.titanArrive(def.style, def.scale));
+        for (const m of moods) {
+          if (m === 'stall' && def.style !== 'king') continue;
+          add(m, () => sfx.titanVoice(def.style, m, def.scale));
+        }
+        for (const k of tells) add(`tell: ${k}`, () => {
+          sfx.titanTell(def.style, k, 1.8, def.scale);
+        });
+        add('old klaxon', () => sfx.klaxon());
+        add('old rise', () => sfx.titanRise());
+        add('old roar', () => sfx.bossRoar(def.scale * 0.8));
+        box.append(row);
+        board.append(box);
+      });
+    </script>
+  </body>
+</html>
