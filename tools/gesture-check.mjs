@@ -167,7 +167,7 @@ function clearances(j) {
 
 // ── The cases ───────────────────────────────────────────────────────────────
 const SHAPES = [
-  'point', 'x', 'scissor', 'press', 'ring', 'teach', 'conduct', 'march', 'blade',
+  'point', 'x', 'scissor', 'press', 'ring', 'march', 'blade',
   'hammer', 'scythe', 'cannon', 'launcher', 'coil', 'tilt', 'shove',
 ];
 const FOCI = [
@@ -176,8 +176,6 @@ const FOCI = [
   { side: -1, fwd: 0 },
   { side: 0, fwd: 1 },
   { side: 0, fwd: -1 },
-  { side: 1, fwd: 1, hold: true },
-  { side: -1, fwd: -1, hold: true },
   { side: 0, fwd: 0, arm: 0 },
   { side: 0, fwd: 0, arm: 1 },
   { side: 0, fwd: 0, arm: 0, both: true },
@@ -208,7 +206,7 @@ const owns = (f) =>
   Math.abs(f.wrist - ARM_REST.wrist) > 1e-6 ||
   Math.abs(f.curl - ARM_REST.curl) > 1e-6;
 const focusKey = (f) =>
-  `s${f.side}f${f.fwd}${f.hold ? 'H' : ''}${f.arm !== undefined ? `a${f.arm}` : ''}${f.both ? 'B' : ''}`;
+  `s${f.side}f${f.fwd}${f.arm !== undefined ? `a${f.arm}` : ''}${f.both ? 'B' : ''}`;
 
 // --probe <shape>[:side,fwd] — print one shape's joints and clearances.
 const probeArg = process.argv.find((a) => a.startsWith('--probe'));
@@ -293,8 +291,6 @@ const HOLD_FOCI = {
   scissor: [{ side: 0, fwd: 1 }, { side: 0, fwd: -1 }],
   press: [{ side: 0, fwd: 0 }, { side: 1, fwd: 0 }, { side: 0, fwd: 1 }, { side: 0, fwd: -1 }],
   ring: [{ side: 0, fwd: 0 }],
-  teach: [{ side: 1, fwd: 1 }, { side: -1, fwd: -1 }, { side: 1, fwd: 1, hold: true }],
-  conduct: [{ side: 0, fwd: 0 }, { side: 0, fwd: 0, hold: true }],
   march: [{ side: 0, fwd: 0 }],
   blade: [{ side: 1, fwd: 0 }, { side: -1, fwd: 0 }],
   hammer: [{ side: 0, fwd: 0, arm: 0 }, { side: 0, fwd: 0, arm: 1 }, { side: 0, fwd: 0, arm: 0, both: true }],
