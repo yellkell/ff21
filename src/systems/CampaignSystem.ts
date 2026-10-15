@@ -462,6 +462,9 @@ export class CampaignSystem extends createSystem({
   private lastTarget = -1;
   /** Seconds left of the full-turn lash a squad sweep detonates with. */
   private spinT = 0;
+  /** GOLIATH's raid sweep IS his spinning backfist: how far the striking
+   *  arm is handed to that pose (0 = the gesture owns it). */
+  private backfistW = 0;
 
   init(): void {
     this.hud = createCampaignHud(this.scene);
@@ -636,6 +639,7 @@ export class CampaignSystem extends createSystem({
     if (this.rig) {
       this.animateTitan(delta);
       this.updateTrident(delta);
+      this.updateRaidBackfist(delta);
     }
     else if (this.goop) this.animateGoop(delta);
     this.placeHitboxes();
@@ -1093,6 +1097,7 @@ export class CampaignSystem extends createSystem({
     this.hitsOnPoint = 0;
     this.invuln = 0;
     this.spinT = 0;
+    this.backfistW = 0;
     this.lungeAge = -1;
     this.lungeCur = 0;
     this.lungeOff.set(0, 0, 0);
@@ -3907,6 +3912,56 @@ export class CampaignSystem extends createSystem({
     });
   }
 
+  /** Is this GOLIATH's squad sweep — his spinning backfist across the ring? */
+  private raidBackfist(): boolean {
+    const a = this.attack;
+    return this.raid() && this.def.style === 'king' && a?.kind === 'sweep' && a.seats.length > 1;
+  }
+
+  /** The backfist's windup turn: its back to the squad by the charge's end
+   *  (melee.ts spinTurn — the same tell as the solo spin), 0 otherwise. The
+   *  lash (spinT) then carries the turn on round. */
+  private backfistWind(): number {
+    const a = this.attack;
+    if (!this.raidBackfist() || !a || a.time >= a.chargeTime) return 0;
+    return spinTurn('windup', a.time / Math.max(0.2, a.chargeTime));
+  }
+
+  /**
+   * GOLIATH's raid sweep, told as THE SPINNING BACKFIST: through the charge
+   * his striking fist folds across his chest as he turns his back; as the
+   * blade cascades round the ring the fist is flung straight out and rides
+   * the full-turn lash across every platform. The blade is still the cut
+   * (duck it); the arm is the read. Arm 0 strikes — the lash turns +y,
+   * which is the way that shoulder leads backwards.
+   */
+  private updateRaidBackfist(delta: number): void {
+    const rig = this.rig;
+    if (!rig?.reach) return;
+    const a = this.attack;
+    const live = this.raidBackfist() && a;
+    const lashing = this.spinT > 0 && this.raid() && this.def.style === 'king';
+    const target = live || lashing ? 1 : 0;
+    this.backfistW += (target - this.backfistW) * Math.min(1, delta * (target ? 5 : 3));
+    if (this.backfistW < 0.01 && !target) this.backfistW = 0;
+    if (this.backfistW === 0) return;
+    const sc = this.def.scale;
+    const arm = rig.arms[0];
+    if (lashing || (a && a.time >= a.chargeTime)) {
+      // Flung straight out from the shoulder, a little low: the fist IS the
+      // edge of the turn.
+      const len = arm.elbow.position.length() + arm.wrist.position.length() + arm.fist.position.length();
+      _v.set(-len * 0.96, -0.35 * sc, 0).add(arm.pivot.position);
+    } else {
+      // Folded across the chest, the back of the fist out (melee.ts).
+      windupOffset('spinback', -1, _v).multiplyScalar(sc).add(arm.pivot.position);
+    }
+    rig.root.localToWorld(_v);
+    rig.reach[0].at.lerp(_v, Math.min(1, delta * 10));
+    rig.reach[0].w = this.backfistW;
+    rig.reach[1].w = 0;
+  }
+
   /**
    * THE TRIDENT in the titan's fist. It materialises over the charge (the
    * colour is the read), rides the visible fist, and aims its prongs at
@@ -3924,7 +3979,7 @@ export class CampaignSystem extends createSystem({
     }
     const t = this.trident;
     if (!t || !rig) {
-      if (rig?.reach && !this.melee) rig.reach[1].w = rig.reach[0].w = 0;
+      if (rig?.reach && !this.melee && this.backfistW === 0) rig.reach[1].w = rig.reach[0].w = 0;
       return;
     }
     // The next blow still to land (its quarters are where the prongs go).
@@ -3959,7 +4014,7 @@ export class CampaignSystem extends createSystem({
     const sc = this.def.scale;
     _v.set(sx * 0.45, 1.05, -0.55).lerp(_head.set(sx * 0.3, 0.8, -0.95), this.tridentFlash).multiplyScalar(sc);
     rig.root.localToWorld(_v);
-    if (rig.reach && !this.melee) {
+    if (rig.reach && !this.melee && this.backfistW === 0) {
       rig.reach[arm].at.copy(_v);
       rig.reach[arm].w = Math.min(1, this.tridentReveal * 1.5);
       rig.reach[arm === 0 ? 1 : 0].w = 0;
@@ -4217,7 +4272,9 @@ export class CampaignSystem extends createSystem({
         }
         cx /= seats.length;
         cz /= seats.length;
-        const targetYaw = Math.atan2(-(cx - rig.root.position.x), -(cz - rig.root.position.z));
+        // GOLIATH's backfist tell: through the charge he turns his BACK on
+        // the squad (the turn the lash then carries on round).
+        const targetYaw = Math.atan2(-(cx - rig.root.position.x), -(cz - rig.root.position.z)) + this.backfistWind();
         let dy = targetYaw - rig.root.rotation.y;
         while (dy > Math.PI) dy -= Math.PI * 2;
         while (dy < -Math.PI) dy += Math.PI * 2;
