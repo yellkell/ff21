@@ -4284,13 +4284,18 @@ export class CampaignSystem extends createSystem({
     // a lit weak point always beats the armour it bulges out of. Raids grow
     // them further still (weakMult): the titan squares up to its current
     // target, so a side seat plays the whole fight at an angle.
-    const w = this.raid() ? RAID.weakMult : 1;
+    // Every weak point is trimmed (CAMPAIGN.weakTrim) so neighbours don't
+    // melt into one always-live spot — except raid GOLIATH's shoulders,
+    // which keep the full bulge for the side seats' angles.
+    const raw = this.raid() ? RAID.weakMult : 1;
+    const w = raw * CAMPAIGN.weakTrim;
+    const sh = this.raid() && this.def.weakPattern === 'crown' ? raw : w;
     this.boxes.body?.setValue(Hitbox, 'radius', 0.32 * s);
     this.boxes.pelvis?.setValue(Hitbox, 'radius', 0.25 * s * w);
     this.boxes.head?.setValue(Hitbox, 'radius', 0.28 * s * w);
     this.boxes.core?.setValue(Hitbox, 'radius', 0.28 * s * w);
-    this.boxes.shoulderL?.setValue(Hitbox, 'radius', 0.23 * s * w);
-    this.boxes.shoulderR?.setValue(Hitbox, 'radius', 0.23 * s * w);
+    this.boxes.shoulderL?.setValue(Hitbox, 'radius', 0.23 * s * sh);
+    this.boxes.shoulderR?.setValue(Hitbox, 'radius', 0.23 * s * sh);
     for (const pod of this.boxes.pods) pod.setValue(Hitbox, 'radius', 0.19 * s * w);
   }
 
