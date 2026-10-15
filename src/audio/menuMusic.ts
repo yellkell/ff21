@@ -148,8 +148,8 @@ export function menuMusicStatus(): string {
  * moment the app boots so that by the time the boot intro's cards have run
  * (6s), the buffer is ready and enterMenuMusic() starts in the same frame.
  */
-export function preloadMenuMusic(): void {
-  ensureAudio();
+export function preloadMenuMusic(): Promise<boolean> {
+  return ensureAudio().preload();
 }
 
 /**

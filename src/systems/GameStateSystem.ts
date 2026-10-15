@@ -32,6 +32,7 @@ import { createScoreboard, type FighterHud, type Scoreboard } from '../ui/scoreb
 import { UI } from '../ui/industrial.js';
 import { net } from '../net/client.js';
 import { reportArcade, reportBotResult, reportResult, rival, myName } from '../net/leaderboard.js';
+import { stageHeld } from '../experience/stageGate.js';
 
 interface Boxers {
   me: Entity;
@@ -123,7 +124,10 @@ export class GameStateSystem extends createSystem({
     if (app.mode === 'net' && !classicDuel()) syncNetRoster();
 
     const authority = app.mode === 'bot' || app.side === 0;
-    if (authority) {
+    // THE STAGE, HELD (experience/stageGate.ts): picked from the lobby, the
+    // bout's brain doesn't run until the curtain lifts on the fight ground,
+    // so the 3-2-1 (plate, announcer and all) starts where you can see it.
+    if (authority && !stageHeld()) {
       if (classicDuel()) {
         const them = actives.find((e) => (e.getValue(Combatant, 'slot') ?? -1) === 1);
         if (them) this.runAuthority({ me, them }, me.getValue(Health, 'current') ?? 0, them.getValue(Health, 'current') ?? 0, delta);
