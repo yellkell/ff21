@@ -36,7 +36,7 @@ import {
   SRGBColorSpace,
 } from 'three';
 import { font, onFontsReady } from './fonts.js';
-import { ACCENT_RGB, HOLO_HOT, holoGlass } from './holo.js';
+import { ACCENT_RGB, HOLO_HOT, ctaPlate, holoGlass } from './holo.js';
 
 export interface PanelButton {
   id: string;
@@ -452,46 +452,9 @@ export class Panel {
     }
 
     if (b.primary && !b.disabled) {
-      // THE CTA — the screen's one solid fill, and its one glow.
-      const grad = g.createLinearGradient(0, b.y, 0, b.y + b.h);
-      // Lit holo glass rather than a solid slab: translucent cyan with a hot rim.
-      grad.addColorStop(0, `rgba(${ACCENT_RGB},0.5)`);
-      grad.addColorStop(1, 'rgba(18,150,214,0.28)');
-      g.shadowColor = KIT.accentDim;
-      g.shadowBlur = 18 + 10 * hov + 12 * flash;
-      g.fillStyle = grad;
-      g.beginPath();
-      g.roundRect(b.x, b.y, b.w, b.h, r);
-      g.fill();
-      g.shadowBlur = 0;
-      // A glassy top light gives the fill its dimension.
-      const sheen = g.createLinearGradient(0, b.y, 0, b.y + b.h * 0.5);
-      sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
-      sheen.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = sheen;
-      g.fill();
-      if (hov > 0 || flash > 0) {
-        g.fillStyle = `rgba(255,255,255,${(0.14 * hov + 0.18 * flash).toFixed(3)})`;
-        g.fill();
-      }
-      // The lit rim — the tube that makes it the screen's one primary.
-      g.save();
-      g.shadowColor = KIT.accent;
-      g.shadowBlur = 12 + 8 * hov;
-      g.lineWidth = 2.5;
-      g.strokeStyle = `rgba(${ACCENT_RGB},${(0.85 + 0.15 * hov).toFixed(3)})`;
-      g.stroke();
-      g.restore();
-      g.fillStyle = KIT.onAccent;
-      g.font = font(700, labelPx);
-      g.letterSpacing = '2px';
-      g.fillText(b.label, b.x + b.w / 2, labelY, b.w - 32);
-      g.letterSpacing = '0px';
-      if (b.sub) {
-        g.font = font(600, 22);
-        g.fillStyle = 'rgba(34,19,2,0.8)';
-        g.fillText(b.sub, b.x + b.w / 2, subY, b.w - 32);
-      }
+      // THE CTA — the screen's one solid fill, and its one glow (shared
+      // with the hand-painted consoles, ui/kit/holo.ts).
+      ctaPlate(g, b.x, b.y, b.w, b.h, b.label, { hover: hov, flash, px: labelPx, sub: b.sub, r });
       return;
     }
 

@@ -260,3 +260,63 @@ export function glitchText(
   g.fillText(text, x, y);
   g.restore();
 }
+
+/**
+ * THE CTA — a screen's one primary button, the one solid fill it is
+ * allowed and its one glow: lit holo glass (translucent cyan, a glassy top
+ * light) inside a hot accent rim, the label in white. `hover` and `flash`
+ * (0..1) brighten it; the menu's Panel and any hand-painted console (the
+ * tutorial's BEGIN / READY) draw it through here so it is one button.
+ */
+export function ctaPlate(
+  g: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  text: string,
+  o: { hover?: number; flash?: number; px?: number; sub?: string; r?: number } = {},
+): void {
+  const hov = o.hover ?? 0;
+  const flash = o.flash ?? 0;
+  const px = o.px ?? 40;
+  g.save();
+  const grad = g.createLinearGradient(0, y, 0, y + h);
+  grad.addColorStop(0, `rgba(${ACCENT_RGB},0.5)`);
+  grad.addColorStop(1, 'rgba(18,150,214,0.28)');
+  g.shadowColor = `rgba(${ACCENT_RGB},0.6)`;
+  g.shadowBlur = 18 + 10 * hov + 12 * flash;
+  g.fillStyle = grad;
+  g.beginPath();
+  g.roundRect(x, y, w, h, o.r ?? 18);
+  g.fill();
+  g.shadowBlur = 0;
+  // A glassy top light gives the fill its dimension.
+  const sheen = g.createLinearGradient(0, y, 0, y + h * 0.5);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
+  sheen.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = sheen;
+  g.fill();
+  if (hov > 0 || flash > 0) {
+    g.fillStyle = `rgba(255,255,255,${(0.14 * hov + 0.18 * flash).toFixed(3)})`;
+    g.fill();
+  }
+  // The lit rim — the tube that makes it the screen's one primary.
+  g.save();
+  g.shadowColor = `rgb(${ACCENT_RGB})`;
+  g.shadowBlur = 12 + 8 * hov;
+  g.lineWidth = 2.5;
+  g.strokeStyle = `rgba(${ACCENT_RGB},${(0.85 + 0.15 * hov).toFixed(3)})`;
+  g.stroke();
+  g.restore();
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#ffffff';
+  g.font = font(700, px);
+  g.letterSpacing = '2px';
+  g.fillText(text, x + w / 2, y + h / 2 - (o.sub ? 16 : 0), w - 32);
+  g.letterSpacing = '0px';
+  if (o.sub) {
+    g.font = font(600, 22);
+    g.fillStyle = 'rgba(34,19,2,0.8)';
+    g.fillText(o.sub, x + w / 2, y + h / 2 + 26, w - 32);
+  }
+  g.restore();
+}

@@ -38,6 +38,7 @@ import {
   Raycaster,
   SphereGeometry,
   Sprite,
+  SRGBColorSpace,
   Vector3,
 } from 'three';
 import { Fireball, BallState } from '../components/Fireball.js';
@@ -50,7 +51,10 @@ import { reportTutorial } from '../net/leaderboard.js';
 import { playCash } from '../audio/cash.js';
 import { startTutorialMusic, stopTutorialMusic } from '../audio/tutorialMusic.js';
 import { CAMPAIGN, FIREBALL, MATCH, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
-import { UI, buttonPlate, plate, stencilFont } from '../ui/industrial.js';
+import { UI, plate, stencilFont } from '../ui/industrial.js';
+import { font } from '../ui/kit/fonts.js';
+import { ctaPlate, holoGlass } from '../ui/kit/holo.js';
+import { KIT } from '../ui/kit/panel.js';
 import { glowSprite } from '../materials/glow.js';
 import { emberBurst, spawnEmber } from '../fx/fire.js';
 import * as sfx from '../audio/sfx.js';
@@ -1286,6 +1290,9 @@ export class TutorialSystem extends createSystem({
     const ctx = canvas.getContext('2d')!;
     const tex = new CanvasTexture(canvas);
     tex.minFilter = LinearFilter;
+    // Painted in sRGB, like the menu's panels — untagged, the holo glass
+    // comes out a washed grey instead of the kit's blue-black.
+    tex.colorSpace = SRGBColorSpace;
     const mesh = new Mesh(new PlaneGeometry(worldW, (worldW * ch) / cw), new MeshBasicMaterial({ map: tex, transparent: true }));
     mesh.name = name;
     mesh.renderOrder = 20;
@@ -1311,31 +1318,29 @@ export class TutorialSystem extends createSystem({
     if (!this.console) return;
     const ctx = this.console.ctx;
     ctx.clearRect(0, 0, CON_W, CON_H);
-    plate(ctx, 8, 8, CON_W - 16, CON_H - 16, { cut: 18, fill: 'rgba(10,12,16,0.92)', stroke: UI.emberBright });
-    // The keying notch and the title, the way every card in the house opens.
-    ctx.fillStyle = UI.emberBright;
-    ctx.shadowColor = UI.emberBright;
-    ctx.shadowBlur = 14;
-    ctx.fillRect(30, 40, 7, 40);
-    ctx.shadowBlur = 0;
+    // The menu's own holo glass (ui/kit/holo.ts): this console is the first
+    // panel a new fighter ever touches, so it speaks the lobby's language.
+    holoGlass(ctx, 6, 6, CON_W - 12, CON_H - 12, { r: 18, fill: KIT.panel, arm: 20, bloom: 0.8, ticks: false });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = stencilFont(38);
-    ctx.fillStyle = UI.emberBright;
-    ctx.fillText('TUTORIAL', 50, 72);
-    ctx.font = '600 20px system-ui, sans-serif';
-    ctx.fillStyle = UI.textDim;
-    ctx.fillText('EMBER shows you the ropes.', 50, 106);
-    // The seven beats, in the amber the console keys everything with.
-    ctx.font = '700 15px system-ui, sans-serif';
-    ctx.letterSpacing = '1px';
-    ctx.fillStyle = UI.amberSoft;
-    wrapText(ctx, CONSOLE_BEATS, 50, 140, CON_W - 100, 22);
+    ctx.font = font(700, 36);
+    ctx.letterSpacing = '4px';
+    ctx.fillStyle = KIT.textHi;
+    ctx.fillText('TUTORIAL', 40, 70);
     ctx.letterSpacing = '0px';
-    ctx.font = '500 17px system-ui, sans-serif';
-    ctx.fillStyle = UI.textDim;
-    ctx.fillText('Graduate and the house pays fifty.', 50, 190);
-    buttonPlate(ctx, BEGIN_BTN.x, BEGIN_BTN.y, BEGIN_BTN.w, BEGIN_BTN.h, 'BEGIN', UI.amber, this.console.hot);
+    ctx.font = font(500, 21);
+    ctx.fillStyle = KIT.dim;
+    ctx.fillText('EMBER shows you the ropes.', 40, 104);
+    // The seven beats, as quiet data under the title.
+    ctx.font = font(600, 16);
+    ctx.letterSpacing = '1.5px';
+    ctx.fillStyle = KIT.faint;
+    wrapText(ctx, CONSOLE_BEATS, 40, 138, CON_W - 80, 22);
+    ctx.letterSpacing = '0px';
+    ctx.font = font(500, 18);
+    ctx.fillStyle = KIT.dim;
+    ctx.fillText('Graduate and the house pays fifty.', 40, 190);
+    ctaPlate(ctx, BEGIN_BTN.x, BEGIN_BTN.y, BEGIN_BTN.w, BEGIN_BTN.h, 'BEGIN', { hover: this.console.hot ? 1 : 0, px: 34, r: 16 });
     this.console.tex.needsUpdate = true;
   }
 
@@ -1354,7 +1359,7 @@ export class TutorialSystem extends createSystem({
     // The lobby's exact BALL LOADOUT panel, re-hosted: one implementation,
     // painted off screen by the kit and blitted here (menu/ballsFace.ts).
     ctx.drawImage(renderBallsPanel(null), 0, 0, BALLS_W, BALLS_H);
-    buttonPlate(ctx, READY_BTN.x, READY_BTN.y, READY_BTN.w, READY_BTN.h, 'READY', UI.emberBright, this.loadout.hot);
+    ctaPlate(ctx, READY_BTN.x, READY_BTN.y, READY_BTN.w, READY_BTN.h, 'READY', { hover: this.loadout.hot ? 1 : 0, px: 36 });
     this.loadout.tex.needsUpdate = true;
   }
 
