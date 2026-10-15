@@ -49,7 +49,7 @@ import {
   renderNewsPage,
 } from '../menu/menu.js';
 import { createNameKeyboard, type NameKeyboard } from '../menu/keyboard.js';
-import { installWrap, wrapNav, type Wrap } from '../menu/wrap.js';
+import { installWrap, showCampaign, wrapNav, type Wrap } from '../menu/wrap.js';
 import { clearReportSent, markReportSent, musicVolFromU, setCreditsOpen, sfxVolFromU } from '../menu/settingsFace.js';
 // MENUS 3: the modals are kit faces now, each in its own module.
 import { lockerFace, LOCKER_H, LOCKER_W } from '../menu/lockerFace.js';
@@ -736,14 +736,14 @@ export class MenuSystem extends createSystem({}) {
       return;
     }
 
-    // Customisation, the campaign line-up, the arcade lobby and the paint
-    // bay are modal: the lobby arc swaps out for the open panel. (The
+    // Customisation, the campaign's launch card / belt rack, the arcade
+    // lobby and the paint bay are modal: the lobby arc swaps out for the open panel. (The
     // paper and settings are TABS on the wings now — MENUS 2.) The shop is
     // a sub-modal of customisation: while it's up the customise plate (and
     // its mirror/loadout) step aside for the shop face.
     const shopOpen = customization.open && customization.shopOpen && !app.paintBayOpen;
     const modalCustom = customization.open && !customization.shopOpen && !app.paintBayOpen;
-    const modalCampaign = app.campaignOpen;
+    const modalCampaign = campaignModal.pending !== null;
     const modalLobby = app.lobbyMode !== null;
     const modalReader = app.readerOpen;
     const arcUp = !customization.open && !modalCampaign && !modalLobby && !app.paintBayOpen && !modalReader;
@@ -1085,11 +1085,7 @@ export class MenuSystem extends createSystem({}) {
         app.state = 'training';
         break;
       case 'open-campaign':
-        app.campaignOpen = true;
-        break;
-      case 'campaign-close':
-        app.campaignOpen = false;
-        campaignModal.pending = null; // never reopen onto a stale pop-up
+        showCampaign();
         break;
       case 'open-raid':
         // Rejoining the modal mid-lobby (e.g. after a look around) lands you
@@ -2388,7 +2384,7 @@ export class MenuSystem extends createSystem({}) {
           app.lobbyMode = 'raid';
           app.lobbyView = 'browser';
         } else if (app.mode === 'campaign') {
-          app.campaignOpen = true;
+          showCampaign();
         }
         app.state = 'menu'; // training tears down unsaved; bouts end here
         this.applyState();

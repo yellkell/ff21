@@ -45,18 +45,22 @@ const check = (name, ok, detail) => {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
-// Tutorial done, a callsign claimed (or the keyboard pops first), ONLY BOTS
-// on — so the quick match drops straight onto a bot.
+// Tutorial done and a callsign claimed (or the keyboard pops first).
 await page.addInitScript(() => {
   localStorage.setItem('ff-tutorial-done', '1');
   localStorage.setItem('ff-player-name', 'PROBE');
-  localStorage.setItem('ff-onlybots', '1');
 });
 await page.goto(base, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => page.goto(base));
 await page.waitForTimeout(1000);
 await page.click('#enter-vr', { timeout: 180_000 }); // it lights once the district has loaded
 await page.waitForFunction(() => document.body.classList.contains('app-entered'), { timeout: 20000 });
 await page.waitForFunction(() => !!window.__ff2?.bot, { timeout: 10000 });
+// ONLY BOTS on (it has no menu toggle for now) — so the quick match drops
+// straight onto a bot.
+await page.evaluate(async () => {
+  const { app } = await import('/src/menu/appState.ts');
+  app.onlyBots = true;
+});
 
 console.log('=== the ladder: one row per rank, sharper every step ===');
 const ladder = await page.evaluate(() => {

@@ -59,7 +59,6 @@ export type MenuAction =
   | 'arcade-ffa'
   /** Open / close the campaign line-up; start a stage / a timed run. */
   | 'open-campaign'
-  | 'campaign-close'
   | 'campaign-speedrun'
   | 'campaign-hardcore'
   /** The pick-your-damage launch pop-up the run buttons open. */

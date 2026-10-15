@@ -17,10 +17,12 @@
  * panel — every championship belt (campaign/belts.ts), yours lit, the rest
  * as ghosts, each saying on hover what it is or how to win it.
  *
- * Pressing a run opens THE LAUNCH CARD rather than firing: the run's name,
- * the four damage tiers, the belt the run is for at that tier, and START.
- * While a card or the rack is up it owns every click on the panel — the face
- * returns its buttons and nothing else, so there is no clicking through it.
+ * The career is the PLAY slab's CAMPAIGN tab (menu/wrap.ts wears
+ * careerFace, scaled to fit). Pressing a run opens THE LAUNCH CARD rather
+ * than firing: the run's name, the four damage tiers, the belt the run is
+ * for at that tier, and START. The card and THE RACK stand on their own
+ * panel (campaignFace), up only while campaignModal.pending is set — it owns
+ * every click while it is up, so there is no clicking through it.
  */
 
 import { KIT, type PanelButton } from '../ui/kit/panel.js';
@@ -58,6 +60,11 @@ const RUN_GAP = 12;
 const RUN_W = 420;
 const GOOP_GREEN = '#36e05a';
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+
+/** The career's drawn extent (the hovered card's tooltip to the last run),
+ *  so the CAMPAIGN tab can fit it to the slab. */
+export const CAREER_TOP = CARD_Y - 44;
+export const CAREER_BOTTOM = RUN_Y + RUN_H * 3 + RUN_GAP * 2;
 
 /** What's up over the career: a run's LAUNCH card, THE RACK, or nothing. */
 export const campaignModal = { pending: null as 'gauntlet' | 'hardcore' | 'goopliath' | 'belts' | null };
@@ -101,10 +108,17 @@ function tooltip(g: CanvasRenderingContext2D, text: string, cx: number, y: numbe
 
 const RACK_BTN = { x: M + RUN_W + 40, y: RUN_Y, w: CAMP_W - M - (M + RUN_W + 40), h: RUN_H * 2 - 6 };
 
+/** The pop-up panel: a run's LAUNCH card or THE RACK (the career itself
+ *  lives on the CAMPAIGN tab). */
 export function campaignFace(): CampaignFace {
   if (campaignModal.pending === 'belts') return rackFace();
   if (campaignModal.pending) return launchFace(campaignModal.pending);
+  return careerFace();
+}
 
+/** THE CAREER: the seven cards, the three runs and the rack button, in
+ *  CAMP_W × CAMP_H space. */
+export function careerFace(): CampaignFace {
   const buttons: PanelButton[] = [];
   for (let i = 0; i < BOUTS; i++) {
     buttons.push({
@@ -154,7 +168,6 @@ export function campaignFace(): CampaignFace {
       disabled: !goop,
     },
     { id: 'campaign-belts', label: '', ghost: true, ...RACK_BTN },
-    { id: 'campaign-close', label: 'CLOSE', x: CAMP_W - M - 240, y: CAMP_H - 116, w: 240, h: 84, small: true },
   );
 
   return {
@@ -471,7 +484,7 @@ function launchFace(kind: 'gauntlet' | 'hardcore' | 'goopliath'): CampaignFace {
     title: 'THE TITAN GAUNTLET',
     buttons,
     body: (g) => {
-      // The line-up is still behind: dim it, then stand the card on top.
+      // Dim the panel, then stand the card on top.
       g.fillStyle = 'rgba(4,3,2,0.72)';
       g.fillRect(0, 0, CAMP_W, CAMP_H);
       g.save();

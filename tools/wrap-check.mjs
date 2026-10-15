@@ -113,16 +113,15 @@ console.log('\n=== the slab: PLAY / PRACTICE / SOCIAL ===');
 let nav = await wrap(`nav()`);
 check('the slab opens on FIGHT', nav.center === 'fight' && !nav.club, JSON.stringify(nav));
 check('the TOWN wing opens on NEWS (the paper first)', nav.town === 'news', nav.town);
-check('FIGHT: modes + the demoted ONLY BOTS, no BACK', has(slab, 'quick-match', 'ranked-match', 'private-open', 'arcade-2v2', 'arcade-ffa', 'toggle-onlybots') && !slab.includes('wrap:back'), notTabs(slab).join(','));
-save('fight', await wrap(`snap('train')`));
-await wrap(`act('wrap:play-titans')`);
+check('PLAY opens on the CAMPAIGN tab, the career right there', nav.play === 'campaign' && has(slab, 'campaign-0', 'campaign-speedrun', 'campaign-belts') && !slab.includes('open-campaign'), notTabs(slab).join(','));
+save('campaign', await wrap(`snap('train')`));
+await wrap(`act('wrap:play-duels')`);
 slab = await wrap(`buttons('train')`);
-nav = await wrap(`nav()`);
-check('PLAY / TITANS groups campaign and co-op raid', nav.play === 'titans' && has(slab, 'open-campaign', 'open-raid') && !has(slab, 'start-tutorial'), slab.join(','));
-save('titans', await wrap(`snap('train')`));
+check('FIGHT: modes, no BOTS ONLY toggle, no BACK', has(slab, 'quick-match', 'ranked-match', 'private-open', 'arcade-2v2', 'arcade-ffa') && !slab.includes('toggle-onlybots') && !slab.includes('wrap:back'), notTabs(slab).join(','));
+save('fight', await wrap(`snap('train')`));
 await wrap(`act('wrap:play-rave')`);
 slab = await wrap(`buttons('train')`);
-check('PLAY / RAVE has its own entry', slab.includes('open-rave') && !slab.includes('open-raid'), slab.join(','));
+check('PLAY / RAVE RAID / CO-OP RAIDS lists the rave and the co-op raid', has(slab, 'open-rave', 'open-raid') && !slab.includes('toggle-onlybots') && !slab.includes('campaign-0'), slab.join(','));
 save('rave', await wrap(`snap('train')`));
 await wrap(`act('wrap:tab-practice')`);
 slab = await wrap(`buttons('train')`);
@@ -177,17 +176,14 @@ await page.evaluate(async () => {
   window.__ff2.wrap.redraw();
 });
 const pending = await wrap(`live('train')`);
-check('pending search keeps Cancel visible and blocks other activities', pending.includes('cancel-queue') && !pending.includes('wrap:tab-practice') && !pending.includes('wrap:tab-club') && !pending.includes('wrap:play-titans'));
+check('pending search keeps Cancel visible and blocks other activities', pending.includes('cancel-queue') && !pending.includes('wrap:tab-practice') && !pending.includes('wrap:tab-club') && !pending.includes('wrap:play-campaign'));
 await wrap(`act('wrap:tab-practice')`);
 await wrap(`act('wrap:play-rave')`);
 check('pending search also guards direct navigation', (await wrap(`nav()`)).center === 'fight' && (await wrap(`nav()`)).play === 'duels');
 await wrap(`act('cancel-queue')`);
 
-await wrap(`act('toggle-onlybots')`);
-await wrap(`act('wrap:play-titans')`);
-check('bots-only explains the raid restriction and offers its toggle', !(await wrap(`live('train')`)).includes('open-raid') && (await wrap(`live('train')`)).includes('toggle-onlybots'));
-await wrap(`act('toggle-onlybots')`);
-check('online raid becomes available again', (await wrap(`live('train')`)).includes('open-raid'));
+await wrap(`act('wrap:play-rave')`);
+check('online raid is open', (await wrap(`live('train')`)).includes('open-raid'));
 await wrap(`act('wrap:play-duels')`);
 
 await wrap(`act('wrap:tab-club')`);
@@ -429,11 +425,10 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
 
   await wrap(`act('open-campaign')`);
   await page.waitForTimeout(400);
-  ids = await m(`buttons('campaign')`);
-  check('THE TITAN GAUNTLET: five cards, three runs, a way out', has(ids, 'campaign-0', 'campaign-4', 'campaign-speedrun', 'campaign-hardcore', 'campaign-goopliath', 'campaign-close'), ids.join(','));
-  await shot('campaign');
+  ids = await m(`buttons('train')`);
+  check('THE TITAN GAUNTLET on the CAMPAIGN tab: the cards and three runs', has(ids, 'campaign-0', 'campaign-4', 'campaign-speedrun', 'campaign-hardcore', 'campaign-goopliath'), ids.join(','));
   // A run opens the LAUNCH card, and it owns every click while it is up.
-  const wasLive = (await m(`live('campaign')`)).includes('campaign-0');
+  const wasLive = (await m(`live('train')`)).includes('campaign-0');
   await wrap(`act('campaign-speedrun')`);
   await page.waitForTimeout(300);
   ids = await m(`buttons('campaign')`);
@@ -442,8 +437,7 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
   await shot('campaign', 'campaign-launch');
   await wrap(`act('campaign-launch-cancel')`);
   await page.waitForTimeout(200);
-  check('cancelling hands the line-up back', (await m(`buttons('campaign')`)).includes('campaign-0') && wasLive);
-  await wrap(`act('campaign-close')`);
+  check('cancelling hands the line-up back', (await m(`live('train')`)).includes('campaign-0') && wasLive);
 
   await wrap(`act('open-raid')`);
   await page.waitForTimeout(500);

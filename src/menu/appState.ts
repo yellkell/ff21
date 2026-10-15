@@ -168,9 +168,6 @@ export const app: {
   /** THE PAINT BAY is open over the lobby (modal, like customisation —
    *  the locker mirror stands beside it so placement is live). */
   paintBayOpen: boolean;
-  /** The ARCADE campaign line-up (the titan sub-menu) is open over the lobby
-   *  (modal, like customisation). Campaign bouts return here, win or lose. */
-  campaignOpen: boolean;
   /** THE READER: the paper held up large in front of you, a modal over the
    *  arc — opened by tapping the page on the TOWN wing. */
   readerOpen: boolean;
@@ -279,14 +276,15 @@ export const app: {
   venueStatus: '',
   // Off unless the player has explicitly switched it on.
   shootBack: localStorage.getItem('ff-shootback') === '1',
-  onlyBots: localStorage.getItem('ff-onlybots') === '1',
+  // BOTS ONLY has no toggle on the menu for now, so it starts off — a
+  // player who'd switched it on isn't left locked out of ranked and raids.
+  onlyBots: false,
   searching: -1,
   pubCount: -1,
   pubRegionCounts: {},
   spectating: false,
   infoView: 'root',
   paintBayOpen: false,
-  campaignOpen: false,
   readerOpen: false,
   campaignStage: 0,
   campaignMode: 'single',
