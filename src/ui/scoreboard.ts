@@ -493,7 +493,8 @@ export function createScoreboard(scene: Scene): Scoreboard {
 
   // The classic pair hangs side by side behind/above the rival's pad,
   // barely angled inward — read your card and theirs without turning.
-  const BOARD_Y = 2.18; // lifted clear of the far platform's sight line
+  const BOARD_Y = 2.48; // lifted well clear of the far platform's sight line
+  const BOARD_X = 1.3; // each card's centre off the midline — a wide slot for the plaque
   const BOARD_Z = -ARENA_GAP - 1.1;
   const CARD_W = 1.5;
   const CARD_H = 0.72;
@@ -503,10 +504,10 @@ export function createScoreboard(scene: Scene): Scoreboard {
     return b;
   };
   const left = card(CARD_W, CARD_H); // YOU — ember
-  left.mesh.position.set(-1.0, BOARD_Y, BOARD_Z);
+  left.mesh.position.set(-BOARD_X, BOARD_Y, BOARD_Z);
   left.mesh.rotation.y = 0.18;
   const right = card(CARD_W, CARD_H); // primary opponent — blue
-  right.mesh.position.set(1.0, BOARD_Y, BOARD_Z);
+  right.mesh.position.set(BOARD_X, BOARD_Y, BOARD_Z);
   right.mesh.rotation.y = -0.18;
 
   // The columns: a teammate above your card, extra opponents above theirs.
@@ -543,7 +544,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   // (The verdict board keeps its old untagged texture: its art plates were
   // tuned against it.)
   const centre = makeBoard(2.2, 1.05, W, H, false);
-  const CENTRE_Y = 3.06;
+  const CENTRE_Y = 3.36;
   const CENTRE_Z = -ARENA_GAP - 1.15;
   centre.mesh.position.set(0, CENTRE_Y, CENTRE_Z);
   centre.mesh.renderOrder = 12;
@@ -574,7 +575,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   }
   const HANG: Record<'classic' | 'stacked', Hang> = {
     classic: { y: BOARD_Y, step: 0.62, cardScale: 1, centreY: CENTRE_Y, centreScale: 1 },
-    stacked: { y: 2.04, step: 0.63, cardScale: 0.8, centreY: 3.5, centreScale: 0.8 },
+    stacked: { y: 2.34, step: 0.63, cardScale: 0.8, centreY: 3.8, centreScale: 0.8 },
   };
   let hang: Hang = HANG.classic;
   let hangKey = '';
@@ -592,7 +593,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
       [extraRightA, 1, 1],
       [extraRightB, 1, 2],
     ] as const) {
-      b.mesh.position.set(sign * 1.0, y + row * step, BOARD_Z);
+      b.mesh.position.set(sign * BOARD_X, y + row * step, BOARD_Z);
       b.mesh.scale.setScalar(cardScale);
     }
     plaque.mesh.position.set(0, y + 0.14, BOARD_Z);
@@ -858,7 +859,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   const placePadCard = (board: Board, slot: number): void => {
     const p = localLayout()[slot]?.pos;
     if (!p) return;
-    board.mesh.position.set(p[0], 2.05, p[2]);
+    board.mesh.position.set(p[0], 2.35, p[2]);
     // A plane's face is +Z; turn it to look back at the origin.
     board.mesh.rotation.y = Math.atan2(-p[0], -p[2]);
   };
