@@ -386,6 +386,9 @@ function drawContentPlate(ctx: CanvasRenderingContext2D, img: HTMLImageElement, 
   drawPlateArt(ctx, img, W, H, targetH, PLATE_MARGIN);
 }
 
+/** The clock's digits on the plaque canvas (px). */
+const CLOCK_PX = 88;
+
 function fmtTime(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -493,8 +496,8 @@ export function createScoreboard(scene: Scene): Scoreboard {
 
   // The classic pair hangs side by side behind/above the rival's pad,
   // barely angled inward — read your card and theirs without turning.
-  const BOARD_Y = 2.48; // lifted well clear of the far platform's sight line
-  const BOARD_X = 1.3; // each card's centre off the midline — a wide slot for the plaque
+  const BOARD_Y = 2.78; // lifted well clear of the far platform's sight line
+  const BOARD_X = 1.6; // each card's centre off the midline — a wide slot for the plaque
   const BOARD_Z = -ARENA_GAP - 1.1;
   const CARD_W = 1.5;
   const CARD_H = 0.72;
@@ -529,14 +532,15 @@ export function createScoreboard(scene: Scene): Scoreboard {
   for (const e of extras) e.mesh.visible = false;
 
   // THE ROUND PLAQUE — round, first-to, and the clock, floating in the slot
-  // between the two cards.
-  const plaque = makeBoard(0.62, 0.36, 352, 204);
+  // between the two cards. Hung big: the clock's digits stand taller than a
+  // card's health number (~0.24 m against ~0.18 m).
+  const plaque = makeBoard(0.96, 0.556, 352, 204);
   plaque.mesh.position.set(0, BOARD_Y + 0.14, BOARD_Z);
 
   // FFA STANDINGS — a strip over the plaque ranking the four (hidden while
   // a verdict is up: the verdict owns that air).
   const standings = makeBoard(1.56, 0.53, 704, 240);
-  standings.mesh.position.set(0, BOARD_Y + 0.66, BOARD_Z);
+  standings.mesh.position.set(0, BOARD_Y + 0.72, BOARD_Z);
   standings.mesh.visible = false;
 
   // Headline strip (KO, YOU WIN...) floating just above the boards.
@@ -544,7 +548,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   // (The verdict board keeps its old untagged texture: its art plates were
   // tuned against it.)
   const centre = makeBoard(2.2, 1.05, W, H, false);
-  const CENTRE_Y = 3.36;
+  const CENTRE_Y = 3.66;
   const CENTRE_Z = -ARENA_GAP - 1.15;
   centre.mesh.position.set(0, CENTRE_Y, CENTRE_Z);
   centre.mesh.renderOrder = 12;
@@ -575,7 +579,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   }
   const HANG: Record<'classic' | 'stacked', Hang> = {
     classic: { y: BOARD_Y, step: 0.62, cardScale: 1, centreY: CENTRE_Y, centreScale: 1 },
-    stacked: { y: 2.34, step: 0.63, cardScale: 0.8, centreY: 3.8, centreScale: 0.8 },
+    stacked: { y: 2.64, step: 0.63, cardScale: 0.8, centreY: 4.1, centreScale: 0.8 },
   };
   let hang: Hang = HANG.classic;
   let hangKey = '';
@@ -597,7 +601,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
       b.mesh.scale.setScalar(cardScale);
     }
     plaque.mesh.position.set(0, y + 0.14, BOARD_Z);
-    standings.mesh.position.set(0, y + 0.66, BOARD_Z);
+    standings.mesh.position.set(0, y + 0.72, BOARD_Z);
     centre.mesh.position.y = hang.centreY;
     glow.position.y = hang.centreY;
   };
@@ -699,14 +703,14 @@ export function createScoreboard(scene: Scene): Scoreboard {
     ctx.textBaseline = 'middle';
     // The clock in a small holo pill, its tube cyan, then amber and red as
     // the round runs out; the round it belongs to tagged above the digits.
-    // Sized to the gap between the two cards (the board is 0.62 m; the
-    // gap ~0.5 m), so the pill never laps a card's edge.
+    // Sized to the gap between the two cards (the board is 0.96 m; the
+    // gap ~1.7 m), so the pill never laps a card's edge.
     const colour = hot ? KIT.danger : warn ? KIT.warn : KIT.accent;
     clockGlass(ctx, w, colour);
     label(ctx, `ROUND ${state.round}`, w / 2, 68, 600, 20, KIT.faint, 5, 'center');
     ctx.shadowColor = colour;
     ctx.shadowBlur = 16;
-    const px = text === 'READY' ? 44 : 76;
+    const px = text === 'READY' ? 52 : CLOCK_PX;
     label(ctx, text, w / 2, 116, 700, px, live && (hot || warn) ? colour : KIT.text, text === 'READY' ? 6 : 2, 'center');
     ctx.shadowBlur = 0;
     tex.needsUpdate = true;
@@ -859,7 +863,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   const placePadCard = (board: Board, slot: number): void => {
     const p = localLayout()[slot]?.pos;
     if (!p) return;
-    board.mesh.position.set(p[0], 2.35, p[2]);
+    board.mesh.position.set(p[0], 2.65, p[2]);
     // A plane's face is +Z; turn it to look back at the origin.
     board.mesh.rotation.y = Math.atan2(-p[0], -p[2]);
   };
@@ -959,7 +963,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
         label(ctx, 'AIM', w / 2, 68, 600, 20, KIT.faint, 5, 'center');
         ctx.shadowColor = KIT.accent;
         ctx.shadowBlur = 16;
-        label(ctx, fmtTime(training.timeLeft), w / 2, 116, 700, 76, KIT.text, 2, 'center');
+        label(ctx, fmtTime(training.timeLeft), w / 2, 116, 700, CLOCK_PX, KIT.text, 2, 'center');
         ctx.shadowBlur = 0;
         tex.needsUpdate = true;
       }
