@@ -80,16 +80,42 @@ function firstAudibleSecond(buffer: AudioBuffer): number {
   // and stray clicks in their "silent" head (Smoldering has a -66 dB blip in
   // its first quarter-second, followed by 1.5s of true zeros), so the head
   // ends at the first WINDOW with sustained energy, not the first hot sample.
+  //
+  // A loud BLIP alone isn't the start either: "grind" opens on a 0.1s click
+  // (-33 dB, well over the threshold) and then 1.5s of true zeros before the
+  // music — so an audible stretch that dies into a long gap within its first
+  // moments is skipped, and the scan resumes after the gap.
   const data = buffer.getChannelData(0);
   const win = Math.max(1, Math.floor(buffer.sampleRate * 0.05));
   const threshold = 0.003; // window RMS ~-50 dBFS — music clears it, dither doesn't
-  for (let s = 0; s < data.length; s += win) {
+  const BLIP_WINDOWS = 6; // ≤0.3s of sound…
+  const GAP_WINDOWS = 15; // …then ≥0.75s of silence = an export click, not the downbeat
+  const MAX_HEAD = 6; // seconds — never hunt deeper than this into a track
+  const windows = Math.ceil(data.length / win);
+  const audible = (w: number): boolean => {
+    const s = w * win;
     const end = Math.min(s + win, data.length);
     let sum = 0;
     for (let i = s; i < end; i++) sum += data[i] * data[i];
-    if (Math.sqrt(sum / (end - s)) > threshold) {
-      return Math.max(0, s / buffer.sampleRate - 0.05); // keep a 50ms pre-roll
+    return Math.sqrt(sum / (end - s)) > threshold;
+  };
+  let w = 0;
+  while (w < windows) {
+    if (!audible(w)) {
+      w += 1;
+      continue;
     }
+    // Sound at w. Find where it next goes quiet, and how long that quiet lasts.
+    let quiet = w + 1;
+    while (quiet < windows && quiet - w <= BLIP_WINDOWS && audible(quiet)) quiet += 1;
+    let resume = quiet;
+    if (quiet - w <= BLIP_WINDOWS) while (resume < windows && !audible(resume)) resume += 1;
+    const blip = quiet - w <= BLIP_WINDOWS && resume - quiet >= GAP_WINDOWS && resume < windows;
+    if (blip && (resume * win) / buffer.sampleRate < MAX_HEAD) {
+      w = resume; // a click then a gap — the music starts after the gap
+      continue;
+    }
+    return Math.max(0, (w * win) / buffer.sampleRate - 0.05); // keep a 50ms pre-roll
   }
   return 0; // all-silent (or empty) — treat as headless
 }
@@ -108,6 +134,12 @@ function loadBuffer(url: string): Promise<LoadedTrack | null> {
     });
   }
   return pending;
+}
+
+/** Fetch + decode a track into the shared cache without a MusicTrack, so a
+ *  later play() of that URL starts at once. Resolves true when it's ready. */
+export function preloadMusic(url: string): Promise<boolean> {
+  return loadBuffer(url).then((loaded) => loaded !== null);
 }
 
 export class MusicTrack {
