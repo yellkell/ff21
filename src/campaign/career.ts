@@ -13,7 +13,8 @@
  *
  * The two DEFENSES are rematches against SUPERCHARGED machines: bigger,
  * tougher, quicker, and armed with the elite attacks (nova, seesaw, surge)
- * the Hard tier spreads to everyone. Belts are kept forever — a lost
+ * the Hard tier spreads to everyone. VULTURE+ has also learned the
+ * SPINNING BACKFIST (campaign/melee.ts). Belts are kept forever — a lost
  * defense is just a rematch to win — and every defense won is counted.
  * Winning the last bout for the first time pays CAREER_PRIZE iron-dollars.
  *
@@ -23,6 +24,7 @@
  */
 
 import type { AttackKind, BossDef } from './bosses.js';
+import type { MeleeMove } from './melee.js';
 
 export interface Supercharge {
   /** Size, toughness, and how much quicker its turns and windups come. */
@@ -30,6 +32,8 @@ export interface Supercharge {
   health: number;
   cooldown: number;
   charge: number;
+  /** Reaches it has learned since you last met it. */
+  melee?: MeleeMove[];
 }
 
 export interface Bout {
@@ -56,7 +60,14 @@ export const CAREER: readonly Bout[] = [
     title: 'TITLE DEFENSE',
     short: 'DEFENSE',
     boss: 2,
-    charged: { scale: 1.3, health: 1.5, cooldown: 0.7, charge: 0.85 },
+    // …and it has learned GOLIATH's SPINNING BACKFIST.
+    charged: {
+      scale: 1.3,
+      health: 1.5,
+      cooldown: 0.7,
+      charge: 0.85,
+      melee: [{ path: 'spinback', arm: 0, windup: 1.2, strike: 0.48, recover: 0.7 }],
+    },
     defends: 'intercontinental',
   },
   { title: 'WORLD CHAMPIONSHIP', short: 'WORLD', boss: 4, wins: 'world' },
@@ -90,5 +101,6 @@ export function supercharge(def: BossDef, s: Supercharge): BossDef {
     charge,
     grammarCharge: def.grammarCharge === undefined ? undefined : def.grammarCharge * s.charge,
     weights,
+    extraMelee: s.melee ? [...(def.extraMelee ?? []), ...s.melee] : def.extraMelee,
   };
 }

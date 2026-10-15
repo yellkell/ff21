@@ -24,12 +24,12 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
     Five-titan saves are remapped onto the career.
   - **Winning the career** (bout VII, first time) pays a 1500 iron-dollar
     purse.
-  - **23 belts**: one per career title (AMATEUR, LOCAL, NATIONAL,
-    INTERCONTINENTAL, WORLD); TIDE for first defeating GOOPLIATH; RIPTIDE
-    and MAELSTROM for his fight on Hard and Blazing; and one per tier
-    (Normal · Hard · Blazing) for the gauntlet, hardcore, the titan raid,
-    the hardcore raid and the GOOPLIATH raid. Belts are kept forever;
-    defenses are counted on their belt.
+  - **23 belts**, each called what it is: one per career title (THE
+    AMATEUR BELT … THE WORLD BELT); THE GOOPLIATH BELT for first defeating
+    him, plus his fight on Hard and Blazing; and one per tier (Normal ·
+    Hard · Blazing) for the gauntlet, hardcore, the titan raid, the
+    hardcore raid and the GOOPLIATH raid — THE HARD GAUNTLET BELT and so
+    on. Belts are kept forever; defenses are counted on their belt.
   - **Neon** (`ui/beltArt.ts`): dark see-through glass with every edge a
     lit tube — strap, stitch line, side plates with the titans' emblems in
     light, a centre plate (octagon, crest or sunburst by tier), a glowing

@@ -3668,7 +3668,7 @@ export class CampaignSystem extends createSystem({
   private startMelee(path?: MeleePath): void {
     const rig = this.rig;
     if (!rig?.reach || !rig.fistWorld || this.def.style === 'goop') return;
-    const moves = MELEE[this.def.style];
+    const moves = [...MELEE[this.def.style], ...(this.def.extraMelee ?? [])];
     const move = (path && moves.find((m) => m.path === path)) || pickMelee(moves, this.meleeLast);
     this.meleeLast = move.path;
     const arms: (0 | 1)[] = move.arm === 'both' ? [0, 1] : [move.arm];
@@ -4782,7 +4782,7 @@ export class CampaignSystem extends createSystem({
         if (this.raid()) campaignProgress.raidGoopliathCleared = true;
         else campaignProgress.goopliathCleared = true;
         saveCampaignProgress();
-        if (!this.raid()) titles.push(beltOf('tide')!);
+        if (!this.raid()) titles.push(beltOf('goopliath')!);
       }
       addCoins(CURRENCY.perGame * (firstClear ? 2 : 1));
     } else if (this.raid()) {
@@ -4801,7 +4801,7 @@ export class CampaignSystem extends createSystem({
         if (firstClear) {
           campaignProgress.goopliathCleared = true;
           saveCampaignProgress();
-          titles.push(beltOf('tide')!);
+          titles.push(beltOf('goopliath')!);
         }
         addCoins(CURRENCY.perGame * (firstClear ? 2 : 1)); // off the boards
       } else {
@@ -5144,7 +5144,7 @@ export class CampaignSystem extends createSystem({
         const b = this.freshBelt;
         const d = this.defendedBelt;
         if (b) {
-          this.hud.title(beltName(b), `NEW BELT · ${b.feat}${this.beltNote}`, b.strap);
+          this.hud.title(beltName(b), `NEW BELT${b.feat ? ` · ${b.feat}` : ''}${this.beltNote}`, b.strap);
           playCash();
         } else if (d) {
           this.hud.title(`${d.belt.name} BELT DEFENDED`, `DEFENSE ×${d.count}${this.beltNote}`, d.belt.strap);

@@ -324,7 +324,7 @@ function padlock(g: CanvasRenderingContext2D, cx: number, cy: number, s = 1): vo
 /* ── THE RACK: every belt ─────────────────────────────────────────────── */
 
 const RACK_ROWS: Array<{ label: string; ids: string[] }> = [
-  { label: 'THE CAREER', ids: ['amateur', 'local', 'national', 'intercontinental', 'world', 'tide'] },
+  { label: 'THE CAREER', ids: ['amateur', 'local', 'national', 'intercontinental', 'world', 'goopliath'] },
   { label: 'THE RUNS', ids: ['gauntlet-normal', 'hardcore-normal', 'gauntlet-hard', 'hardcore-hard', 'gauntlet-blazing', 'hardcore-blazing'] },
   { label: 'THE RAIDS', ids: ['raid-normal', 'raidhc-normal', 'raid-hard', 'raidhc-hard', 'raid-blazing', 'raidhc-blazing'] },
   { label: 'GOOPLIATH', ids: ['goopliath-hard', 'goopliath-blazing', 'goopraid-normal', 'goopraid-hard', 'goopraid-blazing'] },
@@ -401,9 +401,9 @@ const LAUNCH = { x: CAMP_W / 2 - 450, y: 150, w: 900, h: 480 };
 function drawStake(g: CanvasRenderingContext2D, kind: 'gauntlet' | 'hardcore' | 'goopliath'): void {
   const held = heldBelts(myClearTiers());
   let belt = beltFor(kind, app.difficulty);
-  // GOOPLIATH pays tier belts on Hard and Blazing; below that, his TIDE
+  // GOOPLIATH pays tier belts on Hard and Blazing; below that, his own
   // belt until you hold it.
-  if (!belt && kind === 'goopliath' && !held.has('tide')) belt = beltOf('tide') ?? null;
+  if (!belt && kind === 'goopliath' && !held.has('goopliath')) belt = beltOf('goopliath') ?? null;
   const cy = LAUNCH.y + 292;
   g.textBaseline = 'middle';
   if (!belt) {

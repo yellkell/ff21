@@ -7,28 +7,24 @@
  * plate shape: an octagon (Normal), a crest (Hard) or a sunburst (Blazing).
  * Hardcore belts burn.
  *
+ *  Each is called what it is — "THE AMATEUR BELT", "THE HARD GAUNTLET BELT":
+ *
  *  THE CAREER (campaign/career.ts) — a title for each bout that wins one:
- *   1  AMATEUR            CHROMEHOOK, bout I
- *   2  LOCAL              PISTONKAISER, bout II
- *   3  NATIONAL           VULTURE, bout III
- *   4  INTERCONTINENTAL   JUGGERNAUT, bout IV (defended in bout V)
- *   5  WORLD              GOLIATH, bout VI (defended in bout VII)
- *  GOOPLIATH, solo:
- *   6  TIDE               the first time you defeat him (any tier)
- *   12 RIPTIDE / 18 MAELSTROM   his fight on Hard / Blazing
- *  THE RUNS AND RAIDS, one per tier (Normal · Hard · Blazing):
- *   gauntlet          IRONCLAD   · TITANSTEEL · SUNFORGED
- *   hardcore          BLOODIRON  · WARBRAND   · INFERNO
- *   titan raid        VANGUARD   · PHALANX    · LEGION
- *   hardcore raid     BLOODOATH  · DEATHGRIP  · ASHFALL
- *   GOOPLIATH raid    FLOODGATE  · UNDERTOW   · LEVIATHAN
+ *  AMATEUR (CHROMEHOOK, bout I), LOCAL (PISTONKAISER, II), NATIONAL
+ *  (VULTURE, III), INTERCONTINENTAL (JUGGERNAUT, IV; defended in V), WORLD
+ *  (GOLIATH, VI; defended in VII).
+ *  GOOPLIATH: his belt the first time you defeat him (any tier), and one
+ *  for his fight on Hard and on Blazing.
+ *  THE RUNS AND RAIDS, one per tier (Normal · Hard · Blazing): the
+ *  gauntlet, hardcore, the titan raid, the hardcore raid and the GOOPLIATH
+ *  raid.
  *
  * Rank is prestige: the profile shows the highest belt you hold, and syncs
  * its rank as `beltBest` so everyone else sees it on your card. Belts are
  * kept forever.
  *
  * WHICH YOU HOLD: tier belts are kept in the campaign save
- * (`campaignProgress.belts`); career belts and TIDE are read off the save's
+ * (`campaignProgress.belts`); career belts and the GOOPLIATH belt are read off the save's
  * own wins, so a bout won before belts existed still hands its belt over;
  * and the clear tiers the profile has always synced prove your best run and
  * raid belts.
@@ -42,7 +38,7 @@ export type BeltTier = 'normal' | 'hard' | 'blazing';
 export type PlateShape = 'octagon' | 'crest' | 'sun';
 /** The runs and fights that pay one belt per tier. */
 export type BeltFamily = 'gauntlet' | 'hardcore' | 'raid' | 'raidhc' | 'goopraid' | 'goopliath';
-export type BeltKind = 'career' | 'tide' | 'tier';
+export type BeltKind = 'career' | 'goop' | 'tier';
 
 export interface Belt {
   id: string;
@@ -51,11 +47,11 @@ export interface Belt {
   tier?: BeltTier;
   /** 1 … 23: the profile shows the highest you hold. */
   rank: number;
-  /** "IRONCLAD" — said as "THE IRONCLAD BELT". */
+  /** What it is: "HARD GAUNTLET" — said as "THE HARD GAUNTLET BELT". */
   name: string;
   /** What winning it makes you. */
   title: string;
-  /** How it was won (the tooltip) … */
+  /** How it was won, when the name doesn't already say (the tooltip) … */
   feat: string;
   /** … and how to win it (the rack's tooltip on one you don't hold yet). */
   goal: string;
@@ -105,7 +101,7 @@ function careerBelt(id: string, name: string, rank: number, plate: PlateShape, s
     rank,
     name,
     title: `${name} CHAMPION`,
-    feat: `WON THE ${name} TITLE FROM ${who}`,
+    feat: `WON FROM ${who}`,
     goal: `DEFEAT ${who} IN THE ${bout.title} TO WIN IT`,
     ribbon: name,
     plaque: 'CHAMPION',
@@ -119,17 +115,17 @@ function careerBelt(id: string, name: string, rank: number, plate: PlateShape, s
   };
 }
 
-const FAMILY: Record<BeltFamily, { ribbon: string; title: string; won: string; win: string; strap: string; gem: string; goop: boolean; flames: boolean }> = {
-  gauntlet: { ribbon: 'GAUNTLET', title: 'GAUNTLET CHAMPION', won: 'RAN THE GAUNTLET', win: 'RUN THE GAUNTLET', strap: CYAN, gem: WHITE, goop: false, flames: false },
-  hardcore: { ribbon: 'HARDCORE', title: 'HARDCORE CHAMPION', won: 'SURVIVED HARDCORE', win: 'SURVIVE HARDCORE', strap: RED, gem: AMBER, goop: false, flames: true },
-  raid: { ribbon: 'TITAN RAID', title: 'RAID CHAMPION', won: 'BEAT THE TITAN RAID', win: 'BEAT THE TITAN RAID', strap: VIOLET, gem: CYAN, goop: false, flames: false },
-  raidhc: { ribbon: 'HARDCORE RAID', title: 'HARDCORE RAID CHAMPION', won: 'BEAT THE HARDCORE RAID', win: 'BEAT THE HARDCORE RAID', strap: MAGENTA, gem: GOLD, goop: false, flames: true },
-  goopraid: { ribbon: 'GOOP RAID', title: 'TIDEBREAKER', won: 'BROKE THE GOOPLIATH RAID', win: 'BREAK THE GOOPLIATH RAID', strap: GOO, gem: LIME, goop: true, flames: false },
-  goopliath: { ribbon: 'GOOPLIATH', title: 'TIDE MASTER', won: 'DEFEATED GOOPLIATH', win: 'DEFEAT GOOPLIATH', strap: TEAL, gem: GOO, goop: true, flames: false },
+const FAMILY: Record<BeltFamily, { label: string; ribbon: string; win: string; strap: string; gem: string; goop: boolean; flames: boolean }> = {
+  gauntlet: { label: 'GAUNTLET', ribbon: 'GAUNTLET', win: 'RUN THE GAUNTLET', strap: CYAN, gem: WHITE, goop: false, flames: false },
+  hardcore: { label: 'HARDCORE', ribbon: 'HARDCORE', win: 'SURVIVE HARDCORE', strap: RED, gem: AMBER, goop: false, flames: true },
+  raid: { label: 'TITAN RAID', ribbon: 'TITAN RAID', win: 'BEAT THE TITAN RAID', strap: VIOLET, gem: CYAN, goop: false, flames: false },
+  raidhc: { label: 'HARDCORE RAID', ribbon: 'HARDCORE RAID', win: 'BEAT THE HARDCORE RAID', strap: MAGENTA, gem: GOLD, goop: false, flames: true },
+  goopraid: { label: 'GOOPLIATH RAID', ribbon: 'GOOP RAID', win: 'BEAT THE GOOPLIATH RAID', strap: GOO, gem: LIME, goop: true, flames: false },
+  goopliath: { label: 'GOOPLIATH', ribbon: 'GOOPLIATH', win: 'DEFEAT GOOPLIATH', strap: TEAL, gem: GOO, goop: true, flames: false },
 };
 
 /** A run's, raid's or fight's belt for one tier. */
-function tierBelt(family: BeltFamily, tier: BeltTier, rank: number, name: string): Belt {
+function tierBelt(family: BeltFamily, tier: BeltTier, rank: number): Belt {
   const f = FAMILY[family];
   const word = tier.toUpperCase();
   const goop = f.goop ? 5 : -1;
@@ -139,9 +135,9 @@ function tierBelt(family: BeltFamily, tier: BeltTier, rank: number, name: string
     family,
     tier,
     rank,
-    name,
-    title: f.title,
-    feat: `${f.won} ON ${word}`,
+    name: `${word} ${f.label}`,
+    title: `${f.label} CHAMPION`,
+    feat: '',
     goal: `${f.win} ON ${word} TO WIN IT`,
     ribbon: f.ribbon,
     plaque: word,
@@ -162,15 +158,15 @@ export const BELTS: readonly Belt[] = [
   careerBelt('intercontinental', 'INTERCONTINENTAL', 4, 'crest', MAGENTA, GOLD, CYAN),
   careerBelt('world', 'WORLD', 5, 'sun', BLUE, GOLD, RED),
   {
-    id: 'tide',
-    kind: 'tide',
+    id: 'goopliath',
+    kind: 'goop',
     rank: 6,
-    name: 'TIDE',
-    title: 'TIDE CHAMPION',
-    feat: 'DEFEATED GOOPLIATH',
+    name: 'GOOPLIATH',
+    title: 'GOOPLIATH CHAMPION',
+    feat: '',
     goal: 'DEFEAT GOOPLIATH TO WIN IT',
     ribbon: 'GOOPLIATH',
-    plaque: 'THE TIDE',
+    plaque: 'CHAMPION',
     emblem: 5,
     sides: [5, 5, 5, 5],
     plate: 'octagon',
@@ -179,23 +175,23 @@ export const BELTS: readonly Belt[] = [
     gem: GOO,
     flames: false,
   },
-  tierBelt('gauntlet', 'normal', 7, 'IRONCLAD'),
-  tierBelt('hardcore', 'normal', 8, 'BLOODIRON'),
-  tierBelt('raid', 'normal', 9, 'VANGUARD'),
-  tierBelt('raidhc', 'normal', 10, 'BLOODOATH'),
-  tierBelt('goopraid', 'normal', 11, 'FLOODGATE'),
-  tierBelt('goopliath', 'hard', 12, 'RIPTIDE'),
-  tierBelt('gauntlet', 'hard', 13, 'TITANSTEEL'),
-  tierBelt('hardcore', 'hard', 14, 'WARBRAND'),
-  tierBelt('raid', 'hard', 15, 'PHALANX'),
-  tierBelt('raidhc', 'hard', 16, 'DEATHGRIP'),
-  tierBelt('goopraid', 'hard', 17, 'UNDERTOW'),
-  tierBelt('goopliath', 'blazing', 18, 'MAELSTROM'),
-  tierBelt('gauntlet', 'blazing', 19, 'SUNFORGED'),
-  tierBelt('hardcore', 'blazing', 20, 'INFERNO'),
-  tierBelt('raid', 'blazing', 21, 'LEGION'),
-  tierBelt('raidhc', 'blazing', 22, 'ASHFALL'),
-  tierBelt('goopraid', 'blazing', 23, 'LEVIATHAN'),
+  tierBelt('gauntlet', 'normal', 7),
+  tierBelt('hardcore', 'normal', 8),
+  tierBelt('raid', 'normal', 9),
+  tierBelt('raidhc', 'normal', 10),
+  tierBelt('goopraid', 'normal', 11),
+  tierBelt('goopliath', 'hard', 12),
+  tierBelt('gauntlet', 'hard', 13),
+  tierBelt('hardcore', 'hard', 14),
+  tierBelt('raid', 'hard', 15),
+  tierBelt('raidhc', 'hard', 16),
+  tierBelt('goopraid', 'hard', 17),
+  tierBelt('goopliath', 'blazing', 18),
+  tierBelt('gauntlet', 'blazing', 19),
+  tierBelt('hardcore', 'blazing', 20),
+  tierBelt('raid', 'blazing', 21),
+  tierBelt('raidhc', 'blazing', 22),
+  tierBelt('goopraid', 'blazing', 23),
 ];
 
 export const beltOf = (id: string): Belt | undefined => BELTS.find((b) => b.id === id);
@@ -207,7 +203,7 @@ export function beltFor(family: BeltFamily, difficulty: Difficulty): Belt | null
   return beltOf(`${family}-${difficulty}`) ?? null;
 }
 
-/** "THE TITANSTEEL BELT". */
+/** "THE HARD GAUNTLET BELT". */
 export const beltName = (b: Belt): string => `THE ${b.name} BELT`;
 
 /** Title defenses won with a career belt. */
@@ -216,7 +212,7 @@ export const defensesOf = (b: Belt): number => campaignProgress.defenses[b.id] ?
 /** The full hover line: what it is, and how it was won. */
 export function beltTip(b: Belt, mine = false): string {
   const def = mine ? defensesOf(b) : 0;
-  return `${beltName(b)} · ${b.feat}${def ? ` · DEFENDED ×${def}` : ''}`;
+  return [beltName(b), b.feat, def ? `DEFENDED ×${def}` : ''].filter(Boolean).join(' · ');
 }
 
 /* ── which belts a player holds ───────────────────────────────────────── */
@@ -266,14 +262,14 @@ const highest = (belts: Iterable<Belt>): Belt | null => {
 export const bestBeltOfRow = (row: ClearTiers): Belt | null => highest(provenBy(row));
 
 /** Every belt YOU hold: the save's tier belts, a career belt for each title
- *  bout your save has won, TIDE, and what your profile's tiers prove. */
+ *  bout your save has won, GOOPLIATH's, and what your profile's tiers prove. */
 export function heldBelts(row: ClearTiers = {}): Set<string> {
   const held = new Set<string>();
   for (const id of campaignProgress.belts) if (beltOf(id)) held.add(id);
   CAREER.forEach((bout, i) => {
     if (bout.wins && campaignProgress.cleared[i]) held.add(bout.wins);
   });
-  if (campaignProgress.goopliathCleared) held.add('tide');
+  if (campaignProgress.goopliathCleared) held.add('goopliath');
   for (const b of provenBy(row)) held.add(b.id);
   return held;
 }

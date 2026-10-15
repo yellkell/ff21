@@ -28,6 +28,7 @@
  * behaviour lives in CampaignSystem.
  */
 
+import type { MeleeMove } from './melee.js';
 import {
   BoxGeometry,
   type BufferGeometry,
@@ -100,6 +101,9 @@ export interface BossDef {
   accent: number;
   /** Which bespoke chassis this titan wears. */
   style: TitanStyle;
+  /** Reaches it throws on top of its chassis's own (campaign/melee.ts
+   *  MELEE) — a supercharged titan has learned more. */
+  extraMelee?: MeleeMove[];
   /** Rig size multiplier; the duel boxer is roughly scale 1. */
   scale: number;
   health: number;
