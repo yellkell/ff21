@@ -18,6 +18,12 @@
  *           snapping arms down on the burst.
  *  donut  : arms thrown wide, then hauled in — the gather.
  *  duckdonut: the gather AND the limbo at once — get close and get small.
+ *  trident: he CONJURES a cyber trident out of his fist — its colour is
+ *           the pattern — cocks it over the ground the first blow takes,
+ *           and strikes on every blow: a swing to the side (cyan, the
+ *           halves left/right), a plunge in front of him or a thrust out
+ *           over the crowd (magenta, the halves toward/away from the
+ *           stage), a slash corner to corner (lime, the diagonals).
  *
  * While a move charges, everything of his that GLOWS burns WARN amber —
  * sticks, trim, and the lit sleeves and midriff — while his dark cloth
@@ -37,9 +43,10 @@
  */
 
 import { createSystem } from '@iwsdk/core';
-import type { MeshBasicMaterial, MeshStandardMaterial } from 'three';
-import { MC, RING, hueToColor, ringRadius, mcHueFor, mcVisitCount } from '../config.js';
+import { Quaternion, Vector3, type MeshBasicMaterial, type MeshStandardMaterial } from 'three';
+import { MC, RING, TRIDENT, hueToColor, ringRadius, mcHueFor, mcVisitCount } from '../config.js';
 import { arena } from '../arena/arena.js';
+import { CyberTrident } from '../arena/trident.js';
 import { CLUB as CLUB_LAYOUT } from '../club/config.js';
 import { ACCENT_REST, accentHex, buildDancer, type DancerPose, type DancerRig } from '../game/avatars.js';
 import { dressMc, type McSuit } from '../game/mcCostume.js';
@@ -59,13 +66,23 @@ const PLATTER_RAD_S = ((100 / 3) * Math.PI * 2) / 60;
 const STAND = 1.56;
 const DUCK = 0.98;
 
+const _up = new Vector3(0, 1, 0);
+const _q = new Quaternion();
+
+/** THE TRIDENT: beats the weapon takes to climb out of his fist, how long
+ *  a blow's white-hot flash lasts, and how fast it dissolves after the
+ *  last blow (reveal units a second). */
+const CONJURE_BEATS = 1.75;
+const FLASH_BEATS = 0.5;
+const DISSOLVE_RATE = 2.4;
+
 interface ActiveMime {
   cue: GestureCue;
   startBeat: number;
   dueBeat: number;
   /** How many follow-up landings this mime has been extended through — 0
-   *  while the wind-up is still the whole story. THE ROUTINE reads it to
-   *  know when the teaching is over and the hammering starts. */
+   *  while the wind-up is still the whole story. THE TRIDENT reads it to
+   *  know the conjure is over and the blows have started. */
   steps: number;
 }
 
@@ -89,6 +106,105 @@ const DECK_SPOT = { x: 0, y: CLUB_LAYOUT.stage.h, z: CLUB_LAYOUT.stage.z + 0.5, 
  *  wardrobe that never turned. */
 export const mcView = { hue: MC.hue, want: MC.hue, color: 0, screen: '', track: '', visit: 0 };
 
+/**
+ * THE TRIDENT's body language, pure so look-dev can pose it too. `hit` is
+ * this blow's quarter bitmask, `strike` 0..1 runs cock → blow, `conj` 0..1
+ * the conjure (1 once the weapon is out), `pump` the beat's throb. Writes
+ * the arms, the yaw/roll and the dip (the caller has already reset the
+ * rest of the pose) and RETURNS where the weapon points, rig-local (−z is
+ * toward the crowd): on every blow it points at the ground it takes.
+ * Platform-local +x is HIS left (he faces the crowd).
+ */
+export function tridentPose(
+  p: DancerPose,
+  hit: number,
+  strike: number,
+  conj: number,
+  pump: number,
+): [number, number, number] {
+  const mir = (side: number): number => -side;
+  // Where does this blow land? The doomed quarters' centre, as signs.
+  const b = (c: number): number => (hit >> c) & 1;
+  const dx = (b(1) + b(3) - b(0) - b(2)) / 2; // −1 dancer-left … +1 right
+  const dz = (b(2) + b(3) - b(0) - b(1)) / 2; // −1 toward the stage … +1 away
+  // Each blow runs cock → strike: where his trident fist is, and where the
+  // weapon points.
+  type V = [number, number, number];
+  let cock: V;
+  let blow: V;
+  let aimCock: V;
+  let aimBlow: V;
+  if (dz === 0 && dx !== 0) {
+    // SWING (cyan): raised high over the doomed side, chopped down onto it.
+    const s = mir(dx);
+    cock = [s * 0.42, 1.5, -0.1];
+    blow = [s * 0.6, 0.95, -0.4];
+    aimCock = [s * 0.35, 1, 0.1];
+    aimBlow = [s * 0.8, -0.55, -0.4];
+    p.yaw = s * (0.12 + strike * 0.22);
+  } else if (dx === 0 && dz !== 0) {
+    // THRUST (magenta) — the surge's front/back grammar: the half toward
+    // the stage is the ground in front of HIM, so he plunges the trident
+    // down there; the half away from the stage is behind the dancers, so
+    // he levels it and drives it out over the crowd.
+    if (dz < 0) {
+      cock = [0.14, 1.75, -0.05];
+      blow = [0.12, 1.0, -0.4];
+      aimCock = [0.05, 1, 0.15];
+      aimBlow = [0, -1, -0.45];
+    } else {
+      cock = [0.24, 1.25, 0.1];
+      blow = [0.14, 1.2, -0.8];
+      aimCock = [0.05, 0.35, -1];
+      aimBlow = [0, -0.12, -1];
+    }
+  } else {
+    // SLASH (lime): high over the stage-side quarter of the doomed
+    // diagonal, ripped down across to the far one — the line of the cut
+    // IS the line that burns.
+    const s0 = mir(b(0) ? -1 : 1);
+    cock = [s0 * 0.45, 1.65, -0.08];
+    blow = [-s0 * 0.4, 0.95, -0.45];
+    aimCock = [s0 * 0.6, 1, 0.05];
+    aimBlow = [-s0 * 0.7, -0.6, -0.5];
+    p.roll = s0 * 0.14 * (1 - strike);
+    p.yaw = -s0 * strike * 0.2;
+  }
+  const k = strike;
+  const lerp = (a: V, c: V): V => [a[0] + (c[0] - a[0]) * k, a[1] + (c[1] - a[1]) * k, a[2] + (c[2] - a[2]) * k];
+  let [rx, ry, rz] = lerp(cock, blow);
+  ry += pump * 0.04 * (1 - k);
+  let aim = lerp(aimCock, aimBlow);
+  if (conj < 1) {
+    // THE CONJURE: his fist goes up and the weapon climbs out of it,
+    // upright, his eyes on it.
+    const e = conj * conj * (3 - 2 * conj);
+    rx = 0.3 + (rx - 0.3) * e * 0.4;
+    ry = 1.5 + conj * 0.3;
+    rz = -0.12;
+    aim = [0.08, 1, 0];
+    p.pitch = -0.05 + conj * 0.15;
+  }
+  const n = Math.hypot(aim[0], aim[1], aim[2]) || 1;
+  aim = [aim[0] / n, aim[1] / n, aim[2] / n];
+  // Two hands on the shaft: the left choked down it toward the butt.
+  if (conj < 1) {
+    p.lx = -0.55;
+    p.ly = 1.25 + conj * 0.2;
+    p.lz = -0.3;
+  } else {
+    p.lx = rx - aim[0] * 0.32;
+    p.ly = ry - aim[1] * 0.32;
+    p.lz = rz - aim[2] * 0.32;
+  }
+  p.rx = rx;
+  p.ry = ry;
+  p.rz = rz;
+  // He puts his weight into every blow.
+  p.hy = STAND - strike * 0.16;
+  return aim;
+}
+
 export class McSystem extends createSystem({}) {
   private rig: DancerRig | null = null;
   private suit: McSuit | null = null;
@@ -106,6 +222,16 @@ export class McSystem extends createSystem({}) {
   private generation = -1;
   private mime: ActiveMime | null = null;
   private warn = 0;
+  /** THE TRIDENT, held in his right fist (see arena/trident.ts). */
+  private trident: CyberTrident | null = null;
+  private tridentReveal = 0;
+  /** Landing beats of the trident's blows still to flash, and the beat
+   *  the last flash fired. */
+  private flashDues: number[] = [];
+  private flashAt = -Infinity;
+  /** Where the weapon points (rig-local), and its eased orientation. */
+  private tridentAim = new Vector3(0, 1, 0);
+  private tridentQuat = new Quaternion();
   /** Last frame's delta — applyAccents eases the wardrobe on it. */
   private lastDelta = 0;
   private baseColor = 0;
@@ -130,6 +256,11 @@ export class McSystem extends createSystem({}) {
       this.rig.root.rotation.y = Math.PI;
       this.baseColor = hueToColor(this.hue, 0.6);
       this.scene.add(this.rig.root);
+      this.trident = new CyberTrident();
+      // It rides the fist's POSITION but aims itself (driveTrident): the
+      // hand's own orientation follows the forearm, and a weapon that
+      // points at the sky on a thrust at the crowd says nothing.
+      this.rig.root.add(this.trident.root);
     }
     // A fresh night starts from the neutral stance — an eased pose is state,
     // and state carried across generations carries its accidents with it.
@@ -139,6 +270,9 @@ export class McSystem extends createSystem({}) {
     this.mime = null;
     this.warn = 0;
     this.eaten = false;
+    this.tridentReveal = 0;
+    this.flashDues = [];
+    this.flashAt = -Infinity;
   }
 
   /** Face the origin (the local player) from wherever he stands — the rig's
@@ -201,6 +335,7 @@ export class McSystem extends createSystem({}) {
       // At the decks he plays to the ROOM's record (ClubSystem publishes its
       // beat); beside the board he keeps a clock of his own (~114 BPM).
       this.idleGroove(social && Number.isFinite(match.beat) ? match.beat : this.menuClock * 1.9);
+      this.driveTrident(delta, 0, null);
       this.warn += (0 - this.warn) * Math.min(1, delta * 6);
       this.applyAccents(this.warn);
       this.motion.step(this.pose, this.tgt, delta, { headRate: 5, handHz: 2.6, zeta: 0.7 });
@@ -256,7 +391,9 @@ export class McSystem extends createSystem({}) {
     if (this.mime && miming) {
       striking = beat > this.mime.dueBeat - 0.9;
       this.performMime(this.mime, beat);
-    } else {
+    }
+    this.driveTrident(delta, beat, this.mime && miming && this.mime.cue.kind === 'trident' ? this.mime : null);
+    if (!(this.mime && miming)) {
       // The groove pumps to the RECORD — on a double-time chart the raw
       // beat runs the record's eighths, and a DJ pumping his arms at 190
       // over a 95 BPM strut looked exactly as wrong as it sounds.
@@ -294,10 +431,46 @@ export class McSystem extends createSystem({}) {
       if (cue.step && this.mime && this.mime.cue.kind === cue.kind) {
         this.mime.dueBeat = due;
         this.mime.steps++;
-        this.mime.cue = { ...this.mime.cue, side: cue.side ?? this.mime.cue.side };
+        this.mime.cue = { ...this.mime.cue, side: cue.side ?? this.mime.cue.side, hit: cue.hit ?? this.mime.cue.hit };
+        if (cue.kind === 'trident') this.flashDues.push(due);
         continue;
       }
       this.mime = { cue, startBeat: beat, dueBeat: due, steps: 0 };
+      if (cue.kind === 'trident') this.flashDues = [due];
+    }
+  }
+
+  /** THE TRIDENT's life: conjured while its move runs (the scan climbing
+   *  out of his fist over CONJURE_BEATS), flashing white-hot on every blow,
+   *  dissolving back down after the last. The glowstick in that fist
+   *  stands down while the weapon is out. */
+  private driveTrident(delta: number, beat: number, mime: ActiveMime | null): void {
+    const t = this.trident;
+    if (!t) return;
+    if (mime) {
+      const form = TRIDENT.forms[mime.cue.form ?? 0] ?? TRIDENT.forms[0];
+      t.setColor(form.color);
+      const conj = mime.steps === 0 ? Math.max(0, (beat - mime.startBeat) / CONJURE_BEATS) : 1;
+      this.tridentReveal = Math.max(this.tridentReveal, Math.min(1, conj));
+    } else {
+      this.tridentReveal = Math.max(0, this.tridentReveal - delta * DISSOLVE_RATE);
+      if (this.tridentReveal === 0) this.flashDues = [];
+    }
+    while (this.flashDues.length && beat >= this.flashDues[0]) this.flashAt = this.flashDues.shift()!;
+    const flash = Math.max(0, 1 - (beat - this.flashAt) / FLASH_BEATS);
+    t.update(delta, this.tridentReveal, flash);
+    const out = t.root.visible;
+    const hand = this.rig?.mount?.handR;
+    if (out && hand) {
+      // Aim eases on its own spring — quick, so a blow still snaps.
+      _q.setFromUnitVectors(_up, this.tridentAim);
+      this.tridentQuat.slerp(_q, Math.min(1, delta * 14));
+      t.root.quaternion.copy(this.tridentQuat);
+      t.root.position.copy(hand.position);
+    }
+    for (const name of ['stick-blade', 'stick-glow']) {
+      const o = this.rig?.mount?.handR.getObjectByName(name);
+      if (o) o.visible = !out;
     }
   }
 
@@ -473,54 +646,10 @@ export class McSystem extends createSystem({}) {
         p.yaw = s * 0.18;
         break;
       }
-      case 'routine': {
-        // TEACHING THE ROUTINE: he walks the corners in order, stabbing a
-        // stick at each one in turn, so a dancer who never looks down can
-        // still learn the whole thing off his body. The count is in the
-        // stabs — one corner per slice of the wind-up, held long enough to
-        // land in someone's memory.
-        const seq = mime.cue.routine ?? [];
-        const n = Math.max(1, seq.length);
-        if (mime.steps > 0) {
-          // TEACHING'S OVER. Once the first block has dropped he gives
-          // nothing away — just brings the next one down on the beat. A
-          // giant still pointing at corners here would be answering the
-          // question the move exists to ask.
-          p.lx = -0.24; p.rx = 0.24;
-          p.ly = p.ry = 1.22 + pump * 0.06 - strike * 0.82;
-          p.lz = p.rz = -0.14;
-          p.hy = STAND - strike * 0.22;
-          break;
-        }
-        const at = Math.min(n - 1, Math.floor(u * n));
-        const local = (u * n) % 1;
-        const c = seq[at] ?? 0;
-        const s = this.mir(c & 1 ? 1 : -1);
-        // Platform +z is the ground BEHIND the dancer, away from the stage:
-        // he draws those corners in toward himself and pushes the near ones
-        // out — the surge's front/back grammar, so it reads the same way.
-        const back = (c & 2) !== 0;
-        const stab = Math.sin(Math.min(1, local * 2.6) * Math.PI) * 0.22;
-        const lead = s < 0 ? 'l' : 'r';
-        const armX = s * (0.5 + stab);
-        const armY = (back ? 0.92 : 1.34) + stab * 0.1;
-        const armZ = back ? -0.18 + stab * 0.1 : -0.52 - stab * 0.2;
-        if (lead === 'l') {
-          p.lx = armX; p.ly = armY; p.lz = armZ;
-          p.rx = 0.26; p.ry = 0.8; p.rz = -0.04;
-        } else {
-          p.rx = armX; p.ry = armY; p.rz = armZ;
-          p.lx = -0.26; p.ly = 0.8; p.lz = -0.04;
-        }
-        p.yaw = s * 0.22;
-        // On the beat itself: both fists down, the blocks let go.
-        if (strike > 0.05) {
-          p.lx = -0.24; p.rx = 0.24;
-          p.ly = p.ry = 1.15 - strike * 0.75;
-          p.lz = p.rz = -0.16;
-          p.hy = STAND - strike * 0.2;
-          p.yaw = 0;
-        }
+      case 'trident': {
+        const conj = mime.steps === 0 ? Math.min(1, (beat - mime.startBeat) / CONJURE_BEATS) : 1;
+        const aim = tridentPose(p, mime.cue.hit ?? 0, strike, conj, pump);
+        this.tridentAim.set(aim[0], aim[1], aim[2]);
         break;
       }
       case 'donut': {

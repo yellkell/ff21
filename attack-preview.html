@@ -10,9 +10,9 @@
   <body>
     <!-- DEV-ONLY harness: every RAVE RAID attack on a real dancer deck inside the SPECTRUM set,
          for screenshots. Not part of the game; never ship or link this page.
-         ?a=beam|split|x|sweep|seesaw|gate|row|rail|nova|donut|routine picks the attack;
+         ?a=beam|split|x|sweep|seesaw|gate|row|rail|nova|donut|trident picks the attack (&form=0|1|2);
          ?f=0.7 freezes its charge; ?strike=0.12 fires the landing and freezes that many seconds
-         after it (the routine's blocks fall during the charge and crush on the strike);
+         after it (the trident's blow is dark until it lands — its floor is the quarter lines);
          ?view=eye (the dancer's own eyes) | top (three-quarter, default) | side;
          ?track=<id> dresses the set in that record's sleeve.
          window.__ready flips true once the frame is final. -->
@@ -22,14 +22,13 @@
       import { paletteFor } from '/src/rave/arena/spectrum/palettes.ts';
       import { buildArena } from '/src/rave/arena/arena.ts';
       import { VOID_BG } from '/src/rave/arena/voidkit.ts';
-      import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '/src/rave/config.ts';
+      import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, TRIDENT } from '/src/rave/config.ts';
       import {
-        beamTelegraph, donutTelegraph, gateTelegraph, halfTelegraph, novaTelegraph, quarterTelegraph,
-        railTelegraph, routineMarksTelegraph, sweepTelegraph, xTelegraph,
+        beamTelegraph, donutTelegraph, gateTelegraph, halfTelegraph, novaTelegraph, quadTelegraph,
+        railTelegraph, sweepTelegraph, xTelegraph,
         AFTERBURN_SEC,
       } from '/src/rave/choreo/telegraphs.ts';
       import { StrikeFx } from '/src/rave/choreo/strikes.ts';
-      import { RoutineBlockfall } from '/src/rave/choreo/blockfall.ts';
 
       const q = new URLSearchParams(location.search);
       const kind = q.get('a') ?? 'beam';
@@ -57,7 +56,6 @@
       const D = OCTAGON_HALF_DEPTH, W = OCTAGON_HALF_WIDTH;
       const tgs = [];
       const strikes = [];
-      let blocks = null;
       const put = (tg, x = 0, y = 0.05, z = 0, yaw = 0) => {
         tg.group.position.set(x, y, z);
         tg.group.rotation.y = yaw;
@@ -105,11 +103,13 @@
           put(donutTelegraph(CHOREO.donutRadius, CHOREO.donutInnerR));
           strikes.push((fx) => fx.donut(deck, CHOREO.donutInnerR));
           break;
-        case 'routine':
-          put(quarterTelegraph(W, D), 0, 0.048);
-          if (strikeAt === null && fill < 0.7) put(routineMarksTelegraph([0, 3, 1], W, D));
-          blocks = new RoutineBlockfall(deck, 0, 8, 5.4, 7, 0);
+        case 'trident': {
+          const form = Number(q.get('form') ?? 0);
+          const hit = TRIDENT.forms[form].pairs[0];
+          put(quadTelegraph(W, D, hit, true), 0, 0.048);
+          strikes.push((fx) => fx.trident(deck, hit, form));
           break;
+        }
       }
 
       const camera = new PerspectiveCamera(view === 'eye' ? 90 : 55, innerWidth / innerHeight, 0.05, 400);
@@ -138,17 +138,14 @@
       // Charge: run a few frames on the frozen fill (blocks fall to `fill` of their drop).
       for (let i = 0; i < 20; i++) {
         for (const t of tgs) t.update(fill, time);
-        if (blocks) blocks.update(8 - 2 * (1 - fill), dt);
         frame(dt);
       }
       if (strikeAt !== null) {
-        if (blocks) { blocks.update(8, dt); blocks.land(); }
         for (const s of strikes) s(fx);
         const n = Math.round(strikeAt / dt);
         for (let i = 0; i < n; i++) {
           // The marks burn out on the landing, as ChoreoSystem drives them.
           for (const t of tgs) t.update(1 + Math.min(1, ((i + 1) * dt) / AFTERBURN_SEC), time);
-          if (blocks) blocks.update(8, dt);
           frame(dt);
         }
       }

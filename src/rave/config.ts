@@ -186,16 +186,15 @@ export const GOOP = {
  *           the sweep's blade hangs over the safe middle: get to the
  *           centre and DUCK there. Two honest reads at once; both answers
  *           are ones you already know.
- *  routine: THE MEMORY TEST. The deck splits into four quarters and the
- *           boss teaches a ROUTINE — two to four corners, never the same
- *           one twice, each marked with its step number and pointed out in
- *           order by his own body. Then the marks go out, and blocks
- *           crush the three corners you didn't learn. NOTHING calls the
- *           steps: the blocks are visibly falling for two beats before
- *           each landing (routineDropBeats), so the move is already its
- *           own clock and a cue over the top of it was only noise.
- *           The quarter lines stay lit the whole way through: the floor
- *           tells you where the boxes are, never which one is yours.
+ *  trident: READ THE DJ, NOT THE FLOOR. He conjures a cyber trident and
+ *           its COLOUR is the pattern (TRIDENT.forms): cyan swings the
+ *           halves left/right, magenta thrusts front/back, lime slashes
+ *           the diagonals. Wherever he cocks it first is where it starts.
+ *           Then he strikes three to five times on the beat, each strike
+ *           burning two of the deck's four quarters, alternating — so the
+ *           answer is a hop to the other pair on every strike. The floor
+ *           shows only the quarter lines until each blow lands: the read
+ *           is the weapon in his hand and the swing of his arm.
  *  donut  : the RIM burns and the middle lives — a closing ring with a
  *           bright doorpost circle and chevrons marching INWARD: get to the
  *           centre. Usually opens with a laser straight down the middle,
@@ -220,7 +219,7 @@ export type MoveKind =
   | 'nova'
   | 'cross'
   | 'donut'
-  | 'routine'
+  | 'trident'
   | 'duckdonut'
   | 'wave';
 
@@ -258,11 +257,10 @@ export const MOVES: Record<
   // clear it, and still get home — but no longer: the shape is a one-look
   // read and the run home is the fun part.
   donut: { chargeBeats: 4, weights: [0, 2, 3, 3, 3] },
-  // THE ROUTINE charges for two bars because the charge IS the lesson —
-  // you're being taught, not warned. Rare on purpose: it's the set piece
-  // the floor talks about afterwards, and a memory test you meet every
-  // phrase stops being one.
-  routine: { chargeBeats: 8, weights: [0, 1, 2, 2, 3] },
+  // THE TRIDENT charges for a bar and a beat: long enough to watch it
+  // materialise, read its colour and see where he cocks it. Rarer than the
+  // staples — it's the DJ's signature, the move with a weapon in it.
+  trident: { chargeBeats: 5, weights: [0, 1, 2, 2, 3] },
   // THE COMBINATION asks for the two hardest answers in the game on one
   // beat, which is exactly why it should be something you meet once in a
   // night and talk about after — not a shape the back stretch serves
@@ -380,33 +378,14 @@ export const CHOREO = {
    *  its phrase, and the read that makes the move (breathe at the wheel,
    *  ride one square behind) stops being a read once it's a routine. */
   waveThirdChance: 0.3,
-  /** THE ROUTINE: how many corners you're asked to hold in your head (per
-   *  act, clamped to the 2–4 the deck's four quarters can offer without
-   *  ever repeating one), and how many beats apart the steps land. Two
-   *  beats is a brisk corner-to-corner step — about a metre of travel —
-   *  which is the point: the memory has to be ready before the tick. */
-  routineSteps: [2, 2, 3, 4, 4],
-  /** THE SWEPT ROUTINE (act 4): every blast of the routine arrives under
-   *  the sweep's blade — stand in the taught corner AND duck on each tick.
-   *  A per-SONG coin, not a per-move one: some expert charts carry it,
-   *  some never do, so the hardest nights stay distinct — and at even odds
-   *  "some" was every other night, which is a garnish, not a legend. At
-   *  one chart in eight it is the thing a floor remembers a record for. */
-  routineSweepChance: 0.12,
-  /** Three beats corner-to-corner: two read as a shove at raid tempo — the
-   *  memory needs a breath between ticks, not just travel time. */
-  routineStepBeats: 3,
-  /** How many beats before each routine step its blocks are already VISIBLY
-   *  falling — the DOWN language, upside down: spinning neon polyhedra
-   *  descend onto the three quarters you weren't taught, deck rings
-   *  brightening under them as they close. The descent is beat-locked, so
-   *  the landing IS the downbeat. */
-  routineDropBeats: 2,
-  /** How far PAST the quarter line you must stand for a corner to count.
-   *  Without it, loitering at dead centre would satisfy all four corners
-   *  at once and the whole move would be free — so the routine asks you to
-   *  commit, and the lit quarter lines show exactly where the line is. */
-  routineMargin: 0.08,
+  /** THE TRIDENT: strikes per move (per act), and how many beats apart
+   *  they land. Two beats is a hop to the other pair of quarters — about
+   *  half a metre — on every other beat, which is the rhythm of the move. */
+  tridentStrikes: [3, 3, 3, 4, 5],
+  tridentStepBeats: 2,
+  /** How far over a quarter line still counts as the safe side: the head
+   *  within this of a line whose far quarter lives is forgiven. */
+  tridentLip: 0.07,
   /** THE DONUT: radius of the safe disc in the middle, how long after the
    *  opening laser the ring closes, and how often it opens with that laser
    *  instead of arriving alone. A full bar between the two is the whole
@@ -539,8 +518,8 @@ export const CHOREO = {
    *  up, feel intact). So a doubled chart keeps the grid and borrows that
    *  shelf's EVERYTHING — not just the landing cadence but the reads and
    *  the cascades, all converted to the same real seconds: charges from
-   *  its own table below (a beam fills ~1.6 s, a gate ~2.2 s, the routine
-   *  teaches over ~4 s, exactly what those records serve), a smaller
+   *  its own table below (a beam fills ~1.6 s, a gate ~2.2 s, the trident
+   *  conjures over ~2.5 s, exactly what those records serve), a smaller
    *  quota for the half-length phrases, a roomier dead-air ceiling, wave
    *  marches on the record's own beats, and every cascade gap stretched
    *  to the shelf's spacing.
@@ -582,7 +561,7 @@ export const CHOREO = {
       nova: 8,
       cross: 7,
       donut: 7,
-      routine: 13,
+      trident: 8,
       duckdonut: 10,
       wave: 5,
     } as Record<MoveKind, number>,
@@ -592,8 +571,7 @@ export const CHOREO = {
     seesawGapBeats: [8, 8, 4, 4, 4],
     waveStepBeats: [4, 4, 2, 2, 2],
     waveTurnExtraBeats: 2,
-    routineStepBeats: 5,
-    routineDropBeats: 3,
+    tridentStepBeats: 4,
     twinReturnBeats: 7,
     novaChainBeats: 8,
     donutFollowBeats: 8,
@@ -987,6 +965,26 @@ export const BOTS = {
   actPenalty: 0.05,
 };
 
+/**
+ * THE TRIDENT's forms — the colour IS the pattern. Every form strikes two
+ * of the deck's four quarters at a time and alternates between its two
+ * pairs; `pairs` are quarter bitmasks (bit = corner, corner bit 0 = local
+ * +x, bit 1 = local +z). The colours are the tell, not the danger (the
+ * blows themselves land in the heat ramp like every other attack), so
+ * they live outside amber and red and as far from each other as the
+ * wheel allows: you read cyan from lime from magenta across the room.
+ */
+export const TRIDENT = {
+  forms: [
+    /** SWING — cyan: the halves, left and right. Sidestep. */
+    { name: 'SWING', color: 0x3ff2ff, pairs: [0b0101, 0b1010] as const },
+    /** THRUST — magenta: the halves, toward the stage and away. Step. */
+    { name: 'THRUST', color: 0xff3ce8, pairs: [0b0011, 0b1100] as const },
+    /** SLASH — lime: the diagonals. Hop across the corner. */
+    { name: 'SLASH', color: 0x9dff3a, pairs: [0b1001, 0b0110] as const },
+  ],
+};
+
 /* ─────────────────────────────── THE LOOK ────────────────────────────────
  * An absolute disco: neon on the void's black. Everything additive — a
  * bloom-ish glow without post-processing.
@@ -1006,8 +1004,10 @@ export const PALETTE = {
 
 /**
  * PALETTE DISCIPLINE — how you tell an attack from the party:
- * danger speaks ONLY hazard amber→red (telegraphs, beams, novas) and goo
- * green (the gel itself arriving); the disco speaks magenta/cyan/violet.
+ * danger speaks ONLY the heat ramp — hazard amber→red, igniting white-hot
+ * on the landing (telegraphs, strikes, the trident's blows: see THE DANGER
+ * KIT in choreo/telegraphs.ts); goo green is the gel's own body; the disco
+ * speaks magenta/cyan/violet.
  * The two vocabularies never share a colour, and while a telegraph charges
  * on YOUR deck the disco DUCKS (lasers and shafts fade to a quarter) so the
  * warning owns the room.

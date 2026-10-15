@@ -66,7 +66,7 @@ const _near = new Vector3();
  * the RING, not of the frame — one distance test, whenever the ring is
  * dealt. Every system that spends detail by distance asks THIS question,
  * so a deck never half-dresses: the same seats that keep their dancer's
- * jewellery keep their deck's blockfall and their strike's sparks.
+ * jewellery keep their strikes' light walls and sparks.
  */
 export function seatIsNear(mySeat: number, seat: number, seats: number): boolean {
   seatLocal(mySeat, seat, seats, _near);

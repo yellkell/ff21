@@ -4,7 +4,7 @@
  * PLATFORM while it charges, and the fill IS the countdown.
  *
  * THE DANGER KIT. Every attack in the set — these floor marks, the strike
- * volumes (strikes.ts) and the routine's falling blocks (blockfall.ts) —
+ * volumes (strikes.ts) and the trident's blows —
  * speaks ONE visual language, so a night of mixed moves reads as one
  * boss's vocabulary rather than eleven effects from eleven sessions:
  *
@@ -52,13 +52,13 @@ export interface Telegraph {
 /**
  * THE HEAT RAMP — the only colours an attack may wear (config.ts PALETTE
  * amber / danger / whiteHot; restated here so this module stays leaf-pure).
- * strikes.ts and blockfall.ts read these too.
+ * strikes.ts reads these too.
  */
 export const HEAT = {
   amber: 0xffb000,
   danger: 0xe8352a,
   hot: 0xfff3cf,
-  /** Instruction, not danger (THE ROUTINE's lesson and quarter lines). */
+  /** Instruction, not danger (THE TRIDENT's quarter lines). */
   chalk: 0xdbeaff,
 };
 
@@ -238,53 +238,37 @@ const X_FRAG = /* glsl */ `
 `;
 
 /**
- * THE ROUTINE's step mark: one quarter of the deck, ringed and washed, with
- * its STEP NUMBER spelled out as a row of dots in the middle. Drawn in
- * CHALK, not heat: during the preview nothing is dangerous yet, and the
- * marks are a lesson rather than a warning — the same instruction white as
- * the quarter lines. They fade out near the end of the charge, and from
- * then on the routine lives only in your head. uOrd = the step number.
+ * THE TRIDENT's blow: the deck's four quarters, `uHit` a bitmask of the
+ * ones that burn (bit = corner: bit 0 local +x, bit 1 local +z). Nothing
+ * of the danger shows while it charges — the read is the DJ's weapon, not
+ * the floor — and on the landing the doomed quarters ignite, their borders
+ * with living ground drawn as neon. `uLines` adds the chalk quarter lines
+ * (instruction, not danger) for the whole life of the pane: the floor says
+ * where the split is, never which side is coming.
  */
-const MARK_FRAG = /* glsl */ `
+const QUAD_FRAG = /* glsl */ `
   ${COMMON}
-  uniform float uOrd, uAspect;
+  uniform float uHit, uLines;
+  float bit(float i){ return mod(floor(uHit / exp2(i) + 0.5 / exp2(i)), 2.0); }
   void main(){
-    // The lesson is over before the first step lands.
-    float fade = 1.0 - smoothstep(0.70, 0.92, F());
-    float a = 0.07;
-    // Border around the quarter — this whole square is the ground.
-    float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-    a += (1.0 - smoothstep(0.022, 0.05, e)) * 0.55;
-    // The step number, as dots in a row across the middle.
-    for (int i = 0; i < 4; i++) {
-      if (float(i) >= uOrd) break;
-      float cx = 0.5 + (float(i) - (uOrd - 1.0) * 0.5) * 0.15;
-      vec2 p = (vUv - vec2(cx, 0.5)) * vec2(1.0, 1.0 / uAspect);
-      a += (1.0 - smoothstep(0.04, 0.055, length(p))) * 0.95;
-    }
-    a *= fade * pulse() * octMask(vDeck);
-    gl_FragColor = vec4(mix(CHALK, vec3(1.0), 0.35 * step(0.6, a)) * a, 1.0);
-  }
-`;
-
-/**
- * THE ROUTINE's quarter lines: the cross that splits the deck into four,
- * lit dim and neutral for the whole move. It is furniture, not danger —
- * it says where the boxes will land, never which quarter is yours — so it
- * stays chalk and never fills; on the last landing it simply goes out.
- */
-const QUARTER_FRAG = /* glsl */ `
-  ${COMMON}
-  void main(){
-    float a = 0.0;
-    a += (1.0 - smoothstep(0.004, 0.016, abs(vUv.x - 0.5))) * 0.5;
-    a += (1.0 - smoothstep(0.004, 0.016, abs(vUv.y - 0.5))) * 0.5;
-    // Ticks at the rim so the split reads even from across the ring.
-    float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-    a *= 0.55 + 0.45 * (1.0 - smoothstep(0.0, 0.18, edge));
-    a *= 0.75 + 0.25 * sin(uTime * 2.0);
-    a *= (1.0 - B()) * octMask(vDeck);
-    gl_FragColor = vec4(CHALK * a, 1.0);
+    vec2 q = vDeck;
+    float mask = octMask(q);
+    // The chalk split: two feathered lines through the middle, brighter at
+    // the rim so it reads from across the ring; gone with the last blow.
+    float chalk = (1.0 - smoothstep(0.006, 0.02, abs(q.x))) + (1.0 - smoothstep(0.006, 0.02, abs(q.y)));
+    chalk += 0.25 * ((1.0 - smoothstep(0.02, 0.07, abs(q.x))) + (1.0 - smoothstep(0.02, 0.07, abs(q.y))));
+    chalk *= 0.55 + 0.35 * (1.0 - smoothstep(0.0, 0.25, octMask(q * 1.25)));
+    chalk *= (0.8 + 0.2 * sin(uTime * 2.0)) * uLines * (1.0 - B());
+    // The blow: the doomed quarters, ignited.
+    float idx = (q.x >= 0.0 ? 1.0 : 0.0) + (q.y >= 0.0 ? 2.0 : 0.0);
+    float idxX = idx + (q.x >= 0.0 ? -1.0 : 1.0); // the quarter across the x line
+    float idxZ = idx + (q.y >= 0.0 ? -2.0 : 2.0); // …and across the z line
+    float doomed = bit(idx);
+    float wash = doomed * doom(q);
+    float line = doomed * (neon(abs(q.x)) * (1.0 - bit(idxX)) + neon(abs(q.y)) * (1.0 - bit(idxZ)));
+    line += doomed * deckRim(q) * 0.75;
+    vec3 burn = ink(wash, line).rgb * landed();
+    gl_FragColor = vec4((burn + CHALK * chalk) * mask, 1.0);
   }
 `;
 
@@ -509,34 +493,13 @@ export function xTelegraph(halfW: number): Telegraph {
 }
 
 /**
- * THE ROUTINE, taught: one marked quarter per step, each carrying its step
- * number in dots. `corners` are (sx, sz) signs in platform-local space.
- * Place the group at the deck centre on the floor; the marks fade
- * themselves out as the charge runs down.
+ * THE TRIDENT's blow on one deck: dark until it lands, then the quarters
+ * in `hit` burn. `lines` adds the chalk quarter split for the pane's whole
+ * life (ChoreoSystem hangs it on the move's last blow, opening with the
+ * move). Place the group at the deck centre on the floor.
  */
-export function routineMarksTelegraph(
-  routine: readonly number[],
-  halfWidth: number,
-  halfDepth: number,
-): Telegraph {
-  const meshes: Mesh[] = [];
-  const mats: ShaderMaterial[] = [];
-  const w = halfWidth * 0.92;
-  const d = halfDepth * 0.92;
-  routine.forEach((corner, step) => {
-    const mat = warnMat(MARK_FRAG, { uOrd: { value: step + 1 }, uAspect: { value: w / d } });
-    const pane = new Mesh(new PlaneGeometry(w, d), mat);
-    pane.rotation.x = -Math.PI / 2;
-    pane.position.set(((corner & 1 ? 1 : -1) * halfWidth) / 2, 0, ((corner & 2 ? 1 : -1) * halfDepth) / 2);
-    meshes.push(pane);
-    mats.push(mat);
-  });
-  return makeTelegraph(meshes, mats);
-}
-
-/** THE ROUTINE's quarter lines — the split deck, lit for the whole move. */
-export function quarterTelegraph(halfWidth: number, halfDepth: number): Telegraph {
-  const mat = warnMat(QUARTER_FRAG);
+export function quadTelegraph(halfWidth: number, halfDepth: number, hit: number, lines: boolean): Telegraph {
+  const mat = warnMat(QUAD_FRAG, { uHit: { value: hit }, uLines: { value: lines ? 1 : 0 } });
   const pane = new Mesh(new PlaneGeometry(halfWidth * 2, halfDepth * 2), mat);
   pane.rotation.x = -Math.PI / 2;
   return makeTelegraph([pane], [mat]);

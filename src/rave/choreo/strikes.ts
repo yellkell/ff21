@@ -37,11 +37,12 @@ import {
   Points,
   PointsMaterial,
   ShaderMaterial,
+  Color,
   type Object3D,
   type Sprite,
   type SpriteMaterial,
 } from 'three';
-import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH } from '../config.js';
+import { CHOREO, OCTAGON_HALF_DEPTH, OCTAGON_HALF_WIDTH, TRIDENT } from '../config.js';
 import { glintTexture, glowSprite } from '../materials/glow.js';
 import { HEAT, HEAT_GLSL } from './telegraphs.js';
 
@@ -77,7 +78,8 @@ const WALL_VERT = /* glsl */ `
 
 const WALL_FRAG = /* glsl */ `
   ${HEAT_GLSL}
-  uniform float uK, uTime, uGain, uCore, uRise, uEdges;
+  uniform float uK, uTime, uGain, uCore, uRise, uEdges, uTintAmt;
+  uniform vec3 uTint;
   varying vec2 vUv;
   varying float vY;
   varying float vCap;
@@ -85,6 +87,8 @@ const WALL_FRAG = /* glsl */ `
     if (vCap > 0.5) discard;
     // Ignites white-hot, burns out to danger red; a core stays hot longer.
     vec3 col = mix(HOT, DANGER, smoothstep(0.0, mix(0.5, 1.3, uCore), uK));
+    // A tinted sheet (THE TRIDENT's bolt) wears the weapon's colour.
+    col = mix(col, uTint, uTintAmt);
     float fall = exp(-vY * uRise);
     // Scanlines racing off the business edge — the hit is still moving.
     float scan = 0.7 + 0.3 * sin(vY * 34.0 - uTime * 22.0);
@@ -108,6 +112,9 @@ interface WallOpts {
   gain?: number;
   /** Neon tubes on the uv sides (off for a closed ring — its seam isn't an edge). */
   edges?: boolean;
+  /** Wear this colour instead of the heat ramp (0..1 of it). */
+  tint?: number;
+  tintAmt?: number;
 }
 
 function wallMat(o: WallOpts): ShaderMaterial {
@@ -121,6 +128,8 @@ function wallMat(o: WallOpts): ShaderMaterial {
       uCore: { value: o.core ? 1 : 0 },
       uRise: { value: o.rise ?? 2.2 },
       uEdges: { value: o.edges === false ? 0 : 1 },
+      uTint: { value: new Color(o.tint ?? HEAT.hot) },
+      uTintAmt: { value: o.tintAmt ?? 0 },
     },
     vertexShader: WALL_VERT,
     fragmentShader: WALL_FRAG,
@@ -322,9 +331,55 @@ export class StrikeFx {
     );
   }
 
-  // (THE ROUTINE's landing is no longer a strike here: the DOWN-style
-  // blockfall in choreo/blockfall.ts carries the whole descent AND the
-  // crush — see ChoreoSystem.resolve.)
+  /** THE TRIDENT's blow: on every doomed quarter a bolt in the weapon's
+   *  own colour drives into the deck — the thing you read in his hand,
+   *  arriving — and the quarter erupts in a slab of heat over the floor's
+   *  afterburn, throwing embers. The bolt is gone in a blink; the heat is
+   *  what lingers, like every other strike. */
+  trident(parent: Object3D, hit: number, form: number): void {
+    const tint = TRIDENT.forms[form]?.color ?? HEAT.hot;
+    const qw = OCTAGON_HALF_WIDTH;
+    const qd = OCTAGON_HALF_DEPTH;
+    const quarters: [number, number][] = [];
+    for (let c = 0; c < 4; c++) {
+      if ((hit >> c) & 1) quarters.push([((c & 1 ? 1 : -1) * qw) / 2, ((c & 2 ? 1 : -1) * qd) / 2]);
+    }
+    const sparks = new Sparks(48, EMBER);
+    let burst = false;
+    this.spawn(
+      parent,
+      0.45,
+      (k, g) => {
+        g.children.forEach((m, i) => {
+          if (m === sparks.points) return;
+          if (i % 2 === 0) {
+            // The bolt: a blink of the weapon's colour.
+            burn(m, Math.min(1, k * 2.4));
+          } else {
+            burn(m, k);
+            m.scale.y = 1 - 0.5 * k;
+            m.position.y = 0.4 * m.scale.y;
+          }
+        });
+        if (!burst) {
+          burst = true;
+          for (const [x, z] of quarters) sparks.emit(x, 0.1, z, 10, 1.5);
+        }
+      },
+      (g) => {
+        for (const [x, z] of quarters) {
+          const bolt = wall(0.07, 5, 0.07, { core: true, rise: 0.5, gain: 1.4, tint, tintAmt: 0.75 });
+          bolt.position.set(x, 2.5, z);
+          g.add(bolt);
+          const slab = wall(qw * 0.88, 0.8, qd * 0.88, { rise: 2.4, gain: 0.85 });
+          slab.position.set(x, 0.4, z);
+          g.add(slab);
+        }
+        g.add(sparks.points);
+      },
+      (dt) => sparks.step(dt),
+    );
+  }
 
   /** THE DONUT closes: the rim goes up as a ring of light and RUSHES IN,
    *  stopping dead on the doorpost circle — the opposite motion to the

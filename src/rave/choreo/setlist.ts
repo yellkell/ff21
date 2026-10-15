@@ -20,6 +20,7 @@ import {
   DIFFICULTY,
   MOVES,
   MUSIC,
+  TRIDENT,
   type MoveKind,
 } from '../config.js';
 import { mix, mulberry32 } from '../game/rng.js';
@@ -35,11 +36,11 @@ export type Zone =
   /** The rim burns, the middle lives — everything outside `innerR` is
    *  doomed, so the whole ring collapses toward its own centre. */
   | { kind: 'donut'; innerR: number }
-  /** One step of THE ROUTINE: the deck's four quarters, and `corner` is
-   *  the only one that lives. Every step carries the WHOLE routine so the
-   *  preview (and the boss's body) can teach it before step one lands.
-   *  Corner bit 0 = local +x, bit 1 = local +z. */
-  | { kind: 'quad'; corner: number; step: number; routine: readonly number[] }
+  /** One blow of THE TRIDENT: `hit` is a bitmask of the deck's four
+   *  quarters that burn (corner bit 0 = local +x, bit 1 = local +z);
+   *  `form` indexes TRIDENT.forms (the trident's colour), and `step` of
+   *  `steps` places this blow in the move. */
+  | { kind: 'quad'; hit: number; form: number; step: number; steps: number }
   | { kind: 'sweep' }
   | { kind: 'half'; side: 1 | -1; axis: 0 | 1 }
   /** Everything burns EXCEPT a clear band at `at` — stand in the gap.
@@ -100,7 +101,7 @@ const VERB: Record<MoveKind, string> = {
   duckdonut: 'radial',
   nova: 'compass',
   sweep: 'duck',
-  routine: 'corners',
+  trident: 'corners',
   wave: 'travel', // the whole-deck crossing — its own verb, never damped
 };
 
@@ -135,8 +136,7 @@ function pickKind(
 /** A move's read length on this chart: the standard table, or — on a
  *  double-time chart — the visitor's charges, which convert the same read
  *  into the doubled clock's beats so it fills over the same real seconds
- *  a 110–117 record gives it. Exported for ChoreoSystem (the swept
- *  routine's staggered blades run the sweep's own fuse). */
+ *  a 110–117 record gives it. */
 export function chartChargeBeats(kind: MoveKind, doubleTime: boolean): number {
   return doubleTime ? CHOREO.doubleTimePace.chargeBeats[kind] : MOVES[kind].chargeBeats;
 }
@@ -171,12 +171,10 @@ function twinSide(rng: () => number, at: number | undefined): 1 | -1 {
 }
 
 /** Build one move's landings from the seeded rng (seat-local pattern).
- *  `sweptRoutines` is the chart-wide coin for THE SWEPT ROUTINE — rolled
- *  once per song, so some expert nights carry it and some never do.
  *  `park` is where the LAST move left a dancer who played it right (see
- *  THE FLOOR MANAGER); the twins aim their opening volley at it.
+ *  THE FLOOR MANAGER); the twins and the trident aim their opening at it.
  *  `doubleTime` reads every cascade gap from the doubled pace table:
- *  routine steps stretch back to the real seconds the fast shelf serves
+ *  trident blows stretch back to the real seconds the fast shelf serves
  *  them at, while seesaw floods stay on the record's real beats and the
  *  bar-locked cascades (twin returns, nova chains, the donut's one-two)
  *  keep their own spacing. */
@@ -185,7 +183,6 @@ function buildLandings(
   landBeat: number,
   act: number,
   rng: () => number,
-  sweptRoutines = false,
   park: Park = null,
   doubleTime = false,
   expert = false,
@@ -225,7 +222,7 @@ function buildLandings(
       const outer = CHOREO.beamTwinInner + halfW * 2 + 0.02;
       const keep = twinKeep(act);
       // THE OPENER IS AIMED. Whatever ran last — a wave's march, the
-      // routine's corner, a gate, a seesaw — left the floor standing
+      // trident's last quarter, a gate, a seesaw — left the floor standing
       // somewhere known, and the twin's first pair lands on THAT side.
       // Rolled at random it was a coin whether the rally even started
       // where anybody was: half the time the opening volley burned the
@@ -341,27 +338,23 @@ function buildLandings(
         zone: { kind: 'lane', x: xSign * (0.2 + rng() * 0.32), halfW: CHOREO.beamHalfWidth },
       });
     }
-  } else if (kind === 'routine') {
-    // THE MEMORY TEST. A seeded shuffle of the four quarters, cut to
-    // length — a shuffle can't repeat a corner, so "never the same corner
-    // twice" is true by construction rather than by retrying rolls.
-    const bag = [0, 1, 2, 3];
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
+  } else if (kind === 'trident') {
+    // READ THE DJ. One form per move — its colour is the whole pattern —
+    // and the blows alternate between the form's two pairs of quarters.
+    // The opening pair is aimed at the park (like the twins), so the
+    // first blow always asks the floor to move; an unknowable park takes
+    // the coin. Both rolls are always drawn, to keep the stream aligned.
+    const form = Math.floor(rng() * TRIDENT.forms.length);
+    const [a, b] = TRIDENT.forms[form].pairs;
+    const coin = rng() < 0.5;
+    const quarter = park ? (park.x >= 0 ? 1 : 0) | (park.z >= 0 ? 2 : 0) : -1;
+    const first = quarter >= 0 ? ((a >> quarter) & 1 ? a : b) : coin ? a : b;
+    const steps = CHOREO.tridentStrikes[Math.min(act, CHOREO.tridentStrikes.length - 1)];
+    const stepBeats = doubleTime ? CHOREO.doubleTimePace.tridentStepBeats : CHOREO.tridentStepBeats;
+    for (let step = 0; step < steps; step++) {
+      const hit = step % 2 === 0 ? first : first === a ? b : a;
+      landings.push({ beat: landBeat + step * stepBeats, zone: { kind: 'quad', hit, form, step, steps } });
     }
-    const want = CHOREO.routineSteps[Math.min(act, CHOREO.routineSteps.length - 1)];
-    const routine = bag.slice(0, Math.max(2, Math.min(4, want)));
-    // THE SWEPT ROUTINE (act 4, on the charts that carry it): every blast
-    // arrives under the sweep's blade — stand in the taught corner AND
-    // duck on each tick. The memory test and the limbo, one body.
-    const swept = sweptRoutines && act >= 4;
-    const stepBeats = doubleTime ? CHOREO.doubleTimePace.routineStepBeats : CHOREO.routineStepBeats;
-    routine.forEach((corner, step) => {
-      const beat = landBeat + step * stepBeats;
-      landings.push({ beat, zone: { kind: 'quad', corner, step, routine } });
-      if (swept) landings.push({ beat, zone: { kind: 'sweep' } });
-    });
   } else if (kind === 'wave') {
     // THE WAVE: beams marching 1-2-3 across the deck — travel with the
     // march into the EXIT: the last quarter never fires, so the crossing
@@ -519,7 +512,7 @@ export function evictsPark(landings: readonly Landing[], park: Park): boolean {
         return (zone.axis ? park.z : park.x) * zone.side > -0.06;
       case 'sweep': // the duck is a demand wherever you stand
       case 'nova': // dead centre is never safe, and the wedge rotates per seat
-      case 'quad': // the routine makes you commit, corner to corner
+      case 'quad': // the trident alternates — every blow moves you
         return true;
     }
   });
@@ -538,11 +531,22 @@ export function parkOf(kind: MoveKind, landings: readonly Landing[], prev: Park)
       return { x: 0, z: 0 }; // hauled into the middle by definition
     case 'nova':
       return null; // the wedge is a different place on every deck
-    case 'routine': {
-      const quads = landings.filter((l) => l.zone.kind === 'quad');
-      const lastQ = quads[quads.length - 1]?.zone;
+    case 'trident': {
+      // The last blow's nearest living quarter — a dancer who hopped
+      // pair to pair ends wherever the final hop put them.
+      const lastQ = landings[landings.length - 1]?.zone;
       if (lastQ?.kind !== 'quad') return prev;
-      return { x: (lastQ.corner & 1 ? 1 : -1) * 0.45, z: (lastQ.corner & 2 ? 1 : -1) * 0.4 };
+      let best = -1;
+      let bestD = Infinity;
+      for (let c = 0; c < 4; c++) {
+        if ((lastQ.hit >> c) & 1) continue;
+        const d = Math.hypot((c & 1 ? 0.45 : -0.45) - p.x, (c & 2 ? 0.4 : -0.4) - p.z);
+        if (d < bestD) {
+          bestD = d;
+          best = c;
+        }
+      }
+      return { x: (best & 1 ? 1 : -1) * 0.45, z: (best & 2 ? 1 : -1) * 0.4 };
     }
     case 'seesaw':
     case 'surge': {
@@ -718,11 +722,6 @@ export function generateSetlist(
   // EXPERT is a floor, not a phase: the whole night is served at the top
   // difficulty's terms (the donut's disc reads this — see buildLandings).
   const expert = difficulty >= 3;
-  // THE SWEPT ROUTINE is a per-CHART coin: some expert nights carry it,
-  // some never do — the hardest challenges stay distinct records, not a
-  // constant garnish. (Rolled for every chart so the stream stays aligned;
-  // it only ever bites at act 4.)
-  const sweptRoutines = rng() < CHOREO.routineSweepChance;
   // Two bars of dancing, then the show starts: the first telegraph blooms at
   // bar 2 and the first landing hits the bar-3 downbeat — you're dodging
   // within seconds of the drop, not a phrase later.
@@ -767,7 +766,7 @@ export function generateSetlist(
       let charge = chartChargeBeats(kind, doubleTime);
       // Land on the next bar downbeat that the telegraph fits in front of.
       let landBeat = Math.ceil((cursor + charge) / barBeats) * barBeats;
-      let landings = buildLandings(kind, landBeat, act, rng, sweptRoutines, park, doubleTime, expert);
+      let landings = buildLandings(kind, landBeat, act, rng, park, doubleTime, expert);
       // THE FLOOR MANAGER: a move whose danger never touches the ground
       // the last move parked you on asks for nothing — roll another shape
       // (same seeded stream, so every client re-rolls identically). A WHOLE
@@ -784,7 +783,7 @@ export function generateSetlist(
         kind = pickKind(rng, act, last, banned);
         charge = chartChargeBeats(kind, doubleTime);
         landBeat = Math.ceil((cursor + charge) / barBeats) * barBeats;
-        landings = buildLandings(kind, landBeat, act, rng, sweptRoutines, park, doubleTime, expert);
+        landings = buildLandings(kind, landBeat, act, rng, park, doubleTime, expert);
       }
       if (
         !evictsPark(landings, park) ||
