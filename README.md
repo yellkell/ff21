@@ -13,6 +13,19 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE TUTORIAL'S TEXT BOXES STOP HITCHING.** Ember's caption, the BEGIN
+  console and the BALL LOADOUT used to be built, painted and uploaded on the
+  very frame they popped up, and a new shader compiled for the first one.
+  - **Her caption** repainted its whole holo frame (two blurred glows, the
+    scanlines, her name tag) for every line. The frame is now painted once
+    and each line just blits it and writes the words. The output is the same
+    to the pixel, and a line paints about 25x faster. Hiding the plate when
+    a line runs out no longer clears and re-uploads it either.
+  - **Warm-up.** While she idles at her spawn point, one plate per frame is
+    built, painted, uploaded to the GPU and has its shader compiled, all
+    still hidden. So when a box appears it only has to be shown.
+  - **READY hover** on the loadout re-blits the last loadout paint instead
+    of repainting the whole panel.
 - **NO MORE FEATS ON THE LEADERBOARD.** The run boards (SPEEDRUN, RAID,
   GOOP RAID) are plain races against the clock again, one difficulty at a
   time:
