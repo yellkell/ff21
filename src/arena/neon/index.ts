@@ -53,6 +53,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { Traffic, BACKSTREET_LANES, PLAZA_LANES } from './traffic.js';
 import { setStageRaised, STAGE_RAISE } from '../arena.js';
 import { setStreetDecks } from '../../avatar/skins.js';
+import { setPadStreet } from '../padKit.js';
 
 export type NeonSite = 'backstreet' | 'plaza';
 
@@ -183,8 +184,10 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
   const apply = () => {
     sites.backstreet.visible = site === 'backstreet';
     sites.plaza.visible = site === 'plaza';
-    setStageRaised(shown && site === 'plaza');
-    // The district's road: the house decks are laid as its cast-iron plate.
+    // The district's road: pads stand on their own concrete (the street set),
+    // so the old plinth stays down; the house decks are laid as cast iron.
+    setStageRaised(false);
+    setPadStreet(shown);
     setStreetDecks(shown);
   };
   apply();

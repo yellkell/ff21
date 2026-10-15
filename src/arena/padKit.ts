@@ -14,11 +14,16 @@
  *   PAD_SKIRT  the ribbed pedestal fascia                 → steel + 'trim'
  *   PAD_VENTS  the lit vent slots                         → the pad's 'neon-core'
  *
+ * THE STREET SET (STREET_FRAME / _BASE / _EDGE / _LED) is the other dress:
+ * a cast-iron frame, a concrete plinth to the road, a galvanised edge and a
+ * line of light in a groove — worn instead of the machined pieces wherever
+ * the site is a street (setPadStreet: the neon district).
+ *
  * Because the kit's pieces wear each pad's OWN role materials, applyPlatform-
  * Skin / tintPlatform keep working untouched: a skin that recolours the trim
  * recolours the bezel and the bolts; a team tint lights the vents with the rim.
  */
-import { MeshStandardMaterial, type Group, type Material, type Mesh, type Object3D } from 'three';
+import { DoubleSide, Group, MeshStandardMaterial, type Material, type Mesh, type Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export interface PadParts {
@@ -30,6 +35,57 @@ export interface PadParts {
   slabMat: Material;
   trimMat: Material;
   coreMat: Material;
+  /** The kit's two dresses, once it has landed (setPadStreet picks one). */
+  machined?: Group;
+  street?: Group;
+}
+
+/** The street set's own surfaces, finished once (shared by every clone):
+ *  glTF carries a scan as texture × factor only, so the street's tones are
+ *  set here — wet dark concrete, cold galvanising, black cast iron — and
+ *  the grime baked into vertex colour is switched on. */
+const STREET_TONE: Record<string, [number, number, number, number, number]> = {
+  //                  colour r, g, b, roughness, environment light
+  'street-concrete': [0.075, 0.075, 0.082, 1.0, 0.3], // wet: dark, and it takes the neon
+  'street-galv': [0.26, 0.27, 0.3, 0.75, 0.6],
+  'street-iron': [0.13, 0.125, 0.125, 0.85, 0.45],
+};
+function finishStreet(root: Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh || !o.name.startsWith('STREET_')) return;
+    const m = mesh.material as MeshStandardMaterial;
+    const tone = STREET_TONE[m.name];
+    if (!tone || m.userData.toned) return;
+    m.userData.toned = true;
+    m.color.setRGB(tone[0], tone[1], tone[2]);
+    m.roughness = tone[3];
+    // The site's panorama lights a whole lit street's worth into anything
+    // pale; a pad standing IN that street takes only a share of it.
+    m.envMapIntensity = tone[4];
+    if (mesh.geometry.getAttribute('color')) m.vertexColors = true;
+    m.needsUpdate = true;
+  });
+}
+
+/** Whether pads wear the STREET set (a road site: the neon district). */
+let streetOn = false;
+
+function wearStreet(p: PadParts): void {
+  if (!p.machined || !p.street) return;
+  p.machined.visible = !streetOn;
+  p.street.visible = streetOn;
+  // The bezel's neon tube goes with the bezel: in the street the light is
+  // the line in the plinth's groove; and the plinth itself is the concrete.
+  p.rim.visible = !streetOn;
+  const plinth = p.group.getObjectByName('stage-plinth');
+  if (plinth && streetOn) plinth.visible = false;
+}
+
+/** Dress every pad (now and when the kit lands) for a road, or not. */
+export function setPadStreet(on: boolean): void {
+  streetOn = on;
+  for (const p of pads) wearStreet(p);
 }
 
 const pads: PadParts[] = [];
@@ -50,12 +106,12 @@ let kit: Object3D | null = null;
 let loading = false;
 let steel: MeshStandardMaterial | null = null;
 
-/** Register a freshly built pad; it upgrades now if the kit is in, or when it lands. */
 /** Every pad ever built (the street re-lays the undressed ones). */
 export function allPads(): readonly PadParts[] {
   return pads;
 }
 
+/** Register a freshly built pad; it upgrades now if the kit is in, or when it lands. */
 export function registerPad(p: PadParts): void {
   pads.push(p);
   if (kit) upgrade(p);
@@ -65,6 +121,7 @@ export function registerPad(p: PadParts): void {
       'store/pad_kit.glb',
       (gltf) => {
         kit = gltf.scene;
+        finishStreet(kit);
         for (const q of pads) upgrade(q);
       },
       undefined,
@@ -97,6 +154,8 @@ function upgrade(p: PadParts): void {
     p.slab.geometry = deck.geometry;
     p.slab.position.y = 0; // the kit deck is authored at its true height (top +0.015)
   }
+  const machined = new Group();
+  machined.name = 'pad-machined';
   for (const name of ['PAD_BEZEL', 'PAD_BOLTS', 'PAD_SKIRT', 'PAD_VENTS']) {
     const src = kit.getObjectByName(name);
     if (!src) continue;
@@ -106,8 +165,32 @@ function upgrade(p: PadParts): void {
       const mesh = n as Mesh;
       if (mesh.isMesh) mesh.material = roleOf(mesh.material as Material);
     });
-    p.group.add(c);
+    machined.add(c);
   }
+  p.group.add(machined);
+  // THE STREET SET: concrete, galvanised steel and cast iron wear their own
+  // scanned materials; only the groove's light takes the pad's colour.
+  const street = new Group();
+  street.name = 'pad-street';
+  for (const name of ['STREET_FRAME', 'STREET_BASE', 'STREET_EDGE', 'STREET_LED']) {
+    const src = kit.getObjectByName(name);
+    if (!src) continue;
+    const c = src.clone(true);
+    c.position.set(0, 0, 0);
+    if (name === 'STREET_LED') {
+      // The strip faces into its groove; light it from both sides.
+      p.coreMat.side = DoubleSide;
+      c.traverse((n) => {
+        const mesh = n as Mesh;
+        if (mesh.isMesh) mesh.material = p.coreMat;
+      });
+    }
+    street.add(c);
+  }
+  p.group.add(street);
+  p.machined = machined;
+  p.street = street;
+  wearStreet(p);
   p.bolts.visible = false; // the kit's socket heads replace the studs
   // The neon drops into the bezel's channel (1.7 cm down, a hair inboard):
   // a lit groove in machined steel rather than a tube sat on the corner.
