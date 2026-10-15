@@ -3,7 +3,9 @@
      camera, for screenshots and a program-count check (a landed hit must
      never compile a shader). Not part of the game; never ship or link it.
      ?team=0|1  ?scale=1  ?t=<seconds after the hit to freeze on>
-     ?loop=1 keeps punching (watch window.__programs stay flat). -->
+     ?loop=1 keeps punching (watch window.__programs stay flat).
+     ?eye=<metres> lands the hit that far from the camera instead (a hit
+     taken on your own head: the soot must thin out, not blind you). -->
 <html>
   <body style="margin:0; background:#0b0a0f">
     <script type="module">
@@ -47,7 +49,9 @@
       initImpactFx(scene);
       const world = null; // the spawners ignore it
       const hitAt = new Vector3(0.05, 1.35, -2.08); // on the chest's skin, as a ball meets a hitbox
+      if (q.has('eye')) hitAt.set(0, 1.47, -Number(q.get('eye')));
       const travel = new Vector3(0.1, 0.05, -1); // thrown from the camera
+      if (q.has('eye')) travel.set(-0.1, -0.05, 1); // thrown at the camera
 
       const step = 1 / 72;
       const tick = () => {

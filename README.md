@@ -13,6 +13,28 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **A HIT LOOKS LIKE FIRE, AND THE NUMBER LOOKS LIKE A COMIC.**
+  - **The burst** (`fx/effects.ts`) used to be a comic "POW": an
+    eleven-ray starburst, a perfect shockwave ring, flat glowing discs and
+    tumbling gem chunks, which read as a sticker in the photoreal venues.
+    Now it is a flash too short to have a shape, ragged noise-textured
+    flame that rolls back off the struck surface and cools from white
+    through the fire's colour into dark soot, and fine sparks on real
+    gravity and drag that cool as they fly. The soot and flame are one
+    premultiplied shader: a puff is pure light while it burns and starts to
+    hide what's behind it once it is smoke.
+  - **Your own head stays readable.** A hit taken on the head bursts a
+    hand's width from your eyes, so soot thins out near the camera and
+    the flame eases off right at the lens. A puff faded to nothing is drawn
+    at zero size, so it costs no GPU fill in stereo.
+  - **The damage number goes pop art, still red.** It now has a flat
+    printed red with Ben-Day dots that swell toward the bottom, a black
+    keyline inside an off-white paper border, a hard offset shadow and a
+    glint. Each number lands a few degrees askew. The X and the GG keep
+    their old style.
+  - **Still no hitch.** Everything stays pooled and permanently in the
+    scene; `impact-preview.html` still counts 7 programs before and after a
+    landed hit. Its new `?eye=<metres>` option lands the hit at your face.
 - **THE MATCH WAITS FOR THE BLACK, AND THE DOOR WAITS FOR THE LOAD.**
   - **No rival in the alley.** Picking a bout, the tutorial, Aim Training
     or a titan switched the whole match on at once — the rival, their pad,

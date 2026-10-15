@@ -1,21 +1,31 @@
 /**
- * Transient combat visuals: the fiery hit spark (white-hot flash, starburst,
- * shockwave ring, spark streaks, cooling ember chunks), the damage number
- * and the gesture clink.
+ * Transient combat visuals: the fire hit (a white-hot flash, fire puffs that
+ * cool into soot smoke, incandescent spark streaks), the damage number and
+ * the gesture clink.
+ *
+ * THE HIT IS LIT LIKE THE VENUE, NOT LIKE A COMIC. The first look was a
+ * cartoon "POW": an eleven-ray starburst, a perfect shockwave ring, flat
+ * coloured discs and gem-shaped chunks, all pure additive glow with no
+ * smoke, which read as a sticker against the photoreal arenas. Now a hit is
+ * what a burst of fire does: a flash too short to have a shape, ragged
+ * noise-textured flame that rolls out of the struck surface and cools from
+ * white through the fire's colour into dark soot that hangs and breaks up,
+ * and sparks that fly on gravity and drag, white-hot at the head and cooling
+ * as they fall.
  *
  * EVERYTHING HERE IS POOLED, AND NOTHING IS EVER DISPOSED. The first cut
  * spawned a handful of ECS entities per impact, each with its own fresh
- * material (lit MeshStandardMaterial shards, SpriteMaterials, popup
- * materials), and disposed them all ~0.8 s later. three.js destroys a
+ * material, and disposed them all ~0.8 s later. three.js destroys a
  * compiled shader program as soon as the last material using it is
  * disposed, so with a second or so between hits every landed punch
- * recompiled and relinked the shard shader mid-frame — a visible hitch on
- * the headset exactly when the game should feel best.
+ * recompiled and relinked a shader mid-frame — a visible hitch on the
+ * headset exactly when the game should feel best.
  *
  * Now an impact is a few writes into fixed pools:
- *  - three instanced billboard layers (glow, starburst, ring) — one draw each,
+ *  - an instanced billboard layer of light (the flash and its halo),
+ *  - an instanced layer of fire / smoke puffs (one premultiplied shader that
+ *    is pure light while a puff burns and occludes once it is smoke),
  *  - an instanced layer of velocity-stretched spark streaks,
- *  - an instanced layer of ember chunks that cool from white-hot to dark,
  *  - a small ring of damage-number quads.
  * The instanced meshes stay in the scene at all times (count 0 draws
  * nothing but keeps their programs compiled and current across arena /
@@ -28,27 +38,35 @@ import {
   AdditiveBlending,
   CanvasTexture,
   Color,
+  CustomBlending,
   DoubleSide,
   DynamicDrawUsage,
-  IcosahedronGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
   LinearFilter,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
   PlaneGeometry,
   Quaternion,
+  SRGBColorSpace,
+  ShaderMaterial,
   Vector3,
   type Camera,
+  type Material,
   type Scene,
   type Texture,
 } from 'three';
-import { glowTexture } from '../materials/glow.js';
 import { emberBurst } from './fire.js';
 import { FIREBALL, teamColor } from '../config.js';
 
 const easeOut = (t: number): number => 1 - (1 - t) ** 3;
+const smooth = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -62,8 +80,8 @@ const _camPos = new Vector3();
 const _camQ = new Quaternion();
 const _col = new Color();
 const _hot = new Color();
-/** The white-hot heart of every spark, faintly warm. */
-const WHITE_HOT = new Color(1, 0.96, 0.88);
+/** The white-hot heart of every flash and spark, faintly warm. */
+const WHITE_HOT = new Color(1, 0.94, 0.82);
 const Z_AXIS = new Vector3(0, 0, 1);
 
 /* ── textures (drawn once) ───────────────────────────────────────────────── */
@@ -78,55 +96,90 @@ function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, s: number) 
   return tex;
 }
 
-/** A thin shockwave annulus: soft inner and outer edges, hot rim. */
-function ringTexture(): Texture {
+/** Light scattered round a point source: a gaussian, tight at the core and
+ *  long in the tail, so a flash has no edge to read as a disc. */
+function lightTexture(): Texture {
   return canvasTex(128, (g, s) => {
-    const m = s / 2;
-    const grad = g.createRadialGradient(m, m, 0, m, m, m);
-    grad.addColorStop(0, 'rgba(255,255,255,0)');
-    grad.addColorStop(0.62, 'rgba(255,255,255,0)');
-    grad.addColorStop(0.8, 'rgba(255,255,255,0.55)');
-    grad.addColorStop(0.87, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.93, 'rgba(255,255,255,0.4)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, s, s);
+    const img = g.createImageData(s, s);
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const dx = (x + 0.5) / s - 0.5;
+        const dy = (y + 0.5) / s - 0.5;
+        const r2 = (dx * dx + dy * dy) * 4; // 0 at the centre, 1 at the edge
+        const core = Math.exp(-r2 * 18);
+        const tail = Math.exp(-r2 * 4.5) * 0.28;
+        const a = Math.max(0, core + tail - 0.011 * r2 * 4) * (r2 < 1 ? 1 : 0);
+        const i = (y * s + x) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(255 * Math.min(1, a));
+      }
+    }
+    g.putImageData(img, 0, 0);
   });
 }
 
-/** The hit spark: uneven needle rays round a hot core — the comic-book
- *  "POW" star, drawn additive so it reads as light, not a sticker. */
-function starTexture(): Texture {
-  return canvasTex(256, (g, s) => {
-    const m = s / 2;
-    g.globalCompositeOperation = 'lighter';
-    const rays = 11;
-    for (let i = 0; i < rays; i++) {
-      const a = (i / rays) * Math.PI * 2 + (i % 2 ? 0.12 : -0.05);
-      const len = m * (i % 3 === 0 ? 0.98 : i % 2 ? 0.62 : 0.8);
-      const half = m * (i % 3 === 0 ? 0.075 : 0.055);
-      g.save();
-      g.translate(m, m);
-      g.rotate(a);
-      const grad = g.createLinearGradient(0, 0, len, 0);
-      grad.addColorStop(0, 'rgba(255,255,255,1)');
-      grad.addColorStop(0.45, 'rgba(255,255,255,0.7)');
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad;
-      g.beginPath();
-      g.moveTo(0, -half);
-      g.lineTo(len, 0);
-      g.lineTo(0, half);
-      g.closePath();
-      g.fill();
-      g.restore();
+/** Seeded value noise, so the puff texture is the same every boot. */
+function valueNoise(seed: number): (x: number, y: number) => number {
+  const N = 256;
+  const tab = new Float32Array(N);
+  let st = seed;
+  for (let i = 0; i < N; i++) {
+    st = (st * 1664525 + 1013904223) >>> 0;
+    tab[i] = st / 4294967296;
+  }
+  const hash = (x: number, y: number): number => tab[(x * 73 + y * 151 + ((x * y) & 31)) & (N - 1)];
+  return (x, y) => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const fx = x - xi;
+    const fy = y - yi;
+    const ux = fx * fx * (3 - 2 * fx);
+    const uy = fy * fy * (3 - 2 * fy);
+    const a = hash(xi, yi);
+    const b = hash(xi + 1, yi);
+    const c = hash(xi, yi + 1);
+    const d = hash(xi + 1, yi + 1);
+    return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+  };
+}
+
+/**
+ * One billow of flame or smoke. R carries the billow's density (fbm noise),
+ * A its soft, ragged outline. The puff shader erodes R with age, so a puff
+ * breaks into wisps as it thins instead of fading as one even disc.
+ */
+function puffTexture(): Texture {
+  return canvasTex(128, (g, s) => {
+    const n = valueNoise(0x5eed);
+    const fbm = (x: number, y: number): number => {
+      let a = 0;
+      let w = 0.5;
+      let f = 1;
+      for (let o = 0; o < 5; o++) {
+        a += w * n(x * f, y * f);
+        f *= 2.03;
+        w *= 0.5;
+      }
+      return a / 0.97;
+    };
+    const img = g.createImageData(s, s);
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const u = (x + 0.5) / s - 0.5;
+        const v = (y + 0.5) / s - 0.5;
+        const r = Math.sqrt(u * u + v * v) * 2;
+        const ang = Math.atan2(v, u);
+        // A lumpy rim: the outline swells and pinches round the puff.
+        const rim = 0.72 + 0.22 * (fbm(Math.cos(ang) * 2.2 + 3, Math.sin(ang) * 2.2 + 3) - 0.5) * 2;
+        const mask = smooth(rim, rim * 0.35, r);
+        const dens = fbm(u * 7 + 11, v * 7 + 5);
+        const i = (y * s + x) * 4;
+        img.data[i] = Math.round(255 * Math.min(1, Math.max(0, (dens - 0.2) * 1.6)));
+        img.data[i + 1] = img.data[i + 2] = 0;
+        img.data[i + 3] = Math.round(255 * mask);
+      }
     }
-    const core = g.createRadialGradient(m, m, 0, m, m, m * 0.34);
-    core.addColorStop(0, 'rgba(255,255,255,1)');
-    core.addColorStop(0.5, 'rgba(255,255,255,0.6)');
-    core.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = core;
-    g.fillRect(0, 0, s, s);
+    g.putImageData(img, 0, 0);
   });
 }
 
@@ -140,10 +193,10 @@ function streakTexture(): Texture {
       const img = g.createImageData(w, h);
       for (let y = 0; y < h; y++) {
         const v = (y + 0.5) / h - 0.5;
-        const across = Math.exp(-v * v * 38);
+        const across = Math.exp(-v * v * 60);
         for (let x = 0; x < w; x++) {
           const u = (x + 0.5) / w;
-          const along = u ** 1.6 * Math.min(1, (1 - u) * 9);
+          const along = u ** 2.2 * Math.min(1, (1 - u) * 12);
           const a = Math.round(255 * across * along);
           const i = (y * w + x) * 4;
           img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
@@ -169,7 +222,7 @@ function additive(map: Texture): MeshBasicMaterial {
 
 /** An instanced mesh that is always in the scene and never culled; its
  *  instance colours exist from the start so the program never changes. */
-function instanced(geo: PlaneGeometry | IcosahedronGeometry, mat: MeshBasicMaterial, max: number): InstancedMesh {
+function instanced(geo: PlaneGeometry, mat: Material, max: number): InstancedMesh {
   const mesh = new InstancedMesh(geo, mat, max);
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);
   mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3);
@@ -179,17 +232,13 @@ function instanced(geo: PlaneGeometry | IcosahedronGeometry, mat: MeshBasicMater
   return mesh;
 }
 
-/* ── billboards: flash / bloom / starburst / ring ────────────────────────── */
+/* ── light: the flash and its halo ───────────────────────────────────────── */
 
 const enum Anim {
-  /** grow ~2.8× and fade linearly — the impact pop */
+  /** a white-hot instant: barely grows, gone in a few frames */
   Flash,
-  /** swell gently, fade on a square — the coloured halo */
+  /** the light the burst throws into the air round it, fading on a square */
   Bloom,
-  /** snap open, then die fast — the starburst */
-  Star,
-  /** race outward, thin and fade — the shockwave */
-  Ring,
 }
 
 class BillboardLayer {
@@ -201,8 +250,6 @@ class BillboardLayer {
   private readonly age: Float32Array;
   private readonly life: Float32Array;
   private readonly size: Float32Array;
-  private readonly rot: Float32Array;
-  private readonly spin: Float32Array;
   private readonly anim: Uint8Array;
 
   constructor(tex: Texture, private readonly max: number, renderOrder = 0) {
@@ -213,12 +260,10 @@ class BillboardLayer {
     this.age = new Float32Array(max);
     this.life = new Float32Array(max);
     this.size = new Float32Array(max);
-    this.rot = new Float32Array(max);
-    this.spin = new Float32Array(max);
     this.anim = new Uint8Array(max);
   }
 
-  spawn(p: Vector3, anim: Anim, size: number, life: number, c: Color, gain = 1, rot = 0, spin = 0): void {
+  spawn(p: Vector3, anim: Anim, size: number, life: number, c: Color, gain = 1): void {
     let i = this.n;
     if (i < this.max) this.n++;
     else i = this.steal = (this.steal + 1) % this.max; // full: recycle a slot
@@ -231,8 +276,6 @@ class BillboardLayer {
     this.age[i] = 0;
     this.life[i] = life;
     this.size[i] = size;
-    this.rot[i] = rot;
-    this.spin[i] = spin;
     this.anim[i] = anim;
   }
 
@@ -244,8 +287,6 @@ class BillboardLayer {
     this.age[i] = this.age[j];
     this.life[i] = this.life[j];
     this.size[i] = this.size[j];
-    this.rot[i] = this.rot[j];
-    this.spin[i] = this.spin[j];
     this.anim[i] = this.anim[j];
   }
 
@@ -264,29 +305,16 @@ class BillboardLayer {
       const t = age / life;
       let scale: number;
       let fade: number;
-      switch (this.anim[i] as Anim) {
-        case Anim.Flash:
-          scale = 1 + t * 1.8;
-          fade = 1 - t;
-          break;
-        case Anim.Bloom:
-          scale = 1 + 0.7 * easeOut(t);
-          fade = (1 - t) * (1 - t);
-          break;
-        case Anim.Star:
-          scale = 0.55 + 0.75 * easeOut(Math.min(1, t * 2.2));
-          fade = (1 - t) ** 1.6;
-          break;
-        default: // Ring
-          scale = 0.2 + 2.8 * easeOut(t);
-          fade = (1 - t) ** 1.5;
-          break;
+      if ((this.anim[i] as Anim) === Anim.Flash) {
+        scale = 1 + 0.35 * easeOut(t);
+        fade = (1 - t) ** 2;
+      } else {
+        scale = 1 + 0.4 * easeOut(t);
+        fade = (1 - t) * (1 - t);
       }
       const s = this.size[i] * scale;
-      _qz.setFromAxisAngle(Z_AXIS, this.rot[i] + this.spin[i] * age);
-      _q.copy(camQ).multiply(_qz);
       _p.fromArray(this.pos, i * 3);
-      _m.compose(_p, _q, _s.set(s, s, s));
+      _m.compose(_p, camQ, _s.set(s, s, s));
       this.mesh.setMatrixAt(i, _m);
       // Additive: dimming the colour IS the fade.
       colors.setXYZ(i, this.col[i * 3] * fade, this.col[i * 3 + 1] * fade, this.col[i * 3 + 2] * fade);
@@ -303,7 +331,216 @@ class BillboardLayer {
   }
 }
 
-/* ── spark streaks: stretched along their own velocity ───────────────────── */
+/* ── puffs: flame that rolls out and cools into smoke ────────────────────── */
+
+/**
+ * Premultiplied "over": rgb is added as light, alpha darkens what is behind.
+ * A burning puff writes colour with alpha 0 (pure light, like the additive
+ * layers); as it cools its colour drains and its alpha rises, so the same
+ * billow turns into soot that occludes the arena behind it.
+ */
+const PUFF_VERT = /* glsl */ `
+  attribute vec3 aSmoke; // x: occlusion, y: soot grey, z: erosion
+  varying vec2 vUv;
+  varying vec3 vEmit;
+  varying vec3 vSmoke;
+  void main(){
+    vUv = uv; vEmit = instanceColor; vSmoke = aSmoke;
+    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  }
+`;
+const PUFF_FRAG = /* glsl */ `
+  uniform sampler2D uMap;
+  varying vec2 vUv;
+  varying vec3 vEmit;
+  varying vec3 vSmoke;
+  void main(){
+    vec4 t = texture2D(uMap, vUv);
+    float d = t.a * smoothstep(vSmoke.z, vSmoke.z + 0.35, t.r);
+    float a = vSmoke.x * d;
+    gl_FragColor = vec4(vEmit * d + vec3(vSmoke.y) * a, a);
+    #include <colorspace_fragment>
+  }
+`;
+
+const enum Puff {
+  /** burns white → the fire's colour → dark, leaving a little soot */
+  Fire,
+  /** soot: lit warm for an instant by the flash, then hangs, rises, thins */
+  Smoke,
+}
+
+class PuffLayer {
+  readonly mesh: InstancedMesh;
+  private n = 0;
+  private steal = 0;
+  private readonly smokeAttr: InstancedBufferAttribute;
+  private readonly pos: Float32Array;
+  private readonly vel: Float32Array;
+  private readonly col: Float32Array;
+  private readonly age: Float32Array;
+  private readonly life: Float32Array;
+  private readonly size: Float32Array;
+  private readonly rot: Float32Array;
+  private readonly spin: Float32Array;
+  private readonly kind: Uint8Array;
+
+  constructor(private readonly max: number, renderOrder = 0) {
+    const mat = new ShaderMaterial({
+      uniforms: { uMap: { value: puffTexture() } },
+      vertexShader: PUFF_VERT,
+      fragmentShader: PUFF_FRAG,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+      blending: CustomBlending,
+      blendSrc: OneFactor,
+      blendDst: OneMinusSrcAlphaFactor,
+      blendSrcAlpha: OneFactor,
+      blendDstAlpha: OneMinusSrcAlphaFactor,
+    });
+    this.mesh = instanced(new PlaneGeometry(1, 1), mat, max);
+    this.mesh.renderOrder = renderOrder;
+    this.smokeAttr = new InstancedBufferAttribute(new Float32Array(max * 3), 3);
+    this.smokeAttr.setUsage(DynamicDrawUsage);
+    this.mesh.geometry.setAttribute('aSmoke', this.smokeAttr);
+    this.pos = new Float32Array(max * 3);
+    this.vel = new Float32Array(max * 3);
+    this.col = new Float32Array(max * 3);
+    this.age = new Float32Array(max);
+    this.life = new Float32Array(max);
+    this.size = new Float32Array(max);
+    this.rot = new Float32Array(max);
+    this.spin = new Float32Array(max);
+    this.kind = new Uint8Array(max);
+  }
+
+  spawn(p: Vector3, vx: number, vy: number, vz: number, kind: Puff, c: Color, size: number, life: number): void {
+    let i = this.n;
+    if (i < this.max) this.n++;
+    else i = this.steal = (this.steal + 1) % this.max;
+    const k = i * 3;
+    this.pos[k] = p.x;
+    this.pos[k + 1] = p.y;
+    this.pos[k + 2] = p.z;
+    this.vel[k] = vx;
+    this.vel[k + 1] = vy;
+    this.vel[k + 2] = vz;
+    this.col[k] = c.r;
+    this.col[k + 1] = c.g;
+    this.col[k + 2] = c.b;
+    this.age[i] = 0;
+    this.life[i] = life;
+    this.size[i] = size;
+    this.rot[i] = Math.random() * Math.PI * 2;
+    this.spin[i] = (Math.random() - 0.5) * (kind === Puff.Fire ? 3 : 0.8);
+    this.kind[i] = kind;
+  }
+
+  private kill(i: number): void {
+    const j = --this.n;
+    if (i === j) return;
+    this.pos.copyWithin(i * 3, j * 3, j * 3 + 3);
+    this.vel.copyWithin(i * 3, j * 3, j * 3 + 3);
+    this.col.copyWithin(i * 3, j * 3, j * 3 + 3);
+    this.age[i] = this.age[j];
+    this.life[i] = this.life[j];
+    this.size[i] = this.size[j];
+    this.rot[i] = this.rot[j];
+    this.spin[i] = this.spin[j];
+    this.kind[i] = this.kind[j];
+  }
+
+  update(dt: number, camQ: Quaternion, camPos: Vector3): void {
+    if (this.n === 0 && this.mesh.count === 0) return;
+    const colors = this.mesh.instanceColor!;
+    const smoke = this.smokeAttr;
+    let i = 0;
+    while (i < this.n) {
+      const age = this.age[i] + dt;
+      if (age >= this.life[i]) {
+        this.kill(i);
+        continue;
+      }
+      this.age[i] = age;
+      const t = age / this.life[i];
+      const k = i * 3;
+      const fire = (this.kind[i] as Puff) === Puff.Fire;
+      // Gas: the push from the hit bleeds off fast, then heat lifts it.
+      const drag = Math.max(0, 1 - (fire ? 6 : 2.4) * dt);
+      this.vel[k] *= drag;
+      this.vel[k + 1] = this.vel[k + 1] * drag + (fire ? 0.9 : 0.35) * dt;
+      this.vel[k + 2] *= drag;
+      this.pos[k] += this.vel[k] * dt;
+      this.pos[k + 1] += this.vel[k + 1] * dt;
+      this.pos[k + 2] += this.vel[k + 2] * dt;
+
+      let grow: number;
+      let er: number;
+      let eg: number;
+      let eb: number;
+      let occl: number;
+      let erode: number;
+      const r = this.col[k];
+      const g = this.col[k + 1];
+      const b = this.col[k + 2];
+      if (fire) {
+        grow = 1 + 1.3 * easeOut(t);
+        // White-hot for the first frames, the fire's own colour after, and
+        // the colour drains (blue and green first, as real flame reddens).
+        const hot = Math.max(0, 1 - t * 5);
+        const burn = 1 - smooth(0.15, 0.7, t);
+        const redden = 1 - 0.55 * smooth(0.1, 0.5, t);
+        er = (r + (WHITE_HOT.r - r) * hot) * burn;
+        eg = (g + (WHITE_HOT.g - g) * hot) * burn * redden;
+        eb = (b + (WHITE_HOT.b - b) * hot) * burn * redden;
+        occl = 0.3 * smooth(0.3, 0.6, t) * (1 - smooth(0.6, 1, t));
+        erode = 0.22 + 0.65 * t;
+      } else {
+        grow = 1 + 2.1 * easeOut(t);
+        const lit = Math.max(0, 1 - t * 6) * 0.3; // the flash on its underside
+        er = r * lit;
+        eg = g * lit;
+        eb = b * lit;
+        occl = 0.38 * smooth(0, 0.12, t) * (1 - t) ** 1.4;
+        erode = 0.05 + 0.65 * t;
+      }
+      const s = this.size[i] * grow;
+      // A hit on your own head bursts a hand's width from your eyes: soot
+      // that close would blind you for a second, so it thins out near the
+      // eye and the fight stays readable through it. The flame still fills
+      // the view (taking a hit should), but eases off right at the lens.
+      _p.fromArray(this.pos, k);
+      const gap = _p.distanceTo(camPos) - s * 0.5;
+      const near = smooth(0.25, 0.9, gap);
+      const glow = fire ? 0.35 + 0.65 * smooth(-0.05, 0.3, gap) : near;
+      occl *= near;
+      er *= glow;
+      eg *= glow;
+      eb *= glow;
+      _qz.setFromAxisAngle(Z_AXIS, this.rot[i] + this.spin[i] * age);
+      _q.copy(camQ).multiply(_qz);
+      // Nothing left to see: zero size, so it costs no fill rate in stereo.
+      const z = occl + er + eg + eb > 1e-3 ? s : 0;
+      _m.compose(_p, _q, _s.set(z, z, z));
+      this.mesh.setMatrixAt(i, _m);
+      colors.setXYZ(i, er, eg, eb);
+      smoke.setXYZ(i, occl, fire ? 0.02 : 0.03, erode);
+      i++;
+    }
+    this.mesh.count = this.n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    colors.needsUpdate = true;
+    smoke.needsUpdate = true;
+  }
+
+  clear(): void {
+    this.n = 0;
+    this.mesh.count = 0;
+  }
+}
+
+/* ── spark streaks: stretched along their own velocity, cooling ──────────── */
 
 class StreakLayer {
   readonly mesh: InstancedMesh;
@@ -315,18 +552,23 @@ class StreakLayer {
   private readonly age: Float32Array;
   private readonly life: Float32Array;
   private readonly width: Float32Array;
+  private readonly drag: Float32Array;
 
-  constructor(private readonly max: number) {
+  constructor(private readonly max: number, renderOrder = 0) {
     this.mesh = instanced(new PlaneGeometry(1, 1), additive(streakTexture()), max);
+    this.mesh.renderOrder = renderOrder;
     this.pos = new Float32Array(max * 3);
     this.vel = new Float32Array(max * 3);
     this.col = new Float32Array(max * 3);
     this.age = new Float32Array(max);
     this.life = new Float32Array(max);
     this.width = new Float32Array(max);
+    this.drag = new Float32Array(max);
   }
 
-  spawn(p: Vector3, vx: number, vy: number, vz: number, c: Color, life: number, width: number): void {
+  /** `c` is the colour the spark cools to; it is born white-hot. `drag` is
+   *  per second — a fleck of slag bleeds speed fast, a hot bead carries. */
+  spawn(p: Vector3, vx: number, vy: number, vz: number, c: Color, life: number, width: number, drag: number): void {
     let i = this.n;
     if (i < this.max) this.n++;
     else i = this.steal = (this.steal + 1) % this.max;
@@ -342,6 +584,7 @@ class StreakLayer {
     this.age[i] = 0;
     this.life[i] = life;
     this.width[i] = width;
+    this.drag[i] = drag;
   }
 
   private kill(i: number): void {
@@ -353,12 +596,12 @@ class StreakLayer {
     this.age[i] = this.age[j];
     this.life[i] = this.life[j];
     this.width[i] = this.width[j];
+    this.drag[i] = this.drag[j];
   }
 
   update(dt: number, camPos: Vector3): void {
     if (this.n === 0 && this.mesh.count === 0) return;
     const colors = this.mesh.instanceColor!;
-    const drag = Math.max(0, 1 - 5.5 * dt); // sparks bleed speed fast
     let i = 0;
     while (i < this.n) {
       const age = this.age[i] + dt;
@@ -369,7 +612,8 @@ class StreakLayer {
       this.age[i] = age;
       const t = age / this.life[i];
       const k = i * 3;
-      this.vel[k + 1] -= 7 * dt;
+      const drag = Math.max(0, 1 - this.drag[i] * dt);
+      this.vel[k + 1] -= 9.8 * dt;
       this.vel[k] *= drag;
       this.vel[k + 1] *= drag;
       this.vel[k + 2] *= drag;
@@ -388,123 +632,22 @@ class StreakLayer {
       if (_y.lengthSq() < 1e-8) _y.set(0, 0, 1).cross(_x);
       _y.normalize();
       _z.crossVectors(_x, _y);
-      const len = Math.min(0.32, 0.025 + speed * 0.05);
-      const w = this.width[i] * (1 - 0.5 * t);
+      // Motion blur: about the distance the spark covers in a frame and a
+      // half, so a slow one shrinks to a bead instead of a dash.
+      const len = Math.min(0.2, 0.008 + speed * 0.022);
+      const w = this.width[i] * (1 - 0.4 * t);
       _m.makeBasis(_x.multiplyScalar(len), _y.multiplyScalar(w), _z);
       // Head at the spark, tail trailing behind it.
       _m.setPosition(_p.addScaledVector(_x, -0.5));
       this.mesh.setMatrixAt(i, _m);
-      const fade = (1 - t) ** 1.3;
-      colors.setXYZ(i, this.col[k] * fade, this.col[k + 1] * fade, this.col[k + 2] * fade);
-      i++;
-    }
-    this.mesh.count = this.n;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    colors.needsUpdate = true;
-  }
-
-  clear(): void {
-    this.n = 0;
-    this.mesh.count = 0;
-  }
-}
-
-/* ── ember chunks: tumbling, cooling from white-hot to a dull glow ───────── */
-
-class ChunkLayer {
-  readonly mesh: InstancedMesh;
-  private n = 0;
-  private steal = 0;
-  private readonly pos: Float32Array;
-  private readonly vel: Float32Array;
-  private readonly axis: Float32Array;
-  private readonly col: Float32Array;
-  private readonly age: Float32Array;
-  private readonly life: Float32Array;
-  private readonly size: Float32Array;
-  private readonly spin: Float32Array;
-
-  constructor(private readonly max: number) {
-    // Unlit and opaque: a chunk is its own light, and it needs no sorting.
-    this.mesh = instanced(new IcosahedronGeometry(0.025, 0), new MeshBasicMaterial({ fog: false }), max);
-    this.pos = new Float32Array(max * 3);
-    this.vel = new Float32Array(max * 3);
-    this.axis = new Float32Array(max * 3);
-    this.col = new Float32Array(max * 3);
-    this.age = new Float32Array(max);
-    this.life = new Float32Array(max);
-    this.size = new Float32Array(max);
-    this.spin = new Float32Array(max);
-  }
-
-  spawn(p: Vector3, vx: number, vy: number, vz: number, c: Color, life: number, size: number, spin: number): void {
-    let i = this.n;
-    if (i < this.max) this.n++;
-    else i = this.steal = (this.steal + 1) % this.max;
-    const k = i * 3;
-    this.pos[k] = p.x;
-    this.pos[k + 1] = p.y;
-    this.pos[k + 2] = p.z;
-    this.vel[k] = vx;
-    this.vel[k + 1] = vy;
-    this.vel[k + 2] = vz;
-    _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-    this.axis[k] = _x.x;
-    this.axis[k + 1] = _x.y;
-    this.axis[k + 2] = _x.z;
-    this.col[k] = c.r;
-    this.col[k + 1] = c.g;
-    this.col[k + 2] = c.b;
-    this.age[i] = 0;
-    this.life[i] = life;
-    this.size[i] = size;
-    this.spin[i] = spin;
-  }
-
-  private kill(i: number): void {
-    const j = --this.n;
-    if (i === j) return;
-    this.pos.copyWithin(i * 3, j * 3, j * 3 + 3);
-    this.vel.copyWithin(i * 3, j * 3, j * 3 + 3);
-    this.axis.copyWithin(i * 3, j * 3, j * 3 + 3);
-    this.col.copyWithin(i * 3, j * 3, j * 3 + 3);
-    this.age[i] = this.age[j];
-    this.life[i] = this.life[j];
-    this.size[i] = this.size[j];
-    this.spin[i] = this.spin[j];
-  }
-
-  update(dt: number): void {
-    if (this.n === 0 && this.mesh.count === 0) return;
-    const colors = this.mesh.instanceColor!;
-    let i = 0;
-    while (i < this.n) {
-      const age = this.age[i] + dt;
-      if (age >= this.life[i]) {
-        this.kill(i);
-        continue;
-      }
-      this.age[i] = age;
-      const t = age / this.life[i];
-      const k = i * 3;
-      this.vel[k + 1] -= 4.5 * dt;
-      this.pos[k] += this.vel[k] * dt;
-      this.pos[k + 1] += this.vel[k + 1] * dt;
-      this.pos[k + 2] += this.vel[k + 2] * dt;
-      _p.fromArray(this.pos, k);
-      _q.setFromAxisAngle(_x.fromArray(this.axis, k), this.spin[i] * age);
-      const s = this.size[i] * (1 - t * t);
-      _m.compose(_p, _q, _s.set(s, s, s));
-      this.mesh.setMatrixAt(i, _m);
-      // Cooling: white-hot for the first instant, the fire's own colour
-      // through the flight, a dull coal as it dies.
-      const heat = Math.max(0, 1 - t * 4);
-      const cool = 1 - 0.75 * t;
+      // Incandescent cooling: white, then the fire's colour, then dim.
+      const hot = 1 - smooth(0.05, 0.45, t);
+      const fade = (1 - t) ** 1.2 * 1.6;
       colors.setXYZ(
         i,
-        (this.col[k] + (1 - this.col[k]) * heat) * cool,
-        (this.col[k + 1] + (1 - this.col[k + 1]) * heat) * cool,
-        (this.col[k + 2] + (1 - this.col[k + 2]) * heat) * cool,
+        (this.col[k] + (WHITE_HOT.r - this.col[k]) * hot) * fade,
+        (this.col[k + 1] + (WHITE_HOT.g - this.col[k + 1]) * hot) * fade,
+        (this.col[k + 2] + (WHITE_HOT.b - this.col[k + 2]) * hot) * fade,
       );
       i++;
     }
@@ -551,6 +694,94 @@ function popupTexture(text: string, fill: string, glow: string): CanvasTexture {
   return tex;
 }
 
+/** Pop-art red: the flat, printed red of a comic panel. */
+const POP_RED = '#e3101b';
+/** The halftone's darker ink, printed over the red. */
+const POP_DOT = '#8e0010';
+const POP_INK = '#0b0a0d';
+/** The off-white of the page round the lettering. */
+const POP_PAPER = '#fff6e0';
+
+/**
+ * The damage number as a pop-art panel lettering: flat red printed with
+ * Ben-Day dots that swell toward the bottom, a heavy black keyline and a
+ * hard offset shadow, set on a slight italic lean. Drawn at 512x256 and
+ * mipmapped so the dots don't shimmer at arm's length.
+ */
+function damageTexture(text: string): CanvasTexture {
+  const key = `dmg|${text}`;
+  let tex = popupTextures.get(key);
+  if (tex) return tex;
+  const W = 512;
+  const H = 256;
+  const font = `italic 900 188px 'Arial Black', 'Helvetica Neue', system-ui, sans-serif`;
+  const set = (g: CanvasRenderingContext2D): void => {
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = font;
+    g.lineJoin = 'round';
+    g.miterLimit = 2;
+    g.setTransform(1, 0, -0.14, 1, 18, 0); // the lean
+  };
+  const cx = W / 2;
+  const cy = H / 2 + 12;
+
+  // The face: flat red with the halftone printed over it, clipped to the
+  // letters by drawing the dots source-atop.
+  const face = document.createElement('canvas');
+  face.width = W;
+  face.height = H;
+  const f = face.getContext('2d')!;
+  set(f);
+  f.fillStyle = POP_RED;
+  f.fillText(text, cx, cy);
+  f.setTransform(1, 0, 0, 1, 0, 0);
+  f.globalCompositeOperation = 'source-atop';
+  f.fillStyle = POP_DOT;
+  const step = 13;
+  for (let row = 0, y = 0; y < H + step; row++, y += step * 0.866) {
+    const r = 1 + 4.6 * Math.min(1, Math.max(0, (y - H * 0.28) / (H * 0.6)));
+    for (let x = row % 2 ? step / 2 : 0; x < W + step; x += step) {
+      f.beginPath();
+      f.arc(x, y, r, 0, Math.PI * 2);
+      f.fill();
+    }
+  }
+  // A printed highlight: a white glint stroke across the top-left.
+  f.globalCompositeOperation = 'source-atop';
+  f.fillStyle = 'rgba(255,255,255,0.85)';
+  f.beginPath();
+  f.ellipse(W * 0.36, H * 0.3, 70, 9, -0.25, 0, Math.PI * 2);
+  f.fill();
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const g = canvas.getContext('2d')!;
+  set(g);
+  // The hard drop shadow: solid ink, offset down-right, no blur.
+  g.fillStyle = POP_INK;
+  g.strokeStyle = POP_INK;
+  g.lineWidth = 40;
+  g.strokeText(text, cx + 12, cy + 12);
+  // The paper border, so the lettering separates from a dark venue.
+  g.strokeStyle = POP_PAPER;
+  g.lineWidth = 40;
+  g.strokeText(text, cx, cy);
+  // The keyline.
+  g.strokeStyle = POP_INK;
+  g.lineWidth = 22;
+  g.strokeText(text, cx, cy);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.drawImage(face, 0, 0);
+
+  tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace; // the printed red, not a washed-out pink
+  tex.anisotropy = 4;
+  popupTextures.set(key, tex);
+  return tex;
+}
+
 interface Popup {
   mesh: Mesh;
   mat: MeshBasicMaterial;
@@ -559,39 +790,38 @@ interface Popup {
   base: number;
   y0: number;
   drift: number;
+  /** A lean in the view plane — the damage number lands a little askew. */
+  tilt: number;
   live: boolean;
 }
 
-/** The damage-number style: red for every hit — a heavy one just reads bigger. */
+/** The default popup style (the X, the GG pass their own colours). */
 const DMG_FILL = '#ff1605';
 const DMG_GLOW = 'rgba(255,30,10,1)';
 
 /* ── the module's pools ──────────────────────────────────────────────────── */
 
 let glow: BillboardLayer | undefined;
-let stars: BillboardLayer | undefined;
-let rings: BillboardLayer | undefined;
+let puffs: PuffLayer | undefined;
 let streaks: StreakLayer | undefined;
-let chunks: ChunkLayer | undefined;
 const popups: Popup[] = [];
 let popupCursor = 0;
 /** Labels still to rasterise ahead of their first use, one per frame. */
-const prewarm: [string, string, string][] = [];
+const prewarm: (() => void)[] = [];
 
 /** Build the pools and hang them in the scene. Call once at boot. */
 export function initImpactFx(scene: Scene): void {
   if (glow) return;
-  glow = new BillboardLayer(glowTexture(), 96);
-  stars = new BillboardLayer(starTexture(), 48);
-  rings = new BillboardLayer(ringTexture(), 48);
-  streaks = new StreakLayer(256);
-  chunks = new ChunkLayer(128);
-  scene.add(glow.mesh, stars.mesh, rings.mesh, streaks.mesh, chunks.mesh);
+  // Smoke first, so the flash and the sparks shine through it.
+  puffs = new PuffLayer(128);
+  glow = new BillboardLayer(lightTexture(), 64, 1);
+  streaks = new StreakLayer(384, 1);
+  scene.add(puffs.mesh, glow.mesh, streaks.mesh);
 
   // The popups are separate quads (each wears its own number); all share
   // one program. A permanent zero-size KEEPER holds that program compiled so
   // the first number of a bout doesn't pay for it.
-  const first = popupTexture(String(FIREBALL.damage), DMG_FILL, DMG_GLOW);
+  const first = damageTexture(String(FIREBALL.damage));
   const popupMat = (): MeshBasicMaterial =>
     new MeshBasicMaterial({ map: first, transparent: true, depthTest: false, depthWrite: false, fog: false });
   for (let i = 0; i < POPUP_POOL; i++) {
@@ -601,7 +831,7 @@ export function initImpactFx(scene: Scene): void {
     mesh.visible = false;
     mesh.frustumCulled = false;
     scene.add(mesh);
-    popups.push({ mesh, mat, age: 0, life: 1, base: 1, y0: 0, drift: 0, live: false });
+    popups.push({ mesh, mat, age: 0, life: 1, base: 1, y0: 0, drift: 0, tilt: 0, live: false });
   }
   const keeper = new Mesh(POPUP_GEO, popupMat());
   keeper.scale.setScalar(1e-6);
@@ -612,24 +842,24 @@ export function initImpactFx(scene: Scene): void {
   // Rasterise the numbers a bout actually throws before the first one lands.
   const big = FIREBALL.headDamage;
   for (const d of [FIREBALL.damage, Math.round(FIREBALL.damage / 3), Math.round(FIREBALL.damage / 3) + big - FIREBALL.damage, 10, 15, big, 30]) {
-    prewarm.push([String(d), DMG_FILL, DMG_GLOW]);
+    prewarm.push(() => damageTexture(String(d)));
   }
-  prewarm.push(['X', '#ff2a2a', 'rgba(255,40,30,1)'], ['GG', '#ffffff', 'rgba(255,255,255,0.95)']);
+  prewarm.push(
+    () => popupTexture('X', '#ff2a2a', 'rgba(255,40,30,1)'),
+    () => popupTexture('GG', '#ffffff', 'rgba(255,255,255,0.95)'),
+  );
 }
 
 /** Advance every live effect. Call once per frame (FXSystem does). */
 export function updateImpactFx(dt: number, camera: Camera): void {
   if (!glow) return;
-  const job = prewarm.pop();
-  if (job) popupTexture(job[0], job[1], job[2]);
+  prewarm.pop()?.();
 
   camera.getWorldQuaternion(_camQ);
   camera.getWorldPosition(_camPos);
+  puffs!.update(dt, _camQ, _camPos);
   glow.update(dt, _camQ);
-  stars!.update(dt, _camQ);
-  rings!.update(dt, _camQ);
   streaks!.update(dt, _camPos);
-  chunks!.update(dt);
 
   for (const pop of popups) {
     if (!pop.live) continue;
@@ -646,17 +876,16 @@ export function updateImpactFx(dt: number, camera: Camera): void {
     pop.mesh.position.y = pop.y0 + 0.3 * easeOut(t);
     pop.mesh.position.x += pop.drift * dt;
     pop.mesh.quaternion.copy(_camQ);
+    if (pop.tilt !== 0) pop.mesh.quaternion.multiply(_qz.setFromAxisAngle(Z_AXIS, pop.tilt));
     pop.mat.opacity = t < 0.06 ? t / 0.06 : t < 0.55 ? 1 : 1 - (t - 0.55) / 0.45;
   }
 }
 
 /** Drop every live effect (crossing between unrelated experiences). */
 export function clearImpactFx(): void {
+  puffs?.clear();
   glow?.clear();
-  stars?.clear();
-  rings?.clear();
   streaks?.clear();
-  chunks?.clear();
   for (const pop of popups) {
     pop.live = false;
     pop.mesh.visible = false;
@@ -674,11 +903,16 @@ export function spawnPopup(
   glowCss = DMG_GLOW,
   scale = 1,
 ): void {
+  launchPopup(pos, popupTexture(text, fill, glowCss), scale, 0);
+}
+
+function launchPopup(pos: Vector3, map: CanvasTexture, scale: number, tilt: number): void {
   if (popups.length === 0) return;
   const pop = popups[popupCursor];
   popupCursor = (popupCursor + 1) % popups.length;
-  pop.mat.map = popupTexture(text, fill, glowCss);
+  pop.mat.map = map;
   pop.mat.opacity = 0;
+  pop.tilt = tilt;
   pop.mesh.position.copy(pos);
   pop.y0 = pos.y + 0.1;
   pop.mesh.position.y = pop.y0;
@@ -692,49 +926,46 @@ export function spawnPopup(
 }
 
 /** The damage number: a whole number (a split ball's 20/3 reads "7"), always
- *  red — a heavy one (a headshot) just punches in bigger. */
-export function spawnDamagePopup(world: World, pos: Vector3, dmg: number): void {
+ *  pop-art red — a heavy one (a headshot) just punches in bigger. Each lands
+ *  a few degrees askew, like lettering slapped on a comic panel. */
+export function spawnDamagePopup(_world: World, pos: Vector3, dmg: number): void {
   const d = Math.round(dmg);
   const big = d >= FIREBALL.headDamage;
   const scale = Math.min(1.5, 0.85 + d / 60) * (big ? 1.15 : 1);
-  spawnPopup(world, pos, String(d), DMG_FILL, DMG_GLOW, scale);
+  launchPopup(pos, damageTexture(String(d)), scale, (Math.random() - 0.5) * 0.28);
 }
 
 /**
- * A crisp metallic spark for social hand gestures (clap / fist bump): a quick
- * bright pop, a snappy warm ring, a tiny glint and a short spray of sparks —
- * it reads like two iron gauntlets clinking, not a soft white puff.
+ * A crisp metallic spark for social hand gestures (clap / fist bump): a
+ * flash too quick to have a shape and a short spray of fast, bright flecks
+ * that bleed their speed at once — two iron gauntlets clinking, not a puff.
  */
 export function spawnGestureCue(_world: World, pos: Vector3, scale = 0.28): void {
   if (!glow) return;
-  glow.spawn(pos, Anim.Flash, scale, 0.1, _col.set(0xfff1d0));
-  rings!.spawn(pos, Anim.Ring, scale * 0.9, 0.26, _col.set(0xffe19a), 0.85);
-  stars!.spawn(pos, Anim.Star, scale * 0.8, 0.09, _col.set(0xffffff), 0.9, Math.random() * Math.PI);
-  emberBurst(pos, Math.max(5, Math.round(scale * 28)), false);
+  glow.spawn(pos, Anim.Flash, scale * 0.55, 0.06, WHITE_HOT, 1.1);
+  glow.spawn(pos, Anim.Bloom, scale * 1.2, 0.14, _col.set(0xffd9a0), 0.35);
+  const tint = _col.set(0xffb060);
+  const count = Math.max(6, Math.round(scale * 34));
+  for (let i = 0; i < count; i++) {
+    _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    const speed = 2.5 + Math.random() * 3.5;
+    streaks!.spawn(pos, _x.x * speed, _x.y * speed + 0.6, _x.z * speed, tint, 0.12 + Math.random() * 0.18, 0.006 + Math.random() * 0.004, 4);
+  }
 }
 
 /**
- * A fiery burst where a ball lands, is parried, or burns out. `scale` grows
+ * A fire burst where a ball lands, is parried, or burns out. `scale` grows
  * the whole event — body hits on the player use ~1.7 so taking a hit FEELS
  * like taking a hit. `dir` (optional) is the way the ball was travelling:
- * the sparks then splash back off the struck surface instead of every way.
+ * the flame and sparks then splash back off the struck surface instead of
+ * every way.
  */
 export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale = 1, dir?: Vector3): void {
   if (!glow) return;
   const tint = _col.set(teamColor(team));
-  const white = WHITE_HOT;
   const s = scale;
 
-  // The pop: a white-hot core over a halo in the fire's colour.
-  glow.spawn(pos, Anim.Flash, 0.36 * s, 0.12, white, 1.15);
-  glow.spawn(pos, Anim.Bloom, 0.7 * s, 0.26, tint, 0.95);
-  // The starburst — a white spark crossed over a bigger coloured one.
-  stars!.spawn(pos, Anim.Star, 0.5 * s, 0.12, white, 1, Math.random() * Math.PI, 3);
-  stars!.spawn(pos, Anim.Star, 0.78 * s, 0.17, tint, 1.2, Math.random() * Math.PI, -2);
-  // The shockwave.
-  rings!.spawn(pos, Anim.Ring, 0.36 * s, 0.3, _hot.copy(tint).lerp(white, 0.55), 0.9);
-
-  // Spark streaks.
+  // Which way the burst splashes: back off the struck surface.
   let bx = 0;
   let by = 0;
   let bz = 0;
@@ -744,34 +975,70 @@ export function spawnFireImpact(_world: World, pos: Vector3, team: number, scale
     by = -dir.y / l;
     bz = -dir.z / l;
   }
-  const count = Math.round(14 * s);
-  for (let i = 0; i < count; i++) {
-    _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-    _x.x += bx * 0.85;
-    _x.y += by * 0.85 + 0.15;
-    _x.z += bz * 0.85;
-    _x.normalize();
-    const speed = 2.6 + Math.random() * 3.6;
-    _hot.copy(tint).lerp(white, Math.random() * 0.65).multiplyScalar(2.1);
-    streaks!.spawn(pos, _x.x * speed, _x.y * speed, _x.z * speed, _hot, 0.16 + Math.random() * 0.22, 0.014 + Math.random() * 0.012);
-  }
 
-  // The spark spray from the shared ember pool — the lingering drift.
-  emberBurst(pos, Math.round(12 * s), team === 1);
+  // The light: a white-hot instant, and the glow it throws into the air.
+  glow.spawn(pos, Anim.Flash, 0.3 * s, 0.07, WHITE_HOT, 1.1);
+  glow.spawn(pos, Anim.Bloom, 0.85 * s, 0.2, tint, 0.45);
 
-  // Glowing chunks that pop and tumble out, cooling as they go.
-  for (let i = 0; i < Math.round(6 * s); i++) {
+  // The flame: ragged billows that roll out of the hit, cool and redden.
+  // Each starts a little proud of the surface so it doesn't slice the body.
+  const flames = Math.max(3, Math.round(5 * s));
+  for (let i = 0; i < flames; i++) {
     _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-    const speed = 1.4 + Math.random() * 1.8;
-    chunks!.spawn(
-      pos,
-      _x.x * speed + bx * 0.6,
-      _x.y * speed + 0.6,
-      _x.z * speed + bz * 0.6,
-      tint,
-      0.5 + Math.random() * 0.35,
-      0.55 + Math.random() * 0.65,
-      (Math.random() - 0.5) * 24,
+    const out = 0.5 + Math.random() * 1.1;
+    _p.copy(pos).add(_y.set(bx, by, bz).multiplyScalar(0.03 * s)).addScaledVector(_x, 0.025 * s);
+    _hot.copy(tint).multiplyScalar(1.25);
+    puffs!.spawn(
+      _p,
+      (bx * out + _x.x * 0.9) * s,
+      (by * out + _x.y * 0.9 + 0.2) * s,
+      (bz * out + _x.z * 0.9) * s,
+      Puff.Fire,
+      _hot,
+      (0.1 + Math.random() * 0.08) * s,
+      0.24 + Math.random() * 0.16,
     );
   }
+  // The soot it leaves: a few dark billows that hang, rise and thin out.
+  const smokes = Math.max(2, Math.round(3 * s));
+  for (let i = 0; i < smokes; i++) {
+    _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    _p.copy(pos).add(_y.set(bx, by, bz).multiplyScalar(0.05 * s)).addScaledVector(_x, 0.03 * s);
+    puffs!.spawn(
+      _p,
+      (bx * 0.35 + _x.x * 0.25) * s,
+      (by * 0.35 + _x.y * 0.25 + 0.15) * s,
+      (bz * 0.35 + _x.z * 0.25) * s,
+      Puff.Smoke,
+      tint,
+      (0.12 + Math.random() * 0.08) * s,
+      0.9 + Math.random() * 0.6,
+    );
+  }
+
+  // Sparks: many fine, fast flecks that die quick, a few heavier beads that
+  // arc out and fall. The fire's colour is what they cool to.
+  const count = Math.round(22 * s);
+  for (let i = 0; i < count; i++) {
+    _x.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    _x.x += bx * 0.9;
+    _x.y += by * 0.9 + 0.25;
+    _x.z += bz * 0.9;
+    _x.normalize();
+    const bead = i % 4 === 0;
+    const speed = bead ? 1.8 + Math.random() * 2 : 3 + Math.random() * 5;
+    streaks!.spawn(
+      pos,
+      _x.x * speed,
+      _x.y * speed,
+      _x.z * speed,
+      tint,
+      bead ? 0.45 + Math.random() * 0.4 : 0.12 + Math.random() * 0.2,
+      bead ? 0.011 + Math.random() * 0.004 : 0.006 + Math.random() * 0.004,
+      bead ? 0.8 : 3.5,
+    );
+  }
+
+  // A few embers from the shared pool drift up off the hit.
+  emberBurst(pos, Math.round(4 * s), team === 1);
 }
