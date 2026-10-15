@@ -63,6 +63,7 @@ import { KIT } from '../ui/kit/panel.js';
 import { glowSprite } from '../materials/glow.js';
 import { emberBurst, spawnEmber } from '../fx/fire.js';
 import * as sfx from '../audio/sfx.js';
+import { stageHeld } from '../experience/stageGate.js';
 import {
   preloadTutorVoice,
   sayTutorLine,
@@ -310,6 +311,9 @@ export class TutorialSystem extends createSystem({
     this.time += delta;
     if (!app.tutorial) {
       if (this.active) this.end();
+      // Dropped while still held at the stage: nothing began, but the hold
+      // froze the bot and the trigger — never let that leak into a bout.
+      else app.tutorialBotFrozen = app.tutorialHoldFire = false;
       return;
     }
     // The bout ended (forfeited, or the match machinery ran out) — leave.
@@ -318,7 +322,19 @@ export class TutorialSystem extends createSystem({
       app.tutorial = false;
       return;
     }
-    if (!this.active) this.begin();
+    if (!this.active) {
+      // THE STAGE, HELD (experience/stageGate.ts): picked from the lobby, the
+      // lesson waits for the plaza — Ember, her first line and the music
+      // all start as the curtain lifts. Until then nobody throws: the bot
+      // stands frozen and the trigger is held (both are re-set by begin()
+      // and the first live frame below).
+      if (stageHeld()) {
+        app.tutorialBotFrozen = true;
+        app.tutorialHoldFire = true;
+        return;
+      }
+      this.begin();
+    }
 
     this.beatT += delta;
     this.subT += delta;

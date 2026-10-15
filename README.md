@@ -26,7 +26,9 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
     and entrance, and a bout's 3-2-1 (plate and announcer), used to start
     on the pick and run through the black. They now hold at zero until the
     curtain starts lifting on the plaza (`experience/stageGate.ts`, read by
-    CampaignSystem and GameStateSystem).
+    CampaignSystem and GameStateSystem). The tutorial waits the same way:
+    Ember, her first line and the tutorial music begin with the lift, and
+    until then the bot stands frozen and nobody's trigger fires.
   - **ENTER VR lights when everything's in.** The button used to light as
     soon as the code had built, with ~56 MB of neon district still on its
     way, so an early tap stood you in a violet void. The landing now waits
