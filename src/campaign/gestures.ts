@@ -197,6 +197,11 @@ export function gestureShapeOf(
       return 'teach';
     case 'sweep':
       return 'blade';
+    case 'pair':
+      // THE TRIDENT is driven TWO-HANDED, both arms straight down the
+      // centre — the weapon itself turns onto each blow's quarters, so the
+      // read (its colour and where it's cocked) stays in front of the body.
+      return 'point';
     default:
       return null;
   }
@@ -224,6 +229,9 @@ export function gestureFocusOf(zone: {
         : { side: Math.sign(zone.at ?? 0), fwd: 0 };
     case 'quad':
       return { side: (zone.corner ?? 0) & 1 ? 1 : -1, fwd: (zone.corner ?? 0) & 2 ? 1 : -1, hold: zone.hold === true };
+    case 'pair':
+      // Dead centre: the two-handed point (see gestureShapeOf).
+      return { side: 0, fwd: 0 };
     default:
       return { side: 0, fwd: 0 };
   }

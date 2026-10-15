@@ -146,13 +146,17 @@ export class CyberTrident {
   private color = new Color();
   private time = 0;
 
-  constructor() {
+  /** `drawing`: a core + halo pair in trident space to wear instead of the
+   *  procedural one (the titans' Blender-built weapon, campaign/titanKit). */
+  constructor(drawing?: { core: BufferGeometry; halo: BufferGeometry }) {
     this.root.name = 'cyber-trident';
     // Drawn at a spear's proportions; held, it stands a head over him.
     this.root.scale.setScalar(0.78);
     coreGeo ??= shape(1);
     haloGeo ??= shape(2.6);
-    for (const [geo, core] of [[haloGeo, 0], [coreGeo, 1]] as const) {
+    const halo = drawing?.halo ?? haloGeo;
+    const line = drawing?.core ?? coreGeo;
+    for (const [geo, core] of [[halo, 0], [line, 1]] as const) {
       const mat = new ShaderMaterial({
         uniforms: {
           uColor: { value: this.color },

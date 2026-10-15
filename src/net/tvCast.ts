@@ -22,7 +22,7 @@ import { tvServerUrl } from '../config.js';
 
 export interface CastMeta {
   kind: '1v1' | '2v2' | 'ffa' | 'raid' | 'solo';
-  /** The card: "YELL vs ROOK", "THE SQUAD vs RUSTHOOK". */
+  /** The card: "YELL vs ROOK", "THE SQUAD vs CHROMEHOOK". */
   title: string;
   names: string[];
 }

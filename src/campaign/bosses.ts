@@ -1,22 +1,26 @@
 /**
- * The ARCADE titans — five boss machines in the same 90s robot-wars language
- * as the duel boxer, but built at pit-crane scale, and each one a BESPOKE
- * machine with its own silhouette you can name from across the arena:
+ * The ARCADE titans — five boss machines of the neon district, each a
+ * BESPOKE modern robot with its own silhouette you can name from across the
+ * arena. They are built in Blender from code (tools/blender/titans/*.py →
+ * public/arena/titans/<style>.glb, assembled by campaign/titanKit.ts); the
+ * box-built rigs below stand in until a kit loads, or if it never does:
  *
- *  I   RUSTHOOK — the scrapyard derelict. Hunched, asymmetric, rust-brown:
- *      a dented drum of a head, mismatched shoulders, exposed rib struts,
- *      and its right arm ends in a giant crane HOOK on a chain link.
- *  II  PISTONKAISER — the foundry press. Anvil-flat crowned head, twin
- *      smokestacks glowing off the shoulders, riveted slab chest, and two
- *      massive rectangular HAMMER-BLOCK fists.
- *  III VULTURE — the executioner. A hooded narrow head with a hooked beak
- *      and ONE round eye (the beam's source), swept wing-plate
- *      pauldrons, a slim tapered trunk and talon-clawed hands.
- *  IV  JUGGERNAUT — the rolling fortress. Squat and WIDE: a dome head sunk
- *      between the shoulders, double-layered bolted chest plates, and a
- *      riveted armour skirt hanging like a tank's curtain.
- *  V   GOLIATH — the king. Near-black plate with gold trim, a five-spike
- *      CROWN, a tall crest, and oversized ceremonial gauntlets.
+ *  I   CHROMEHOOK — a port-district tow drone gone feral. Lean, hunched,
+ *      pearl ceramic over graphite; a thruster tail instead of legs; a winch
+ *      forearm paying cable out to a forged crane HOOK.
+ *  II  PISTONKAISER — a KAISER HEAVY demolition press. Top-heavy safety-
+ *      yellow shoulder castings, raked exhaust stacks, a cab sunk between
+ *      them, and pile-driver forearms ending in breaker-ram heads.
+ *  III VULTURE — a black-ops stealth raptor. Faceted radar-black plate,
+ *      ONE big camera-lens eye (the beam's source), mantled blade wings and
+ *      three-talon hands.
+ *  IV  JUGGERNAUT — a riot-police hover-APC. The widest and lowest: a
+ *      cupola with one visor bar and a light bar, gas launchers, a curved
+ *      riot shield on the left arm, a tread-sponson hull.
+ *  V   GOLIATH — the zaibatsu kingpin. Black lacquer edged in gold, a
+ *      kabuto with a crescent crest and the five-spike CROWN, a halo of
+ *      blades behind the head, great ō-sode carrying the crown circuit's
+ *      shoulder lamps.
  *
  * Every rig keeps the same animation contract (head group, visor/eye
  * material, chest CORE, shoulder pod materials, two arm pivots + fists), so
@@ -47,6 +51,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { hazardTexture } from '../materials/hazard.js';
 import { titanSkin, type TitanSkinId } from '../materials/titanSkin.js';
+import { kitTitan, titanKit } from './titanKit.js';
 
 /**
  * 'volley' is the one attack aimed at YOU instead of the floor: the shoulder
@@ -61,7 +66,7 @@ export type AttackKind = 'slam' | 'sweep' | 'beam' | 'volley' | 'nova' | 'seesaw
  * How a titan's slam lands — its melee signature:
  *  - 'single' : one fist, one disc.
  *  - 'rehit'  : the SAME disc detonates again moments later — punishes
- *               rushing back into the crater (RUSTHOOK's patience test).
+ *               rushing back into the crater (CHROMEHOOK's patience test).
  *  - 'march'  : a drumline of discs stepping across the platform, each with
  *               its own countdown — move on the beat (PISTONKAISER's rhythm).
  */
@@ -164,7 +169,7 @@ export interface BossDef {
 
 export const BOSSES: BossDef[] = [
   {
-    name: 'RUSTHOOK',
+    name: 'CHROMEHOOK',
     accent: PALETTE.coolFlame,
     style: 'hook',
     scale: 1.25,
@@ -237,7 +242,9 @@ export const BOSSES: BossDef[] = [
     weakPattern: 'double',
     // The executioner learned the CROSSFIRE — rails from the side emitters,
     // the lattice, THE TRAP's jaws — and throws THE X through the lanes.
-    grammar: { cross: 4, lanes: 3 },
+    // THE TRIDENT (RAVE RAID's DJ move): the weapon's colour is the pattern
+    // and every blow is a hop to the other pair of quarters.
+    grammar: { cross: 4, lanes: 3, trident: 3 },
     beat: 0.5,
     grammarCharge: 1.9,
   },
@@ -295,7 +302,7 @@ export const BOSSES: BossDef[] = [
     // night the COMBINATION (duckdonut) closes the show on the beat.
     // THE RECITAL was cut from the bill after a night on it (the machinery
     // stays in grammar.ts for the check and for a later bill).
-    grammar: { wave: 3, donut: 2, cross: 3, duckdonut: 0.4 },
+    grammar: { wave: 3, donut: 2, cross: 3, duckdonut: 0.4, trident: 3 },
     beat: 0.46,
     grammarCharge: 1.9,
   },
@@ -467,6 +474,14 @@ export interface TitanRig {
   coreY: number;
   /** Full height, for the rise-from-the-pit intro. */
   height: number;
+  /** Kit titans (titanKit.ts): re-solve the visible arms from the posed
+   *  joints. Call after every pose write; absent on the procedural rigs. */
+  solve?(): void;
+  /** Kit titans: THE REACH — per arm, a world point the visible fist is
+   *  put on, blended in by `w` (0 = the pose), read by solve(). */
+  reach?: { at: Vector3; w: number }[];
+  /** Kit titans: the visible fist's centre, world space. */
+  fistWorld?(i: 0 | 1, out: Vector3): Vector3;
   dispose(): void;
 }
 
@@ -585,7 +600,7 @@ function finishTitan(root: Group, style: TitanStyle, s: number): void {
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * k[0], uv.getY(i) * k[1]);
       uv.needsUpdate = true;
     }
-    // The accent's faint self-glow on a plate stays a hint: on RUSTHOOK's
+    // The accent's faint self-glow on a plate stays a hint: on CHROMEHOOK's
     // dark rust it was outshining the paint and the steel read ice-blue.
     mat.emissiveIntensity *= 0.3;
     mat.map = skin.map;
@@ -628,6 +643,10 @@ function glowMat(color: number, intensity = 1.4): MeshStandardMaterial {
  * bespoke per machine.
  */
 export function buildTitan(def: BossDef): TitanRig {
+  // The Blender-built machine when its kit is in (campaign/titanKit.ts);
+  // the boxes below stand in until it is, or if it never loads.
+  const kit = titanKit(def.style);
+  if (kit) return kitTitan(def, kit);
   const s = def.scale;
   const accent = def.accent;
   const paint = STYLE_PAINT[def.style];
@@ -912,7 +931,7 @@ export function buildTitan(def: BossDef): TitanRig {
         wrist.add(tip);
       }
     } else if (def.style === 'hook' && side === 1) {
-      // RUSTHOOK's right shoulder is a bare stub — the armour fell off years ago.
+      // CHROMEHOOK's right shoulder is a bare stub — the armour fell off years ago.
       const stub = new Mesh(new BoxGeometry(0.14 * s, 0.1 * s, 0.2 * s), dark());
       stub.position.set(side * 0.34 * s, 0.08 * s, 0);
       chest.add(stub);

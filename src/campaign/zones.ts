@@ -23,4 +23,6 @@ export type Zone =
   | { kind: 'rail'; z: number; halfD: number; from: 1 | -1 }
   | { kind: 'gate'; at: number; half: number; axis: 0 | 1 }
   | { kind: 'ring'; innerR: number }
-  | { kind: 'quad'; corner: number; step: number; hold: boolean; pattern: readonly number[]; holds: readonly boolean[] };
+  | { kind: 'quad'; corner: number; step: number; hold: boolean; pattern: readonly number[]; holds: readonly boolean[] }
+  /** One blow of THE TRIDENT: the quarters in the `hit` mask burn. */
+  | { kind: 'pair'; hit: number; form: number; step: number; steps: number };

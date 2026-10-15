@@ -128,6 +128,7 @@ export type PeerMessage =
         | 'gate'
         | 'donut'
         | 'recital'
+        | 'trident'
         | 'wave'
         | 'duckdonut';
       seats: number[];

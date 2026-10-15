@@ -12,7 +12,7 @@
 export const titanView = {
   /** A campaign bout is standing (intro, fight, death, resurrection). */
   active: false,
-  /** The titan's name plate ('RUSTHOOK' … 'GOLIATH', 'GOOPLIATH'). */
+  /** The titan's name plate ('CHROMEHOOK' … 'GOLIATH', 'GOOPLIATH'). */
   name: '',
   /** Live health fraction, 0..1. */
   hp: 1,

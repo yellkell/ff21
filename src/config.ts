@@ -591,6 +591,30 @@ export const CAMPAIGN = {
   fightCardTime: 0.9, // the FIGHT flash before the bell
 
   attackDamage: 20, // every landed titan strike is 20 — same law as fireballs
+  /** The long floods (seesaw, surge) never open a fight: they are only
+   *  dealt once this many attacks have gone by. */
+  floodOpeningAttacks: 2,
+  /** THE REACH (campaign/melee.ts) — solo bouts only. How often a turn is
+   *  a reach instead of a floor attack (never two reaches running, never
+   *  the opening attack), how far the whole titan may lunge across the gap
+   *  behind the fist (and never nearer your pad's centre than the stand-off),
+   *  your head and a fist as spheres for the judging (the fist grows with
+   *  the titan), and how near an ARMED hand (a ball orbiting it, the volley's
+   *  law) must be to the fist's path to block. */
+  meleeChance: 0.35,
+  meleeLungeMax: 2.4,
+  meleeStandOff: 0.75,
+  /** …plus this much per unit of titan scale (a bigger machine stops
+   *  further out: its arms are longer and its bulk comes first). */
+  meleeStandOffPerScale: 0.4,
+  meleeHeadRadius: 0.12,
+  meleeFistRadius: 0.05,
+  meleeBlockRadius: 0.16,
+  /** A BARE hand (no ball orbiting it) only stops a fist squarely in its
+   *  path — a guard resting by your face is not a block. */
+  meleeBareBlockRadius: 0.06,
+  /** A blocked reach staggers the titan: this much extra before its next turn. */
+  meleeStagger: 1.2,
   victoryDelay: 8, // seconds of collapse + payout card before the line-up
   defeatDelay: 5, // seconds of SCRAPPED card before the line-up
 
@@ -741,6 +765,14 @@ export const GRAMMAR = {
   recitalCueBeats: 1.5,
   recitalDropBeats: 0.7,
   recitalMargin: 0.08,
+  /** THE TRIDENT (RAVE RAID's, which VULTURE and GOLIATH learned): blows
+   *  per move by act, grammar beats between blows (a hop to the other pair
+   *  of quarters every other beat), and how far over a quarter line still
+   *  counts as the safe side — the head within this of a line whose far
+   *  quarter lives is forgiven. */
+  tridentStrikes: [3, 3, 3, 4, 5],
+  tridentStepBeats: 2,
+  tridentLip: 0.07,
   recitalSweepChance: 0.12,
   /** THE DONUT: safe-disc radii (blazing holds the tight disc all night),
    *  the one-two's opening-laser odds and follow gap. */
@@ -782,7 +814,7 @@ export const RAID = {
   /** A raid can launch short-handed once this many raiders are seated. */
   minRaiders: 2,
   /** Raid titans are ALL giants: every stage starts at solo GOLIATH's size and
-   *  grows this much per stage beyond it (stage 0 = GOLIATH-sized RUSTHOOK,
+   *  grows this much per stage beyond it (stage 0 = GOLIATH-sized CHROMEHOOK,
    *  final-stage GOLIATH ~1.5x his solo self). */
   scaleStageStep: 0.13,
   /** Volley shots fly this much faster in a raid — the pit is twice as far

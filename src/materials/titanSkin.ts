@@ -8,7 +8,7 @@
  * not bare metal — at a flat 0.9 the painted hulls mirrored the room and
  * went black), and a BUMP map for the relief the arena light catches:
  *
- *   rust     RUSTHOOK — blotched rust over bare steel, pitting, and weeps
+ *   rust     CHROMEHOOK — blotched rust over bare steel, pitting, and weeps
  *            running down from every seam. Rough where it's rotten.
  *   forged   PISTONKAISER — drop-forge hammer dimples, soot, and the straw
  *            and blue heat-tint bands of iron that's been in the fire.
@@ -18,6 +18,10 @@
  *            seam, and a weld bead or two.
  *   royal    GOLIATH — brushed black plate, polished, with scrollwork
  *            engraved into it.
+ *   machined the Blender-built titans' plate (campaign/titanKit.ts): clean
+ *            milled and brushed metal — the grain and hairline scratches in
+ *            the roughness and relief only, never dirt in the colour (their
+ *            panels are real geometry).
  *
  * Seamless by construction: anything drawn near an edge is drawn again
  * one tile over, so a repeat never shows a cut.
@@ -25,7 +29,7 @@
 
 import { CanvasTexture, LinearMipMapLinearFilter, RepeatWrapping, SRGBColorSpace } from 'three';
 
-export type TitanSkinId = 'rust' | 'forged' | 'plumage' | 'armour' | 'royal';
+export type TitanSkinId = 'rust' | 'forged' | 'plumage' | 'armour' | 'royal' | 'machined';
 
 export interface TitanSkinMaps {
   map: CanvasTexture;
@@ -388,7 +392,63 @@ function royal(): [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRen
   return [col, rough, bump, metal, 0.008];
 }
 
-const BUILD: Record<TitanSkinId, typeof rust> = { rust, forged, plumage, armour, royal };
+function machined(): [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, number] {
+  const r = rng(0x3ac41e);
+  const col = canvas('#d4d6da');
+  const rough = canvas('rgb(0,120,0)');
+  const bump = canvas('#808080');
+  const metal = canvas('#c8c8c8');
+  // The brush: long fine streaks, wrapping across the tile.
+  for (let i = 0; i < 900; i++) {
+    const y = r() * S;
+    const x = r() * S;
+    const len = 30 + r() * 120;
+    const a = r() < 0.5;
+    col.fillStyle = a ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)';
+    col.fillRect(x, y, len, 0.7);
+    col.fillRect(x - S, y, len, 0.7);
+    rough.fillStyle = a ? 'rgba(0,70,0,0.22)' : 'rgba(0,170,0,0.22)';
+    rough.fillRect(x, y, len, 0.7);
+    rough.fillRect(x - S, y, len, 0.7);
+    bump.fillStyle = a ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+    bump.fillRect(x, y, len, 0.7);
+    bump.fillRect(x - S, y, len, 0.7);
+  }
+  // Hairline scratches at random angles — the handling a machine takes.
+  for (let i = 0; i < 70; i++) {
+    const x = r() * S;
+    const y = r() * S;
+    const a = r() * Math.PI;
+    const len = 6 + r() * 26;
+    for (const [g, c, w] of [
+      [rough, 'rgba(0,40,0,0.5)', 0.8],
+      [bump, 'rgba(40,40,40,0.6)', 0.8],
+    ] as const) {
+      g.strokeStyle = c;
+      g.lineWidth = w;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+      g.stroke();
+    }
+  }
+  // Scuffs: soft patches where the finish is worn duller.
+  for (let i = 0; i < 18; i++) {
+    const x = r() * S;
+    const y = r() * S;
+    const rad = 6 + r() * 18;
+    const gr = rough.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, 'rgba(0,200,0,0.35)');
+    gr.addColorStop(1, 'rgba(0,200,0,0)');
+    rough.fillStyle = gr;
+    rough.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // Clean: no grime in the colour — the brush and the scratches live in
+  // the roughness and the relief, where the light finds them.
+  return [col, rough, bump, metal, 0.006];
+}
+
+const BUILD: Record<TitanSkinId, typeof rust> = { rust, forged, plumage, armour, royal, machined };
 const cache = new Map<TitanSkinId, TitanSkinMaps>();
 
 /** The skin's three maps, drawn once per page and shared by every part. */

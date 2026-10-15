@@ -54,6 +54,22 @@ export function impactOf(zone: Zone): { x: number; z: number } | null {
       return { x: 0, z: -Math.max(zone.innerR + 0.15, INSET) };
     case 'half':
       return zone.axis === 0 ? { x: zone.side * INSET, z: 0 } : { x: 0, z: zone.side * INSET * 0.85 };
+    case 'pair': {
+      // The trident's bolt lands in the middle of the doomed pair: on the
+      // half for a swing or a thrust, in the boss-side quarter of a slash.
+      let x = 0;
+      let z = 0;
+      for (let c = 0; c < 4; c++) {
+        if (!((zone.hit >> c) & 1)) continue;
+        x += c & 1 ? 1 : -1;
+        z += c & 2 ? 1 : -1;
+      }
+      if (x === 0 && z === 0) {
+        const c = zone.hit & 1 ? 0 : 1; // the doomed boss-side corner: 0 (−x) or 1 (+x)
+        return { x: (c ? 1 : -1) * INSET * 0.6, z: -INSET * 0.55 };
+      }
+      return x === 0 ? { x: 0, z: Math.sign(z) * INSET * 0.85 } : { x: Math.sign(x) * INSET, z: 0 };
+    }
     case 'nova': {
       // Everything burns except the wedge at `angle` (atan2(x, z)): land
       // dead opposite it.
