@@ -144,6 +144,20 @@ export function avatarSkin(id: string): AvatarSkin {
   return s && !s.locked ? s : AVATAR_SKINS[0];
 }
 
+/**
+ * PLATFORMS, PAUSED. Everyone fights on the house deck for now: the LOCKER
+ * and the STORE both stand their PLATFORMS chip greyed out, nothing on it
+ * can be bought or equipped (MenuSystem refuses both), and every pad draws
+ * SMOULDER whatever was picked before. What players own and picked stays
+ * saved, so flipping this back restores everyone's choice.
+ */
+export const PLATFORMS_OPEN = false;
+
+/** The skin a pad actually WEARS: the pick, or the house deck while paused. */
+export function shownPlatform(id: string): PlatformSkin {
+  return PLATFORMS_OPEN ? platformSkin(id) : PLATFORM_SKINS[0];
+}
+
 export function platformSkin(id: string): PlatformSkin {
   const s = PLATFORM_SKINS.find((x) => x.id === id);
   // Unknown — or one of FF1's retired tints (TOXIC, VOLT, XD…) — falls

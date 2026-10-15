@@ -20,6 +20,7 @@ import {
   AVATAR_SKINS,
   OPPONENT_DEFAULT_AVATAR,
   OPPONENT_DEFAULT_PLATFORM,
+  PLATFORMS_OPEN,
   applyAvatarSkin,
   applyPlatformSkin,
   platformSkin,
@@ -286,7 +287,7 @@ export class OpponentSystem extends createSystem({
     // Only the duel rival overrides their platform skin; mesh fighters and
     // bots keep the team tint applyArenaLayout painted (so FFA pads stay
     // colour-coded), so the skin key folds the platform in only for the rival.
-    const pf = duel && rival.platformSkin ? platformSkin(rival.platformSkin) : OPPONENT_DEFAULT_PLATFORM;
+    const pf = duel && rival.platformSkin && PLATFORMS_OPEN ? platformSkin(rival.platformSkin) : OPPONENT_DEFAULT_PLATFORM;
     // Their paint, off the same `iam` channels. Bots carry none — an
     // unpainted body means nobody's home. HIDE PAINT (global breaker or the
     // club console's per-name switch) bakes them bare instead; paintPrefs/

@@ -35,7 +35,7 @@ import { KIT, type PanelButton } from '../ui/kit/panel.js';
 import { font } from '../ui/kit/fonts.js';
 import { customization, platformOwned, gearOwned } from './customization.js';
 import { canAfford, coins } from './wallet.js';
-import { DECK_SHELVES, PLATFORM_SKINS, type PlatformSkin, platformShelf } from '../avatar/skins.js';
+import { DECK_SHELVES, PLATFORM_SKINS, PLATFORMS_OPEN, type PlatformSkin, platformShelf } from '../avatar/skins.js';
 import { GEAR as GEAR_CATALOGUE, type GearDef, type GearSlot } from '../avatar/gear.js';
 import { drawGearIcon, drawPlatformIcon } from './skinIcons.js';
 import { bankBoard } from './bankBoard.js';
@@ -81,9 +81,15 @@ export interface LockerFace {
 type Board = 'platforms' | 'gear' | 'colour' | 'paint' | 'bank';
 
 /** COLOUR is the locker's alone, PAINT and the BANK the store's; the other
- *  face falls back to pads. (The paint you OWN lives on the PAINT tab,
- *  where it is used.) */
+ *  face falls back to pads (or to GEAR while PLATFORMS are paused,
+ *  avatar/skins.ts PLATFORMS_OPEN). (The paint you OWN lives on the PAINT
+ *  tab, where it is used.) */
 function board(locker: boolean): Board {
+  const b = pickBoard(locker);
+  return b === 'platforms' && !PLATFORMS_OPEN ? 'gear' : b;
+}
+
+function pickBoard(locker: boolean): Board {
   const t = customization.tab;
   if (!locker && t === 'colour') return 'platforms';
   if (locker && (t === 'bank' || t === 'paint')) return 'platforms';
@@ -170,7 +176,8 @@ export function lockerFace(locker: boolean): LockerFace {
       ];
   const cw = (INNER - (boards.length - 1) * 16) / boards.length;
   boards.forEach(([key, label, id], i) => {
-    buttons.push({ id, label, x: M + i * (cw + 16), y: SUB_Y, w: cw, h: SUB_H, small: true, selected: b === key });
+    const paused = key === 'platforms' && !PLATFORMS_OPEN;
+    buttons.push({ id, label, x: M + i * (cw + 16), y: SUB_Y, w: cw, h: SUB_H, small: true, selected: b === key, disabled: paused });
   });
   // THE SHELVES: one slot of gear, or one material of pad, at a time.
   if (b === 'gear') {
