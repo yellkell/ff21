@@ -1125,7 +1125,7 @@ export class TutorialSystem extends createSystem({
     this.active = true;
     this.makeOrb();
     this.makeCaption();
-    preloadTutorVoice();
+    void preloadTutorVoice();
 
     // She spawns dim, small and OFF-STAGE: ~10 o'clock, edge of the eye.
     this.beat = 'attention';
