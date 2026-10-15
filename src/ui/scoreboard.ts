@@ -164,6 +164,8 @@ const BAR_PAD = 16;
 const GLASS = { x: 10, y: 10, w: W - 20, h: H - 20, r: 30 };
 /** The verdict's hot second tube, as hex (three's Color won't take rgba). */
 const HOT = '#ff3da6';
+/** LOW health: a true alarm red, deeper than the kit's pink-leaning danger. */
+const LOW_RED = '#ff1414';
 
 const SDF_GLSL = /* glsl */ `
   float sdRound(vec2 p, vec2 halfSize, float r) {
@@ -217,9 +219,10 @@ const BAR_FRAG = /* glsl */ `
       col = over(col, tone, (0.38 + 0.3 * pulse) * exp(-max(fd, 0.0) / 6.0) * (1.0 - inside));
       float fill = clamp(0.5 - fd, 0.0, 1.0) * inside;
       float down = (hs.y - px.y) / uSize.y; // 0 at the top edge, 1 at the foot
-      vec3 lit = mix(tone, vec3(1.0), 0.42 * clamp(1.0 - down / 0.45, 0.0, 1.0));
+      // (LOW keeps the top light faint, so the red isn't washed to pink.)
+      vec3 lit = mix(tone, vec3(1.0), mix(0.42, 0.12, uLow) * clamp(1.0 - down / 0.45, 0.0, 1.0));
       lit *= mix(1.0, 0.78, clamp((down - 0.5) * 2.0, 0.0, 1.0));
-      col = over(col, mix(lit, vec3(1.0), 0.22 * pulse), fill);
+      col = over(col, mix(lit, vec3(1.0, 0.3, 0.2), 0.3 * pulse), fill);
     }
     // The trail: what the hit just took — white on the hit, then magenta.
     float ghost = clamp((x01 - uFrac) * len + 0.5, 0.0, 1.0) * clamp((uTrail - x01) * len + 0.5, 0.0, 1.0);
@@ -297,7 +300,7 @@ function addCardFx(board: Board, wMeters: number, hMeters: number): void {
       uLow: { value: 0 },
       uTime: { value: 0 },
       uColor: { value: new Color() },
-      uDanger: { value: new Color(KIT.danger) },
+      uDanger: { value: new Color(LOW_RED) },
     },
     vertexShader: UV_VERT,
     fragmentShader: BAR_FRAG,
@@ -705,7 +708,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
     // the round runs out; the round it belongs to tagged above the digits.
     // Sized to the gap between the two cards (the board is 0.96 m; the
     // gap ~1.7 m), so the pill never laps a card's edge.
-    const colour = hot ? KIT.danger : warn ? KIT.warn : KIT.accent;
+    const colour = hot ? LOW_RED : warn ? KIT.warn : KIT.accent;
     clockGlass(ctx, w, colour);
     label(ctx, `ROUND ${state.round}`, w / 2, 68, 600, 20, KIT.faint, 5, 'center');
     ctx.shadowColor = colour;
@@ -744,8 +747,8 @@ export function createScoreboard(scene: Scene): Scoreboard {
     const namePx = fitText(ctx, f.name, W - 420, 56, 30, 600, 2);
     ctx.shadowBlur = 12;
     label(ctx, f.name, 64, 120, 600, namePx, KIT.text, 2);
-    const hpInk = low ? KIT.danger : KIT.text;
-    ctx.shadowColor = low ? KIT.danger : f.neon;
+    const hpInk = low ? LOW_RED : KIT.text;
+    ctx.shadowColor = low ? LOW_RED : f.neon;
     ctx.shadowBlur = 18;
     label(ctx, String(hp), W - 64, 108, 700, 104, hpInk, 1, 'right');
     ctx.shadowBlur = 0;
@@ -766,9 +769,9 @@ export function createScoreboard(scene: Scene): Scoreboard {
       label(ctx, 'OUT', W - 64, 330, 700, 36, KIT.danger, 7, 'right');
     } else if (low) {
       ctx.globalAlpha = 0.55 + 0.45 * lowPhase;
-      ctx.shadowColor = KIT.danger;
+      ctx.shadowColor = LOW_RED;
       ctx.shadowBlur = 14;
-      label(ctx, 'LOW', W - 64, 330, 700, 36, KIT.danger, 7, 'right');
+      label(ctx, 'LOW', W - 64, 330, 700, 36, LOW_RED, 7, 'right');
     } else if (teamTotal) {
       label(ctx, teamTotal, W - 64, 330, 600, 28, KIT.dim, 4, 'right');
     }
@@ -811,7 +814,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
         label(ctx, 'OUT', 104 + nameW + 16, y, 700, 18, KIT.danger, 4);
       }
       for (let p = 0; p < target; p++) neonCell(ctx, 410 + p * 30, y - 6, 24, 12, p < f.pips, f.neon);
-      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? KIT.danger : f.neon);
+      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? LOW_RED : f.neon);
     });
     tex.needsUpdate = true;
   };
