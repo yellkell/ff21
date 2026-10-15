@@ -759,6 +759,10 @@ export const GRAMMAR = {
   tridentStrikes: [3, 3, 3, 4, 5],
   tridentStepBeats: 2,
   tridentLip: 0.07,
+  /** Seconds the titan HOLDS the conjured trident up in front of him, its
+   *  colour on show, before he cocks it for the first blow — added to the
+   *  charge, so the read never comes out of the windup. */
+  tridentHoldSecs: 0.5,
   /** THE DONUT: safe-disc radii (blazing holds the tight disc all night),
    *  the one-two's opening-laser odds and follow gap. */
   donutInnerR: 0.42,

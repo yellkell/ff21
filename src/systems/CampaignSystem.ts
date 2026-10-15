@@ -263,6 +263,7 @@ const _v = new Vector3();
 const _p = new Vector3();
 const _head = new Vector3();
 const _up = new Vector3(0, 1, 0);
+const _held = new Vector3();
 const _eyeShade = new Color();
 const _eyeAccent = new Color();
 
@@ -2226,6 +2227,9 @@ export class CampaignSystem extends createSystem({
     if (kind === 'slam' && this.p2 && this.activeDifficulty() === 'blazing') {
       chargeTime *= CAMPAIGN.phase2SlamCharge;
     }
+    // THE TRIDENT is held up for a beat once it's conjured, so the colour
+    // is read before the first blow (updateTrident poses the hold).
+    if (kind === 'trident') chargeTime += GRAMMAR.tridentHoldSecs;
     const zones: Zone[] = [];
     const zoneSeats: number[] = [];
     const telegraphs: (Telegraph | null)[] = [];
@@ -3657,10 +3661,12 @@ export class CampaignSystem extends createSystem({
 
   /**
    * THE TRIDENT in the titan's fist. It materialises over the charge (the
-   * colour is the read), rides the visible fist, and aims its prongs at
-   * the quarters the NEXT blow takes — so where it's cocked is where it
-   * starts. Every landing flashes it white-hot; after the last blow it
-   * dissolves back into the fist.
+   * colour is the read) HELD UP in front of him, stays up for
+   * GRAMMAR.tridentHoldSecs so the colour is plain, then is cocked: it
+   * rides the visible fist and aims its prongs at the quarters the NEXT
+   * blow takes — so where it's cocked is where it starts. Every landing
+   * flashes it white-hot; after the last blow it dissolves back into the
+   * fist.
    */
   private updateTrident(delta: number): void {
     const a = this.attack;
@@ -3689,8 +3695,17 @@ export class CampaignSystem extends createSystem({
         }
       }
     }
-    // Conjured over the first 60 % of the charge; gone after the last blow.
-    const target = live && next ? Math.min(1, live.time / Math.max(0.2, live.chargeTime * 0.6)) : 0;
+    // Conjured over the first 60 % of the titan's own windup, then HELD UP
+    // for the hold (the charge carries it on top), then cocked for what's
+    // left; gone after the last blow.
+    const hold = GRAMMAR.tridentHoldSecs;
+    const conjured = live ? Math.max(0.2, (live.chargeTime - hold) * 0.6) : 1;
+    const target = live && next ? Math.min(1, live.time / conjured) : 0;
+    let held = 0;
+    if (live && live.time < live.chargeTime) {
+      const ease = Math.max(0.1, Math.min(0.25, (live.chargeTime - conjured - hold) * 0.6));
+      held = clamp(1 - (live.time - conjured - hold) / ease, 0, 1);
+    }
     this.tridentReveal += (target - this.tridentReveal) * Math.min(1, delta * (target > this.tridentReveal ? 6 : 3));
     if (target === 0 && this.tridentReveal < 0.01) this.tridentReveal = 0;
     this.tridentFlash = Math.max(0, this.tridentFlash - delta * 4);
@@ -3705,8 +3720,16 @@ export class CampaignSystem extends createSystem({
     // just rides its fist.
     const sx = arm === 0 ? -1 : 1;
     const sc = this.def.scale;
-    _v.set(sx * 0.45, 1.05, -0.55).lerp(_head.set(sx * 0.3, 0.8, -0.95), this.tridentFlash).multiplyScalar(sc);
+    _v.set(sx * 0.45, 1.05, -0.55).lerp(_head.set(sx * 0.3, 0.8, -0.95), this.tridentFlash);
+    // HELD UP: gripped upright in front of his chest, near the middle, the
+    // head leaning a little toward you at about his face — the colour on
+    // show, never raised over his head and out of view.
+    _v.lerp(_head.set(sx * 0.2, 0.95, -0.7), held).multiplyScalar(sc);
     rig.root.localToWorld(_v);
+    if (held > 0) {
+      _held.set(sx * 0.12, 2.0, -1.15).multiplyScalar(sc);
+      rig.root.localToWorld(_held).sub(_v).normalize();
+    }
     if (rig.reach && !this.melee && this.backfistW === 0) {
       rig.reach[arm].at.copy(_v);
       rig.reach[arm].w = Math.min(1, this.tridentReveal * 1.5);
@@ -3737,6 +3760,7 @@ export class CampaignSystem extends createSystem({
     _p.copy(this.tridentAim).addScaledVector(_up, 0.35).normalize(); // cocked
     _head.copy(this.tridentAim).addScaledVector(_up, -0.3).normalize(); // the stab
     _p.lerp(_head, stab).normalize();
+    if (held > 0) _p.lerp(_held, held).normalize();
     t.root.quaternion.setFromUnitVectors(_up, _p);
   }
 
