@@ -164,6 +164,8 @@ const BAR_PAD = 16;
 const GLASS = { x: 10, y: 10, w: W - 20, h: H - 20, r: 30 };
 /** The verdict's hot second tube, as hex (three's Color won't take rgba). */
 const HOT = '#ff3da6';
+/** LOW health: a true alarm red, deeper than the kit's pink-leaning danger. */
+const LOW_RED = '#ff1414';
 
 const SDF_GLSL = /* glsl */ `
   float sdRound(vec2 p, vec2 halfSize, float r) {
@@ -217,9 +219,12 @@ const BAR_FRAG = /* glsl */ `
       col = over(col, tone, (0.38 + 0.3 * pulse) * exp(-max(fd, 0.0) / 6.0) * (1.0 - inside));
       float fill = clamp(0.5 - fd, 0.0, 1.0) * inside;
       float down = (hs.y - px.y) / uSize.y; // 0 at the top edge, 1 at the foot
-      vec3 lit = mix(tone, vec3(1.0), 0.42 * clamp(1.0 - down / 0.45, 0.0, 1.0));
+      // (LOW drops the white top light, so the red isn't washed to pink.)
+      vec3 lit = mix(tone, vec3(1.0), 0.42 * (1.0 - uLow) * clamp(1.0 - down / 0.45, 0.0, 1.0));
       lit *= mix(1.0, 0.78, clamp((down - 0.5) * 2.0, 0.0, 1.0));
-      col = over(col, mix(lit, vec3(1.0), 0.22 * pulse), fill);
+      // LOW's pulse is a throb of brightness, never a fade toward white.
+      lit *= 1.0 - 0.35 * uLow * (1.0 - pulse);
+      col = over(col, lit, fill);
     }
     // The trail: what the hit just took — white on the hit, then magenta.
     float ghost = clamp((x01 - uFrac) * len + 0.5, 0.0, 1.0) * clamp((uTrail - x01) * len + 0.5, 0.0, 1.0);
@@ -233,6 +238,8 @@ const BAR_FRAG = /* glsl */ `
     col = over(col, tone, mix(0.4, 0.85, uLow) * clamp(1.3 - abs(d), 0.0, 1.0));
     gl_FragColor = vec4(col.rgb, col.a * uAlpha);
     #include <tonemapping_fragment>
+    // LOW skips the filmic curve: it desaturates a pure red to salmon.
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, clamp(col.rgb, 0.0, 1.0), uLow);
     #include <colorspace_fragment>
   }
 `;
@@ -297,7 +304,7 @@ function addCardFx(board: Board, wMeters: number, hMeters: number): void {
       uLow: { value: 0 },
       uTime: { value: 0 },
       uColor: { value: new Color() },
-      uDanger: { value: new Color(KIT.danger) },
+      uDanger: { value: new Color(LOW_RED) },
     },
     vertexShader: UV_VERT,
     fragmentShader: BAR_FRAG,
@@ -385,6 +392,9 @@ function makeBoard(wMeters: number, hMeters: number, cw = W, ch = H, srgb = true
 function drawContentPlate(ctx: CanvasRenderingContext2D, img: HTMLImageElement, targetH: number): void {
   drawPlateArt(ctx, img, W, H, targetH, PLATE_MARGIN);
 }
+
+/** The clock's digits on the plaque canvas (px). */
+const CLOCK_PX = 88;
 
 function fmtTime(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
@@ -493,7 +503,8 @@ export function createScoreboard(scene: Scene): Scoreboard {
 
   // The classic pair hangs side by side behind/above the rival's pad,
   // barely angled inward — read your card and theirs without turning.
-  const BOARD_Y = 2.18; // lifted clear of the far platform's sight line
+  const BOARD_Y = 2.78; // lifted well clear of the far platform's sight line
+  const BOARD_X = 1.6; // each card's centre off the midline — a wide slot for the plaque
   const BOARD_Z = -ARENA_GAP - 1.1;
   const CARD_W = 1.5;
   const CARD_H = 0.72;
@@ -503,10 +514,10 @@ export function createScoreboard(scene: Scene): Scoreboard {
     return b;
   };
   const left = card(CARD_W, CARD_H); // YOU — ember
-  left.mesh.position.set(-1.0, BOARD_Y, BOARD_Z);
+  left.mesh.position.set(-BOARD_X, BOARD_Y, BOARD_Z);
   left.mesh.rotation.y = 0.18;
   const right = card(CARD_W, CARD_H); // primary opponent — blue
-  right.mesh.position.set(1.0, BOARD_Y, BOARD_Z);
+  right.mesh.position.set(BOARD_X, BOARD_Y, BOARD_Z);
   right.mesh.rotation.y = -0.18;
 
   // The columns: a teammate above your card, extra opponents above theirs.
@@ -528,14 +539,15 @@ export function createScoreboard(scene: Scene): Scoreboard {
   for (const e of extras) e.mesh.visible = false;
 
   // THE ROUND PLAQUE — round, first-to, and the clock, floating in the slot
-  // between the two cards.
-  const plaque = makeBoard(0.62, 0.36, 352, 204);
+  // between the two cards. Hung big: the clock's digits stand taller than a
+  // card's health number (~0.24 m against ~0.18 m).
+  const plaque = makeBoard(0.96, 0.556, 352, 204);
   plaque.mesh.position.set(0, BOARD_Y + 0.14, BOARD_Z);
 
   // FFA STANDINGS — a strip over the plaque ranking the four (hidden while
   // a verdict is up: the verdict owns that air).
   const standings = makeBoard(1.56, 0.53, 704, 240);
-  standings.mesh.position.set(0, BOARD_Y + 0.66, BOARD_Z);
+  standings.mesh.position.set(0, BOARD_Y + 0.72, BOARD_Z);
   standings.mesh.visible = false;
 
   // Headline strip (KO, YOU WIN...) floating just above the boards.
@@ -543,7 +555,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   // (The verdict board keeps its old untagged texture: its art plates were
   // tuned against it.)
   const centre = makeBoard(2.2, 1.05, W, H, false);
-  const CENTRE_Y = 3.06;
+  const CENTRE_Y = 3.66;
   const CENTRE_Z = -ARENA_GAP - 1.15;
   centre.mesh.position.set(0, CENTRE_Y, CENTRE_Z);
   centre.mesh.renderOrder = 12;
@@ -574,7 +586,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   }
   const HANG: Record<'classic' | 'stacked', Hang> = {
     classic: { y: BOARD_Y, step: 0.62, cardScale: 1, centreY: CENTRE_Y, centreScale: 1 },
-    stacked: { y: 2.04, step: 0.63, cardScale: 0.8, centreY: 3.5, centreScale: 0.8 },
+    stacked: { y: 2.64, step: 0.63, cardScale: 0.8, centreY: 4.1, centreScale: 0.8 },
   };
   let hang: Hang = HANG.classic;
   let hangKey = '';
@@ -592,11 +604,11 @@ export function createScoreboard(scene: Scene): Scoreboard {
       [extraRightA, 1, 1],
       [extraRightB, 1, 2],
     ] as const) {
-      b.mesh.position.set(sign * 1.0, y + row * step, BOARD_Z);
+      b.mesh.position.set(sign * BOARD_X, y + row * step, BOARD_Z);
       b.mesh.scale.setScalar(cardScale);
     }
     plaque.mesh.position.set(0, y + 0.14, BOARD_Z);
-    standings.mesh.position.set(0, y + 0.66, BOARD_Z);
+    standings.mesh.position.set(0, y + 0.72, BOARD_Z);
     centre.mesh.position.y = hang.centreY;
     glow.position.y = hang.centreY;
   };
@@ -698,14 +710,14 @@ export function createScoreboard(scene: Scene): Scoreboard {
     ctx.textBaseline = 'middle';
     // The clock in a small holo pill, its tube cyan, then amber and red as
     // the round runs out; the round it belongs to tagged above the digits.
-    // Sized to the gap between the two cards (the board is 0.62 m; the
-    // gap ~0.5 m), so the pill never laps a card's edge.
-    const colour = hot ? KIT.danger : warn ? KIT.warn : KIT.accent;
+    // Sized to the gap between the two cards (the board is 0.96 m; the
+    // gap ~1.7 m), so the pill never laps a card's edge.
+    const colour = hot ? LOW_RED : warn ? KIT.warn : KIT.accent;
     clockGlass(ctx, w, colour);
     label(ctx, `ROUND ${state.round}`, w / 2, 68, 600, 20, KIT.faint, 5, 'center');
     ctx.shadowColor = colour;
     ctx.shadowBlur = 16;
-    const px = text === 'READY' ? 44 : 76;
+    const px = text === 'READY' ? 52 : CLOCK_PX;
     label(ctx, text, w / 2, 116, 700, px, live && (hot || warn) ? colour : KIT.text, text === 'READY' ? 6 : 2, 'center');
     ctx.shadowBlur = 0;
     tex.needsUpdate = true;
@@ -739,8 +751,8 @@ export function createScoreboard(scene: Scene): Scoreboard {
     const namePx = fitText(ctx, f.name, W - 420, 56, 30, 600, 2);
     ctx.shadowBlur = 12;
     label(ctx, f.name, 64, 120, 600, namePx, KIT.text, 2);
-    const hpInk = low ? KIT.danger : KIT.text;
-    ctx.shadowColor = low ? KIT.danger : f.neon;
+    const hpInk = low ? LOW_RED : KIT.text;
+    ctx.shadowColor = low ? LOW_RED : f.neon;
     ctx.shadowBlur = 18;
     label(ctx, String(hp), W - 64, 108, 700, 104, hpInk, 1, 'right');
     ctx.shadowBlur = 0;
@@ -761,9 +773,9 @@ export function createScoreboard(scene: Scene): Scoreboard {
       label(ctx, 'OUT', W - 64, 330, 700, 36, KIT.danger, 7, 'right');
     } else if (low) {
       ctx.globalAlpha = 0.55 + 0.45 * lowPhase;
-      ctx.shadowColor = KIT.danger;
+      ctx.shadowColor = LOW_RED;
       ctx.shadowBlur = 14;
-      label(ctx, 'LOW', W - 64, 330, 700, 36, KIT.danger, 7, 'right');
+      label(ctx, 'LOW', W - 64, 330, 700, 36, LOW_RED, 7, 'right');
     } else if (teamTotal) {
       label(ctx, teamTotal, W - 64, 330, 600, 28, KIT.dim, 4, 'right');
     }
@@ -806,7 +818,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
         label(ctx, 'OUT', 104 + nameW + 16, y, 700, 18, KIT.danger, 4);
       }
       for (let p = 0; p < target; p++) neonCell(ctx, 410 + p * 30, y - 6, 24, 12, p < f.pips, f.neon);
-      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? KIT.danger : f.neon);
+      neonBar(ctx, 520, y - 6, 150, 12, f.hpFrac, f.hpFrac < LOW_HP ? LOW_RED : f.neon);
     });
     tex.needsUpdate = true;
   };
@@ -858,7 +870,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   const placePadCard = (board: Board, slot: number): void => {
     const p = localLayout()[slot]?.pos;
     if (!p) return;
-    board.mesh.position.set(p[0], 2.05, p[2]);
+    board.mesh.position.set(p[0], 2.65, p[2]);
     // A plane's face is +Z; turn it to look back at the origin.
     board.mesh.rotation.y = Math.atan2(-p[0], -p[2]);
   };
@@ -958,7 +970,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
         label(ctx, 'AIM', w / 2, 68, 600, 20, KIT.faint, 5, 'center');
         ctx.shadowColor = KIT.accent;
         ctx.shadowBlur = 16;
-        label(ctx, fmtTime(training.timeLeft), w / 2, 116, 700, 76, KIT.text, 2, 'center');
+        label(ctx, fmtTime(training.timeLeft), w / 2, 116, 700, CLOCK_PX, KIT.text, 2, 'center');
         ctx.shadowBlur = 0;
         tex.needsUpdate = true;
       }

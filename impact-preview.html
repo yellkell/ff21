@@ -3,18 +3,30 @@
      camera, for screenshots and a program-count check (a landed hit must
      never compile a shader). Not part of the game; never ship or link it.
      ?team=0|1  ?scale=1  ?t=<seconds after the hit to freeze on>
-     ?loop=1 keeps punching (watch window.__programs stay flat). -->
+     ?loop=1 keeps punching (watch window.__programs stay flat).
+     ?eye=<metres> lands the hit that far from the camera instead (a hit
+     taken on your own head: the soot must thin out, not blind you).
+     ?overdraw=1 measures FILL instead of drawing: every impact fragment
+     counts one, transparent texels included, because on Quest that is
+     what a particle costs. Reports window.__fill = { peak, mean } in
+     SCREENS (1 = every pixel drawn once) over the 1.6 s after the hit.
+     ?storm=<hits/s> lands that many small hits a second on the floor
+     round you for 0.6 s instead (a titan's nova), measured the same way. -->
 <html>
   <body style="margin:0; background:#0b0a0f">
     <script type="module">
       import {
         Color, PerspectiveCamera, Scene, WebGLRenderer, SRGBColorSpace, Vector3,
         Mesh, CapsuleGeometry, SphereGeometry, MeshStandardMaterial, HemisphereLight, DirectionalLight,
+        ShaderMaterial, CustomBlending, OneFactor, DoubleSide, LinearSRGBColorSpace,
       } from 'three';
       import { initFirePools, updateFirePools } from '/src/fx/fire.ts';
       import { initImpactFx, updateImpactFx, spawnFireImpact, spawnDamagePopup } from '/src/fx/effects.ts';
 
       const q = new URLSearchParams(location.search);
+      // Seeded, so a fill measurement means the same thing run to run.
+      let seed = 12345;
+      Math.random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
       const team = Number(q.get('team') ?? 0);
       const scale = Number(q.get('scale') ?? 1);
       const freeze = q.has('t') ? Number(q.get('t')) : null;
@@ -44,10 +56,12 @@
       scene.add(body, head);
 
       initFirePools(scene);
-      initImpactFx(scene);
+      initImpactFx(scene, renderer);
       const world = null; // the spawners ignore it
       const hitAt = new Vector3(0.05, 1.35, -2.08); // on the chest's skin, as a ball meets a hitbox
+      if (q.has('eye')) hitAt.set(0, 1.47, -Number(q.get('eye')));
       const travel = new Vector3(0.1, 0.05, -1); // thrown from the camera
+      if (q.has('eye')) travel.set(-0.1, -0.05, 1); // thrown at the camera
 
       const step = 1 / 72;
       const tick = () => {
@@ -64,7 +78,73 @@
       for (let i = 0; i < 4; i++) tick();
       window.__programsBefore = renderer.info.programs.length;
 
-      if (freeze !== null) {
+      // One fragment = 1/255 in red, summed: the framebuffer becomes a count.
+      const countMat = new ShaderMaterial({
+        vertexShader: `void main(){ vec4 p = vec4(position, 1.0);
+          #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+          #endif
+          gl_Position = projectionMatrix * modelViewMatrix * p; }`,
+        fragmentShader: `void main(){ gl_FragColor = vec4(1.0 / 255.0, 0.0, 0.0, 1.0); }`,
+        blending: CustomBlending, blendSrc: OneFactor, blendDst: OneFactor,
+        depthTest: false, depthWrite: false, side: DoubleSide, transparent: true,
+      });
+      const gl = renderer.getContext();
+      const px = new Uint8Array(innerWidth * innerHeight * 4);
+      /** Screens of fill the impact layers cost this frame. */
+      const fill = () => {
+        const shown = [];
+        scene.traverse((o) => {
+          if (o.visible && (o.isMesh || o.isPoints) && !o.isInstancedMesh) { shown.push(o); o.visible = false; }
+        });
+        const bg = scene.background;
+        scene.background = new Color(0, 0, 0);
+        scene.overrideMaterial = countMat;
+        renderer.outputColorSpace = LinearSRGBColorSpace;
+        renderer.render(scene, camera);
+        gl.readPixels(0, 0, innerWidth, innerHeight, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        renderer.outputColorSpace = SRGBColorSpace;
+        scene.overrideMaterial = null;
+        scene.background = bg;
+        for (const o of shown) o.visible = true;
+        let sum = 0;
+        for (let i = 0; i < px.length; i += 4) sum += px[i];
+        return sum / (innerWidth * innerHeight);
+      };
+      const measure = (seconds, each) => {
+        let peak = 0, total = 0, n = 0;
+        for (let t = 0; t < seconds; t += step) {
+          each?.(t);
+          updateFirePools(step);
+          updateImpactFx(step, camera);
+          const f = fill();
+          peak = Math.max(peak, f);
+          total += f;
+          n++;
+        }
+        return { peak: +peak.toFixed(2), mean: +(total / n).toFixed(3) };
+      };
+
+      if (q.has('storm')) {
+        camera.lookAt(0, 0.12, -1.3); // watching the floor erupt round you
+        const every = 1 / Number(q.get('storm'));
+        let next = 0;
+        window.__fill = measure(2.2, (t) => {
+          if (t >= next && t < 0.6) {
+            next += every;
+            const a = Math.random() * Math.PI * 2;
+            const r = 0.6 + Math.random() * 1.8;
+            spawnFireImpact(world, new Vector3(Math.sin(a) * r, 0.12, -Math.abs(Math.cos(a)) * r), 1, 0.8);
+          }
+        });
+        window.__programs = renderer.info.programs.length;
+        window.__ready = true;
+      } else if (q.has('overdraw')) {
+        land();
+        window.__fill = measure(1.6);
+        window.__programs = renderer.info.programs.length;
+        window.__ready = true;
+      } else if (freeze !== null) {
         land();
         for (let t = 0; t < freeze; t += step) tick();
         window.__programs = renderer.info.programs.length;

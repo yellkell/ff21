@@ -28,8 +28,10 @@
  * clock can't pause for one dancer — it exists so leaving is a decision,
  * never a slipped button.
  *
- * The look and motion contract lives in ui/panel.ts: quiet glass, one
- * accent, eased hovers, a beat-leaning under-halo. This file decides WHAT
+ * The look and motion contract lives in ui/panel.ts — this board wears its
+ * CYBER skin: cut plates, a cyan chrome hairline, the magenta accent kept
+ * for what matters, scanlines and a scan sweep, eased hovers, a beat-
+ * leaning under-halo. This file decides WHAT
  * each button is (primary CTA / selected / value chip / semantic text);
  * the kit decides how those roles look.
  */
@@ -77,7 +79,7 @@ import {
 } from '../net/session.js';
 import { refreshWorldBoard, scores, worldBoard, type WorldRow } from '../net/scores.js';
 import { font } from '../ui/fonts.js';
-import { Panel, UI, type PanelButton } from '../ui/panel.js';
+import { CYBER, Panel, UI, chamfer, hazardStripes, type PanelButton } from '../ui/panel.js';
 import {
   drawSafetyRows,
   safetyButtons,
@@ -279,11 +281,11 @@ export class MenuSystem extends createSystem({}) {
     // scroll window, and the shelf would open looking like nothing is cued.
     this.revealCuedSong();
 
-    this.board = new Panel(1.72, 1.06, W, H);
+    this.board = new Panel(1.72, 1.06, W, H, 'cyber');
     this.board.group.position.set(0, 1.42, -1.6);
     this.scene.add(this.board.group);
 
-    this.exit = new Panel(0.62, 0.2, 640, 208);
+    this.exit = new Panel(0.62, 0.2, 640, 208, 'cyber');
     this.exit.group.position.set(0.85, 1.15, -0.95);
     this.exit.group.rotation.y = -0.5;
     this.exit.setShown(false, true);
@@ -291,7 +293,7 @@ export class MenuSystem extends createSystem({}) {
 
     // THE PAUSE CARD: dead ahead, a touch below the count-in's eye line so
     // it never fights the HUD wedge (down-left) or the flair pops (up-right).
-    this.pause = new Panel(0.56, 0.36, 560, 360);
+    this.pause = new Panel(0.56, 0.36, 560, 360, 'cyber');
     this.pause.group.position.set(0, 1.28, -1.05);
     this.pause.setShown(false, true);
     this.scene.add(this.pause.group);
@@ -302,7 +304,7 @@ export class MenuSystem extends createSystem({}) {
     // stop hearing any of them. It's a separate panel because a Panel's
     // plane is sized once, and the solo card should stay exactly as small
     // as it always was — there's nobody to mute out there.
-    this.pauseRoom = new Panel(0.6, 0.8, 600, 800);
+    this.pauseRoom = new Panel(0.6, 0.8, 600, 800, 'cyber');
     this.pauseRoom.group.position.set(0, 1.4, -1.05);
     this.pauseRoom.setShown(false, true);
     this.scene.add(this.pauseRoom.group);
@@ -1035,22 +1037,21 @@ export class MenuSystem extends createSystem({}) {
     const h = 44;
     const w = tw + 66;
     const x = PROF.x - 20 - w; // parked beside the profile card
-    const y = 42;
-    g.fillStyle = 'rgba(255,255,255,0.04)';
-    g.beginPath();
-    g.roundRect(x, y, w, h, h / 2);
+    const y = PROF.y + (PROF.h - h) / 2;
+    // A cut tag, not a pill: the status reads as a readout on the hardware.
+    chamfer(g, x, y, w, h, CYBER.cutSmall);
+    g.fillStyle = CYBER.cyanFaint;
     g.fill();
-    g.lineWidth = 2;
-    g.strokeStyle = UI.lineFaint;
+    g.lineWidth = 1.5;
+    g.strokeStyle = CYBER.cyanLine;
     g.stroke();
+    // The presence LED: a square, lit only when it has something to say.
     g.fillStyle = dot;
     if (dot !== UI.faint) {
       g.shadowColor = dot;
       g.shadowBlur = 8;
     }
-    g.beginPath();
-    g.arc(x + 26, y + h / 2, 5, 0, Math.PI * 2);
-    g.fill();
+    g.fillRect(x + 21, y + h / 2 - 5, 10, 10);
     g.shadowBlur = 0;
     g.textAlign = 'left';
     g.textBaseline = 'middle';
@@ -1064,13 +1065,20 @@ export class MenuSystem extends createSystem({}) {
   private drawProfileChip(g: CanvasRenderingContext2D): void {
     const hov = this.board.hoverOf('profile');
     const open = this.profileOpen;
-    g.beginPath();
-    g.roundRect(PROF.x, PROF.y, PROF.w, PROF.h, 14);
-    g.fillStyle = open ? UI.accentFaint : `rgba(255,255,255,${(0.045 + 0.045 * hov).toFixed(3)})`;
+    chamfer(g, PROF.x, PROF.y, PROF.w, PROF.h, CYBER.cut);
+    g.fillStyle = open ? 'rgba(255,42,213,0.13)' : `rgba(0,240,255,${(0.035 + 0.06 * hov).toFixed(3)})`;
     g.fill();
     g.lineWidth = 2;
-    g.strokeStyle = open ? 'rgba(255,42,213,0.9)' : `rgba(255,255,255,${(0.1 + 0.2 * hov).toFixed(3)})`;
+    g.strokeStyle = open ? UI.accent : `rgba(0,240,255,${(0.22 + 0.45 * hov).toFixed(3)})`;
     g.stroke();
+    // An ID stub above the plate's top edge — the chip is a badge, not a field.
+    g.font = font(600, 13);
+    g.letterSpacing = '3px';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillStyle = CYBER.cyanDim;
+    g.fillText('ID //', PROF.x + CYBER.cut + 6, PROF.y - 10);
+    g.letterSpacing = '0px';
     // The identity mark: a diamond in YOUR colour, glowing faintly. It used
     // to be the brand pink no matter what you picked, which made the one
     // mark with your name on it the only thing in the venue that didn't
@@ -1107,20 +1115,21 @@ export class MenuSystem extends createSystem({}) {
     g.save();
     g.shadowColor = 'rgba(0,0,0,0.55)';
     g.shadowBlur = 30;
-    g.fillStyle = 'rgba(15,12,26,0.98)';
-    g.beginPath();
-    g.roundRect(c.x, c.y, c.w, c.h, 18);
+    g.fillStyle = 'rgba(8,7,20,0.98)';
+    chamfer(g, c.x, c.y, c.w, c.h, CYBER.cut + 4);
     g.fill();
     g.restore();
     g.lineWidth = 2;
-    g.strokeStyle = UI.line;
+    g.strokeStyle = CYBER.cyanLine;
     g.stroke();
+    g.fillStyle = UI.accent;
+    g.fillRect(c.x + CYBER.cut + 4, c.y - 1, 64, 3);
 
     g.textAlign = 'left';
     g.textBaseline = 'middle';
     g.font = font(600, 19);
     g.letterSpacing = '3px';
-    g.fillStyle = UI.faint;
+    g.fillStyle = CYBER.cyanDim;
     g.fillText('SIGNED AS', c.x + 28, c.y + 42);
     g.letterSpacing = '1px';
     g.font = font(700, 42);
@@ -1214,26 +1223,10 @@ export class MenuSystem extends createSystem({}) {
   private drawColourWheel(g: CanvasRenderingContext2D): void {
     // The scrim, then the card — the keyboard's staging, so the two modals
     // feel like the same drawer.
-    g.fillStyle = 'rgba(4,2,10,0.8)';
-    g.beginPath();
-    g.roundRect(6, 6, W - 12, H - 12, 30);
-    g.fill();
+    this.drawScrim(g);
     const c = CW_CARD;
-    g.fillStyle = 'rgba(14,11,24,0.98)';
-    g.beginPath();
-    g.roundRect(c.x, c.y, c.w, c.h, 24);
-    g.fill();
-    g.lineWidth = 2;
-    g.strokeStyle = UI.line;
-    g.stroke();
-
-    g.textAlign = 'left';
-    g.textBaseline = 'middle';
-    g.font = font(600, 22);
-    g.letterSpacing = '4px';
-    g.fillStyle = UI.dim;
-    g.fillText('YOUR COLOUR', c.x + 40, c.y + 44);
-    g.letterSpacing = '0px';
+    this.drawModalCard(g, c.x, c.y, c.w, c.h);
+    this.drawKicker(g, 'YOUR COLOUR', c.x + 40, c.y + 44);
 
     // THE WHEEL: wedges around the ring, each at full neon. Drawn as 90
     // slices rather than a gradient because a canvas conic gradient is not
@@ -1344,42 +1337,25 @@ export class MenuSystem extends createSystem({}) {
 
   private drawKeyboard(g: CanvasRenderingContext2D): void {
     // The scrim: the lobby holds its breath while you sign.
-    g.fillStyle = 'rgba(4,2,10,0.8)';
-    g.beginPath();
-    g.roundRect(6, 6, W - 12, H - 12, 30);
-    g.fill();
+    this.drawScrim(g);
 
     // The card.
-    g.fillStyle = 'rgba(14,11,24,0.98)';
-    g.beginPath();
-    g.roundRect(KB.x, KB.y, KB.w, KB.h, 24);
-    g.fill();
-    g.lineWidth = 2;
-    g.strokeStyle = UI.line;
-    g.stroke();
-
-    g.textAlign = 'left';
-    g.textBaseline = 'middle';
-    g.font = font(600, 22);
-    g.letterSpacing = '4px';
-    g.fillStyle = UI.dim;
-    g.fillText('YOUR NAME', KB.x + 40, KB.y + 44);
-    g.letterSpacing = '0px';
+    this.drawModalCard(g, KB.x, KB.y, KB.w, KB.h);
+    this.drawKicker(g, 'YOUR NAME', KB.x + 40, KB.y + 44);
 
     // The preview well: draft, caret, count.
+    chamfer(g, KB.x + 40, KB.y + 62, KB.w - 80, 96, CYBER.cut);
     g.fillStyle = UI.well;
-    g.beginPath();
-    g.roundRect(KB.x + 40, KB.y + 62, KB.w - 80, 96, 16);
     g.fill();
     g.lineWidth = 2;
-    g.strokeStyle = UI.lineFaint;
+    g.strokeStyle = CYBER.cyanLine;
     g.stroke();
     g.textAlign = 'center';
     g.font = font(700, 52);
     g.letterSpacing = '6px';
     const draft = this.nameDraft;
     g.fillStyle = draft ? UI.textHi : UI.faint;
-    g.fillText(draft ? `${draft}▏` : 'type a name▏', KB.x + KB.w / 2, KB.y + 112);
+    g.fillText(draft ? `${draft}_` : 'type a name_', KB.x + KB.w / 2, KB.y + 112);
     g.letterSpacing = '0px';
     g.textAlign = 'right';
     g.font = font(500, 18);
@@ -1398,51 +1374,154 @@ export class MenuSystem extends createSystem({}) {
     }
   }
 
-  private drawShell(g: CanvasRenderingContext2D, tab: Tab): void {
-    // The wordmark — the one glowing text on the board.
+  /** The wordmark, misregistered: cyan and magenta channels pulled apart
+   *  either side of the white, and one slice of the type knocked sideways —
+   *  a sign mid-glitch, frozen (it's painted once; the board doesn't flicker
+   *  in a headset, ever). */
+  private drawWordmark(g: CanvasRenderingContext2D, x: number, y: number): void {
+    const text = 'RAVE RAID';
     g.textAlign = 'left';
     g.textBaseline = 'middle';
-    g.font = font(700, 60);
-    g.letterSpacing = '6px';
+    g.font = font(700, 64);
+    g.letterSpacing = '7px';
+    const tw = g.measureText(text).width;
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.85;
+    g.fillStyle = CYBER.cyan;
+    g.fillText(text, x - 3, y + 1);
+    g.fillStyle = UI.accent;
+    g.fillText(text, x + 3, y - 1);
+    g.restore();
     g.fillStyle = UI.textHi;
     g.shadowColor = UI.accentDim;
-    g.shadowBlur = 12;
-    g.fillText('RAVE RAID', 40, 66);
+    g.shadowBlur = 16;
+    g.fillText(text, x, y);
     g.shadowBlur = 0;
+    // The knocked slice: a hairline band across the back half of the word,
+    // redrawn a few px over in cyan — enough to read as a glitch, never
+    // enough to cost a letterform.
+    const sx = x + tw * 0.52;
+    const sy = y + 9;
+    g.save();
+    g.beginPath();
+    g.rect(sx, sy, tw * 0.48 - 6, 4);
+    g.clip();
+    g.fillStyle = CYBER.panel;
+    g.fillRect(sx, sy, tw * 0.48 - 6, 4);
+    g.fillStyle = CYBER.cyan;
+    g.fillText(text, x + 8, y);
+    g.restore();
     g.letterSpacing = '0px';
+    // The strap under it: protocol tag, then a hazard tail.
+    g.font = font(600, 15);
+    g.letterSpacing = '5px';
+    g.fillStyle = CYBER.cyanDim;
+    g.fillText('// RHYTHM COMBAT PROTOCOL', x + 2, y + 46);
+    const sw = g.measureText('// RHYTHM COMBAT PROTOCOL').width;
+    g.letterSpacing = '0px';
+    hazardStripes(g, x + sw + 14, y + 40, 72, 12, 'rgba(252,238,10,0.7)', 12);
+  }
+
+  /** A section kicker: a cyan slash pair, then the label in dim caps. */
+  private drawKicker(g: CanvasRenderingContext2D, text: string, x: number, y: number): void {
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.font = font(700, 24);
+    g.letterSpacing = '2px';
+    g.fillStyle = CYBER.cyan;
+    g.fillText('//', x, y);
+    const sx = x + g.measureText('// ').width + 4;
+    g.font = font(600, 24);
+    g.letterSpacing = '4px';
+    g.fillStyle = UI.dim;
+    g.fillText(text, sx, y);
+    g.letterSpacing = '0px';
+  }
+
+  /** The modal scrim — traced to the board's own cut, so the dark never
+   *  spills into the corners the frame chamfers away. */
+  private drawScrim(g: CanvasRenderingContext2D): void {
+    chamfer(g, 6, 6, W - 12, H - 12, CYBER.cutFrame);
+    g.fillStyle = 'rgba(2,1,8,0.82)';
+    g.fill();
+  }
+
+  /** A modal card (the keyboard's, the wheel's): cut glass, a cyan bezel,
+   *  a magenta tab on its top edge. */
+  private drawModalCard(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    chamfer(g, x, y, w, h, CYBER.cutFrame - 6);
+    g.fillStyle = 'rgba(8,7,20,0.98)';
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = CYBER.cyanLine;
+    g.stroke();
+    g.fillStyle = UI.accent;
+    g.fillRect(x + CYBER.cutFrame, y - 1, 96, 3);
+    g.fillStyle = CYBER.cyan;
+    g.fillRect(x + w - CYBER.cutFrame - 40, y + h - 2, 40, 3);
+  }
+
+  private drawShell(g: CanvasRenderingContext2D, tab: Tab): void {
+    // The wordmark — the one glowing text on the board.
+    this.drawWordmark(g, 44, 58);
 
     this.drawStatusChip(g);
 
-    // Header divider.
-    g.fillStyle = UI.lineFaint;
+    // Header divider: a cyan rule that fades out to the right, a magenta
+    // lead-in under the wordmark, and a notch where the two meet.
+    const rule = g.createLinearGradient(28, 0, W - 28, 0);
+    rule.addColorStop(0, 'rgba(0,240,255,0.45)');
+    rule.addColorStop(0.6, 'rgba(0,240,255,0.18)');
+    rule.addColorStop(1, 'rgba(0,240,255,0.04)');
+    g.fillStyle = rule;
     g.fillRect(28, 128, W - 56, 2);
-
-    // The rail: a recessed well, tabs as text + eased marker.
-    g.fillStyle = 'rgba(0,0,0,0.26)';
+    g.fillStyle = UI.accent;
+    g.fillRect(28, 127, RAIL_W, 4);
     g.beginPath();
-    g.roundRect(RAIL_X, 136, RAIL_W, 618, 22);
+    g.moveTo(28 + RAIL_W, 127);
+    g.lineTo(28 + RAIL_W + 10, 129);
+    g.lineTo(28 + RAIL_W, 131);
+    g.closePath();
+    g.fill();
+
+    // The rail: a recessed, cut well; tabs as indexed text + eased marker.
+    chamfer(g, RAIL_X, 140, RAIL_W, 614, CYBER.cut + 6);
+    g.fillStyle = 'rgba(0,0,0,0.34)';
     g.fill();
     g.lineWidth = 2;
-    g.strokeStyle = UI.lineFaint;
+    g.strokeStyle = CYBER.cyanLine;
     g.stroke();
 
     const tabs = this.railTabs();
     const activeY = tabs.find((t) => tab === t.tab)?.y ?? tabs[0].y;
     this.railTargetY = activeY + 18;
     if (!Number.isFinite(this.railY)) this.railY = this.railTargetY;
-    for (const t of tabs) {
+    tabs.forEach((t, idx) => {
       const active = tab === t.tab;
       const hov = this.board.hoverOf(t.id);
       const rx = RAIL_X + 8;
       const rw = RAIL_W - 16;
       if (active || hov > 0.01) {
-        g.fillStyle = `rgba(255,255,255,${(active ? 0.06 : 0.04 * hov).toFixed(3)})`;
-        g.beginPath();
-        g.roundRect(rx, t.y, rw, 102, 14);
+        chamfer(g, rx, t.y, rw, 102, CYBER.cut);
+        g.fillStyle = active
+          ? 'rgba(255,42,213,0.10)'
+          : `rgba(0,240,255,${(0.06 * hov).toFixed(3)})`;
         g.fill();
+        if (active) {
+          g.lineWidth = 1.5;
+          g.strokeStyle = 'rgba(255,42,213,0.45)';
+          g.stroke();
+        }
       }
-      g.textAlign = 'left';
+      // The index: 01..05, cyan, tucked top-right of the tab.
+      g.textAlign = 'right';
       g.textBaseline = 'middle';
+      g.font = font(600, 15);
+      g.letterSpacing = '2px';
+      g.fillStyle = active ? CYBER.cyan : 'rgba(0,240,255,0.42)';
+      g.fillText(String(idx + 1).padStart(2, '0'), rx + rw - 14, t.y + 20);
+      g.textAlign = 'left';
       g.font = font(active ? 700 : 600, 29);
       g.letterSpacing = '2.5px';
       g.fillStyle = t.disabled
@@ -1452,21 +1531,44 @@ export class MenuSystem extends createSystem({}) {
           : hov > 0
             ? `rgba(242,243,247,${(0.62 + 0.38 * hov).toFixed(3)})`
             : UI.dim;
+      if (active) {
+        g.shadowColor = UI.accentDim;
+        g.shadowBlur = 10;
+      }
       const ty = t.y + (t.sub ? 40 : 51);
-      g.fillText(t.label, rx + 26, ty, rw - 40);
+      g.fillText(t.label, rx + 26, ty, rw - 56);
+      g.shadowBlur = 0;
       if (t.sub) {
         g.font = font(500, 20);
         g.letterSpacing = '0.5px';
-        g.fillStyle = t.disabled ? 'rgba(233,236,244,0.22)' : UI.faint;
+        g.fillStyle = t.disabled ? 'rgba(233,236,244,0.22)' : active ? CYBER.cyanDim : UI.faint;
         g.fillText(t.sub, rx + 26, ty + 34, rw - 40);
       }
       g.letterSpacing = '0px';
-    }
-    // The marker, mid-slide or parked.
+    });
+    // The marker, mid-slide or parked: a slanted blade, glowing.
+    const my = this.railY;
     g.fillStyle = UI.accent;
+    g.shadowColor = UI.accent;
+    g.shadowBlur = 12;
     g.beginPath();
-    g.roundRect(RAIL_X + 12, this.railY, 5, 66, 2.5);
+    g.moveTo(RAIL_X + 15, my);
+    g.lineTo(RAIL_X + 21, my);
+    g.lineTo(RAIL_X + 17, my + 66);
+    g.lineTo(RAIL_X + 11, my + 66);
+    g.closePath();
     g.fill();
+    g.shadowBlur = 0;
+
+    // Under the rail: a node readout — the board's serial plate.
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.font = font(600, 14);
+    g.letterSpacing = '3px';
+    g.fillStyle = 'rgba(0,240,255,0.38)';
+    g.fillText('NODE 0x2A · FF2', RAIL_X + 10, 780);
+    g.fillText('SIG ▮▮▮▮▯', RAIL_X + 10, 804);
+    g.letterSpacing = '0px';
 
     // Tab-specific body decoration. No slogans, no manuals — the boards
     // carry buttons and progress, and the game teaches itself.
@@ -1676,8 +1778,8 @@ export class MenuSystem extends createSystem({}) {
       g.textBaseline = 'middle';
       g.font = font(600, 26);
       g.letterSpacing = '5px';
-      g.fillStyle = UI.dim;
-      g.fillText(open ? 'YOUR ROOM' : 'OPENING A ROOM…', cx, 210);
+      g.fillStyle = CYBER.cyanDim;
+      g.fillText(open ? '// YOUR ROOM //' : '// OPENING A ROOM… //', cx, 210);
       g.letterSpacing = '0px';
       if (open) {
         // The code IS the screen: four digits, as big as the board allows,
@@ -1699,8 +1801,8 @@ export class MenuSystem extends createSystem({}) {
       g.textBaseline = 'middle';
       g.font = font(600, 26);
       g.letterSpacing = '5px';
-      g.fillStyle = UI.dim;
-      g.fillText('ENTER CODE', cx, 190);
+      g.fillStyle = CYBER.cyanDim;
+      g.fillText('// ENTER CODE //', cx, 190);
       g.letterSpacing = '0px';
       const digits = this.joinDigits.split('');
       this.drawCodeBoxes(g, cx, 218, [0, 1, 2, 3].map((i) => digits[i] ?? ''), UI.info, false);
@@ -1723,12 +1825,11 @@ export class MenuSystem extends createSystem({}) {
     const x0 = cx - (w * 4 + gap * 3) / 2;
     chars.forEach((ch, i) => {
       const x = x0 + i * (w + gap);
-      g.beginPath();
-      g.roundRect(x, y, w, h, big ? 22 : 14);
-      g.fillStyle = ch ? UI.accentFaint : 'rgba(255,255,255,0.035)';
+      chamfer(g, x, y, w, h, big ? CYBER.cut + 10 : CYBER.cut);
+      g.fillStyle = ch ? 'rgba(0,240,255,0.08)' : 'rgba(0,240,255,0.025)';
       g.fill();
       g.lineWidth = 2.5;
-      g.strokeStyle = ch ? UI.accentDim : UI.lineFaint;
+      g.strokeStyle = ch ? CYBER.cyanDim : CYBER.cyanLine;
       g.stroke();
       if (!ch) {
         // An empty box shows where the next digit lands, not a blank.
@@ -1751,14 +1852,10 @@ export class MenuSystem extends createSystem({}) {
     g.textBaseline = 'middle';
 
     // Kicker + column captions.
-    g.textAlign = 'left';
-    g.font = font(600, 24);
-    g.letterSpacing = '4px';
-    g.fillStyle = UI.dim;
-    g.fillText('SELECT SONG', SOLO_LIST_X + 2, 172);
+    this.drawKicker(g, 'SELECT SONG', SOLO_LIST_X + 2, 172);
     g.letterSpacing = '1.5px';
-    g.font = font(500, 17);
-    g.fillStyle = UI.faint;
+    g.font = font(600, 16);
+    g.fillStyle = CYBER.cyanDim;
     g.textAlign = 'right';
     g.fillText('BPM', SOLO_LIST_X + SOLO_LIST_W - 128, 202);
     g.textAlign = 'center';
@@ -1772,17 +1869,22 @@ export class MenuSystem extends createSystem({}) {
       const y = SOLO_ROW_Y0 + i * SOLO_ROW_PITCH;
       const selected = (match.preferredTrack || '') === (row.track?.id ?? '');
       const hov = this.board.hoverOf(row.id);
-      g.beginPath();
-      g.roundRect(SOLO_LIST_X, y, SOLO_LIST_W, SOLO_ROW_H, 10);
-      g.fillStyle = selected ? UI.accentFaint : `rgba(255,255,255,${(0.03 + 0.05 * hov).toFixed(3)})`;
+      chamfer(g, SOLO_LIST_X, y, SOLO_LIST_W, SOLO_ROW_H, CYBER.cutSmall);
+      g.fillStyle = selected ? 'rgba(255,42,213,0.13)' : `rgba(0,240,255,${(0.025 + 0.06 * hov).toFixed(3)})`;
       g.fill();
-      if (selected) {
-        g.lineWidth = 2;
-        g.strokeStyle = 'rgba(255,42,213,0.9)';
+      if (selected || hov > 0.02) {
+        g.lineWidth = selected ? 2 : 1.5;
+        g.strokeStyle = selected ? UI.accent : `rgba(0,240,255,${(0.5 * hov).toFixed(3)})`;
         g.stroke();
+      }
+      if (selected) {
         g.fillStyle = UI.accent;
         g.beginPath();
-        g.roundRect(SOLO_LIST_X + 5, y + 8, 4, SOLO_ROW_H - 16, 2);
+        g.moveTo(SOLO_LIST_X + 9, y + 9);
+        g.lineTo(SOLO_LIST_X + 13, y + 9);
+        g.lineTo(SOLO_LIST_X + 10, y + SOLO_ROW_H - 9);
+        g.lineTo(SOLO_LIST_X + 6, y + SOLO_ROW_H - 9);
+        g.closePath();
         g.fill();
       }
       const cy = y + SOLO_ROW_H / 2 + 1;
@@ -1814,12 +1916,22 @@ export class MenuSystem extends createSystem({}) {
     const wy = SOLO_WELL_Y;
     const ww = SOLO_RIGHT_W;
     const wh = SOLO_WELL_H;
+    chamfer(g, wx, wy, ww, wh, CYBER.cut + 8);
     g.fillStyle = UI.well;
-    g.beginPath();
-    g.roundRect(wx, wy, ww, wh, 22);
     g.fill();
     g.lineWidth = 2;
-    g.strokeStyle = UI.lineFaint;
+    g.strokeStyle = CYBER.cyanLine;
+    g.stroke();
+    // A data plate's corner brackets, on the corners the cut leaves square.
+    g.strokeStyle = CYBER.cyan;
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.moveTo(wx + ww - 30, wy + 1);
+    g.lineTo(wx + ww - 1, wy + 1);
+    g.lineTo(wx + ww - 1, wy + 30);
+    g.moveTo(wx + 30, wy + wh - 1);
+    g.lineTo(wx + 1, wy + wh - 1);
+    g.lineTo(wx + 1, wy + wh - 30);
     g.stroke();
 
     const cued = trackById(match.preferredTrack);
@@ -1858,7 +1970,7 @@ export class MenuSystem extends createSystem({}) {
     // The rows, and whatever the board has to say for itself.
     const rows = this.boardRows(cued.id);
     const status = this.boardStatus(cued.id);
-    g.fillStyle = UI.lineFaint;
+    g.fillStyle = CYBER.cyanLine;
     g.fillRect(wx + 28, BOARD_HEAD_Y + 16, ww - 56, 2);
 
     if (status) {
@@ -1891,14 +2003,11 @@ export class MenuSystem extends createSystem({}) {
         const ry = BOARD_ROW_Y0 + 40 + i * BOARD_ROW_H;
         if (row.isMe) {
           // Your own row, findable at a glance in a hundred strangers.
-          g.fillStyle = UI.accentFaint;
-          g.beginPath();
-          g.roundRect(wx + 16, ry - 19, ww - 32, BOARD_ROW_H - 8, 8);
+          chamfer(g, wx + 16, ry - 19, ww - 32, BOARD_ROW_H - 8, CYBER.cutSmall);
+          g.fillStyle = 'rgba(255,42,213,0.13)';
           g.fill();
           g.fillStyle = UI.accent;
-          g.beginPath();
-          g.roundRect(wx + 20, ry - 13, 4, BOARD_ROW_H - 22, 2);
-          g.fill();
+          g.fillRect(wx + 20, ry - 13, 4, BOARD_ROW_H - 22);
         }
         g.textAlign = 'right';
         g.font = font(600, 19);
@@ -2171,30 +2280,24 @@ export class MenuSystem extends createSystem({}) {
 
   private drawTreasureMap(g: CanvasRenderingContext2D): void {
     // Section label, kicker-style.
-    g.textAlign = 'left';
-    g.textBaseline = 'middle';
-    g.font = font(600, 24);
-    g.letterSpacing = '4px';
-    g.fillStyle = UI.dim;
-    g.fillText('THE TOUR', CONTENT_X + 2, 158);
-    g.letterSpacing = '0px';
+    this.drawKicker(g, 'THE TOUR', CONTENT_X + 2, 158);
 
-    // Map frame: a dashed chart border with bracket ticks in the corners.
+    // Map frame: a dashed, cut chart border with bracket ticks in the corners.
     const F = MAP_FRAME;
     g.setLineDash([8, 12]);
-    g.strokeStyle = 'rgba(244,246,251,0.12)';
+    g.strokeStyle = 'rgba(0,240,255,0.20)';
     g.lineWidth = 2;
-    g.beginPath();
-    g.roundRect(F.x, F.y, F.w, F.h, 26);
+    chamfer(g, F.x, F.y, F.w, F.h, CYBER.cutFrame);
     g.stroke();
     g.setLineDash([]);
+    // Brackets: square ones on the two square corners, and on the two cut
+    // corners a bracket that rides the cut.
     g.strokeStyle = UI.accentDim;
     g.lineWidth = 2.5;
+    const K = CYBER.cutFrame;
     for (const [cx, cy, dx, dy] of [
-      [F.x + 4, F.y + 4, 1, 1],
       [F.x + F.w - 4, F.y + 4, -1, 1],
       [F.x + 4, F.y + F.h - 4, 1, -1],
-      [F.x + F.w - 4, F.y + F.h - 4, -1, -1],
     ] as const) {
       g.beginPath();
       g.moveTo(cx, cy + dy * 30);
@@ -2202,12 +2305,21 @@ export class MenuSystem extends createSystem({}) {
       g.lineTo(cx + dx * 30, cy);
       g.stroke();
     }
+    g.beginPath();
+    g.moveTo(F.x + 4, F.y + K + 26);
+    g.lineTo(F.x + 4, F.y + K + 2);
+    g.lineTo(F.x + K + 2, F.y + 4);
+    g.lineTo(F.x + K + 26, F.y + 4);
+    g.moveTo(F.x + F.w - 4, F.y + F.h - K - 26);
+    g.lineTo(F.x + F.w - 4, F.y + F.h - K - 2);
+    g.lineTo(F.x + F.w - K - 2, F.y + F.h - 4);
+    g.lineTo(F.x + F.w - K - 26, F.y + F.h - 4);
+    g.stroke();
 
     // Set regions: a soft tinted pool of light behind each trio — clipped
     // to the chart, so the light never spills past the frame.
     g.save();
-    g.beginPath();
-    g.roundRect(F.x, F.y, F.w, F.h, 26);
+    chamfer(g, F.x, F.y, F.w, F.h, CYBER.cutFrame);
     g.clip();
     TOUR.sets.forEach((_set, s) => {
       const mid = MAP_NODES[s][1];
