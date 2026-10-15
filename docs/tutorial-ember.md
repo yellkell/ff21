@@ -59,9 +59,14 @@ adopted the player on sight.
 Built and owned by `TutorialSystem` (which already owns scene objects — the
 popup and pointer lines — and disposes them in `end()`).
 
-- **Body**: `glowSprite(0xffc04d, 0.16)` (`src/materials/glow.ts:37`) with a
-  second, smaller white-hot core sprite; `spawnEmber(orbPos, up, 0.4)` on a
-  ~0.12 s accumulator while moving (pool in `src/fx/fire.ts:317`).
+- **Body**: a little holo construct, in the neon district's language — a
+  white-hot core sprite inside a neon-ember halo (`glowSprite(0xff6a2b,
+  0.26)`, `src/materials/glow.ts`), a cyan wireframe icosahedron shell that
+  tumbles, and two thin gyroscope rings (magenta, cyan) turning on crossed
+  axes; shell and rings spin up while she talks and dim with her for the
+  graduation fight. Her trail alternates ember sparks and cyan data sparks
+  (`spawnEmber(orbPos, up, cool)`) on a ~0.12 s accumulator while moving
+  (pool in `src/fx/fire.ts`).
 - **Motion**: target-position + critically-damped lerp in
   `TutorialSystem.update(delta)`; idle bob = `sin(this.time * 2.2) * 0.03` on
   Y; she pulses ~15 % brighter while a line plays (simple envelope on her
@@ -71,11 +76,13 @@ popup and pointer lines — and disposes them in `end()`).
   gain 0.9 → **HRTF `PannerNode`** positioned at the orb each frame — same
   graph as `src/pub/voice/playback.ts` → `sfxOut()` so she rides the SFX
   fader). Keep the current source node so a new line can `.stop()` the old.
-- **Captions**: a small subtitle plate (the `makePopup()` canvas pattern,
-  industrial style) follows 0.35 m under the orb and mirrors the spoken line.
+- **Captions**: a small subtitle plate on the menu's holo glass
+  (`src/ui/kit/holo.ts`, its edge tube in her neon, her name tag a lit
+  neon cell and `EMBER // GUIDE` in Rajdhani) follows 0.35 m under the orb
+  and mirrors the spoken line.
   It replaces the old lesson cards entirely.
 - **Interaction**: gaze = head-forward · (orb − head) normalised > 0.92 held
-  0.5 s. Confirmations happen on **the console** — a small industrial panel
+  0.5 s. Confirmations happen on **the console** — a small holo-glass panel
   anchored 1.2 m to the player's right, *the same spot where the BALL
   LOADOUT panel later materialises*. For the two confirm beats it shows a
   single big button (laser + trigger click — the existing `READY_BTN` /
