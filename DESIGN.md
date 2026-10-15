@@ -197,6 +197,12 @@ STANDINGS strip over the plaque.
 The lobby's rank-up PROMOTION (`ui/promoArt.ts`) is the same kit: a
 holo-glass plate, near-opaque because passthrough puts a lit room
 behind it, cyan light, cyan sparks and the new tier in GLITCH type.
+The match's big words — 3 / 2 / 1 / FIGHT and the KO / WIN / TIME / DRAW
+verdicts (`ui/signArt.ts`) — are NEON SIGNS in the same hand: Rajdhani
+on the kit's lean, a white-hot core in a lit tube, a wide bloom, the
+cyan / magenta split and torn scan slices, colour following the clock
+(3, 2 cyan · 1 amber · FIGHT red; KO magenta, WIN cyan, TIME amber,
+DRAW violet). Painted once while idle, never shipped as images.
 
 ### 3.2 Watching — travel together, and the crowd that can't be heard
 

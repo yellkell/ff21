@@ -1,41 +1,24 @@
 /**
- * The pre-round countdown art — hand-made neon-metal "3 / 2 / 1 / FIGHT"
- * plates (src/assets/countdown) that replace the programmatically stencilled
- * numbers on the centre scoreboard. Vite bundles each PNG to a hashed URL; we
- * kick the image loads on import and hand the scoreboard the right plate for a
- * countdown beat, returning it only once decoded so the canvas draws it the
- * instant it's ready and falls back to text until then.
+ * The pre-round countdown signs — "3 / 2 / 1 / FIGHT", painted in neon by
+ * ui/signArt.ts — for the centre scoreboard, the arena countdown, the
+ * campaign HUD and the pub ring. Null until the sign is ready (the house
+ * face still loading), so the hosts fall back to text for that gap.
  */
 
-const modules = import.meta.glob('../assets/countdown/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>;
+import { signArt, type SignKey } from './signArt.js';
 
-const images: Partial<Record<string, HTMLImageElement>> = {};
-for (const [path, url] of Object.entries(modules)) {
-  const stem = (path.split('/').pop() ?? '').replace(/\.png$/i, '');
-  const img = new Image();
-  img.src = url;
-  images[stem] = img;
-}
-
-/** Map a centre-board message to its countdown art key, or null if it has none. */
-function keyFor(message: string): string | null {
+/** Map a centre-board message to its countdown sign, or null if it has none. */
+function keyFor(message: string): SignKey | null {
   if (message === '1' || message === '2' || message === '3') return message;
   if (message === 'FIGHT') return 'fight';
-  // The pub fight hall reuses this set and adds an OPEN plate (open.png) for a
-  // ring that's waiting for challengers — the main game never asks for it.
+  // The pub fight hall adds an OPEN sign for a ring that's waiting for
+  // challengers — the main game never asks for it.
   if (message === 'OPEN') return 'open';
   return null;
 }
 
-/** The decoded countdown plate for a message (3/2/1/FIGHT), or null if there's
- *  no art for it or it hasn't decoded yet. */
-export function countdownArt(message: string): HTMLImageElement | null {
+/** The countdown sign for a message (3/2/1/FIGHT/OPEN), or null. */
+export function countdownArt(message: string): HTMLCanvasElement | null {
   const key = keyFor(message);
-  if (!key) return null;
-  const img = images[key];
-  return img && img.complete && img.naturalWidth > 0 ? img : null;
+  return key ? signArt(key) : null;
 }

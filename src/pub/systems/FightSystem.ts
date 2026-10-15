@@ -2055,10 +2055,10 @@ export class FightSystem extends createSystem({}) {
         ctx.textAlign = 'center';
         ctx.shadowColor = 'rgba(0,0,0,0.85)';
         ctx.shadowBlur = 12;
-        // Every headline is a neon plate now: FIGHT from the countdown set,
+        // Every headline is a neon sign now: FIGHT from the countdown set,
         // WIN/DRAW from the verdict set. A LOSS shows nothing at all
         // (arena-style — the winner gets the fanfare); the stencil text only
-        // ever appears as a fallback while a plate is still decoding.
+        // ever appears as a fallback before the signs are ready.
         const plate = headline === 'FIGHT' ? countdownArt('FIGHT') : verdictArt(headline);
         if (plate) {
           const bandW = w * 0.36;
@@ -2172,14 +2172,14 @@ export class FightSystem extends createSystem({}) {
       }
       ctx.restore();
 
-      // The status is always a NEON PLATE — the same shared art the rest of the
+      // The status is always a NEON SIGN — the same signs the rest of the
       // game uses: OPEN / 3 / 2 / 1 / FIGHT for the run-up, then the KO / WIN /
-      // DRAW verdict plates. No fighter names on any of them, so every round's
+      // DRAW verdicts. No fighter names on any of them, so every round's
       // verdict reads identically (metal text is only the last-ditch fallback
-      // before a plate has decoded).
+      // before the signs are ready).
       const winnerSide = f.sides[1] === f.winner ? 1 : 0;
       const count = Math.max(0, Math.ceil(f.roundTimer)); // the pre-round 3-2-1
-      let art: HTMLImageElement | null = null;
+      let art: HTMLCanvasElement | null = null;
       let status: string;
       let accent: string;
       if (f.phase === 'idle') {

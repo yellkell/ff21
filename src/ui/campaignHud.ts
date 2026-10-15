@@ -199,10 +199,10 @@ export function createCampaignHud(scene: Scene): CampaignHud {
     },
 
     title(text, sub, accent = UI.emberBright) {
-      // The FIGHT beat borrows the ring-countdown's neon FIGHT plate — the same
-      // art regular matches show — instead of plain glitch type. Falls back to
-      // the glitch word until the PNG has decoded (the decoded flag rides the
-      // key, so a re-call upgrades text → art the instant it's ready).
+      // The FIGHT beat borrows the ring-countdown's neon FIGHT sign — the same
+      // one regular matches show — instead of plain glitch type. Falls back to
+      // the glitch word until the sign is ready (the ready flag rides the key,
+      // so a re-call upgrades text → sign the instant it's there).
       const fightArt = text === 'FIGHT' && !sub ? countdownArt('FIGHT') : null;
       const key = `${text}|${sub}|${accent}|${fightArt ? 'art' : 'txt'}|${fontsReady() ? 1 : 0}`;
       if (key === centre.key) return;

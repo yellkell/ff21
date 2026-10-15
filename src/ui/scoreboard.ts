@@ -72,14 +72,15 @@ import { KIT } from './kit/panel.js';
 import { glitchText, holoGlass, neonBar, neonCell, readoutTicks, rgbOf } from './kit/holo.js';
 import { countdownArt } from './countdownArt.js';
 import { drawContentPlate as drawPlateArt } from './plateArt.js';
-import { verdictArt } from './verdictArt.js';
+import { signColour, signFlicker } from './signArt.js';
+import { signKeyFor, verdictArt } from './verdictArt.js';
 
 const W = 880;
 const H = 420;
 
-// Visible cap height (canvas px) for the art plates, measured from the opaque
-// WORD/digit so they read at a consistent size regardless of each PNG's
-// transparent padding. Words (FIGHT / KNOCKOUT / WIN) share one height; the
+// Visible height (canvas px) for the neon signs (ui/signArt.ts), measured
+// from the box each sign's word actually occupies so they read at a
+// consistent size regardless of the bloom padding round it. Words (FIGHT / KNOCKOUT / WIN) share one height; the
 // countdown digits share a slightly smaller one so FIGHT still lands biggest.
 // Clamped by PLATE_MARGIN so the whole glyph always stays on the board.
 const WORD_PLATE_H = 357;
@@ -389,8 +390,8 @@ function makeBoard(wMeters: number, hMeters: number, cw = W, ch = H, srgb = true
 /** Draw an art plate centred on the centre board, sized so its VISIBLE glyph
  *  (not the padded frame) is `targetH` tall — but never larger than the board's
  *  safe area, so the whole glyph always stays on screen (nothing chopped). */
-function drawContentPlate(ctx: CanvasRenderingContext2D, img: HTMLImageElement, targetH: number): void {
-  drawPlateArt(ctx, img, W, H, targetH, PLATE_MARGIN);
+function drawContentPlate(ctx: CanvasRenderingContext2D, sign: HTMLCanvasElement, targetH: number): void {
+  drawPlateArt(ctx, sign, W, H, targetH, PLATE_MARGIN);
 }
 
 /** The clock's digits on the plaque canvas (px). */
@@ -403,13 +404,10 @@ function fmtTime(seconds: number): string {
 
 function verdictAccent(message: string): string {
   if (message.includes('LOSE') || message === 'LOSS' || message === "KO'D") return KIT.danger;
-  // Match the neon plate art: the countdown digits 3 & 2 glow cyan, 1 glows
-  // red (like FIGHT); the verdict plates (KO / TIME / DRAW) and the glitch
-  // WIN are cyan neon, so their auras sit under them cleanly.
-  if (message === '3' || message === '2') return KIT.accent;
-  if (message === '1' || message === 'FIGHT') return KIT.danger;
-  if (message === 'KO' || message === 'WIN' || message === 'YOU WIN' || message === 'TIME' || message === 'DRAW')
-    return KIT.accent;
+  // A neon sign's aura is the sign's own colour (ui/signArt.ts), so the
+  // light it throws and the tube are one.
+  const sign = signKeyFor(message);
+  if (sign) return signColour(sign);
   return HOT;
 }
 
@@ -662,6 +660,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
   let verdictMsg = '';
   let verdictStart = 0;
   const glowMat = glow.material as MeshBasicMaterial;
+  const centreMat = centre.mesh.material as MeshBasicMaterial;
 
   const animateVerdict = (message: string): void => {
     const now = performance.now();
@@ -670,6 +669,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
       verdictStart = now;
     }
     if (!message) {
+      centreMat.opacity = 1;
       centre.mesh.scale.setScalar(hang.centreScale);
       centre.mesh.position.y = hang.centreY;
       glow.visible = false;
@@ -681,6 +681,8 @@ export function createScoreboard(scene: Scene): Scoreboard {
     const breathe = 1 + 0.02 * Math.sin(now * 0.0042);
     centre.mesh.scale.setScalar(Math.max(0.25, spring * breathe * hang.centreScale));
     centre.mesh.position.y = hang.centreY + 0.012 * Math.sin(now * 0.0032);
+    // The tube strikes: a couple of shallow dips as the sign lights.
+    centreMat.opacity = signFlicker(t);
 
     // Aura: a bright impact flash on arrival decaying into a steady pulse.
     glow.visible = true;
@@ -824,10 +826,10 @@ export function createScoreboard(scene: Scene): Scoreboard {
   };
 
   const drawCentre = (message: string, sub: string): void => {
-    // Two flavours of art: the countdown plates (3/2/1/FIGHT) and the verdict
-    // plates (KO/KO'D/WIN). Everything else is stencilled. "Is the art decoded
-    // yet" folds into the key so the first frame after a cold load swaps the
-    // text fallback out for the image.
+    // Two flavours of neon sign: the countdown (3/2/1/FIGHT) and the verdict
+    // (KO/WIN/TIME/DRAW). Everything else is GLITCH type. "Is the sign ready
+    // yet" folds into the key so the first frame after the fonts land swaps
+    // the text fallback out for the sign.
     const cd = countdownArt(message);
     const vd = cd ? null : verdictArt(message);
     const key = `c|${message}|${sub}|${cd ? 'cd' : vd ? 'vd' : 'txt'}|${fontsReady() ? 1 : 0}`;
@@ -837,12 +839,12 @@ export function createScoreboard(scene: Scene): Scoreboard {
     ctx.clearRect(0, 0, W, H);
     if (cd && message !== 'FIGHT') {
       // Countdown digit (3/2/1): sized by its VISIBLE glyph to a consistent
-      // height so the count reads evenly, whatever padding each PNG carries.
+      // height so the count reads evenly.
       drawContentPlate(ctx, cd, NUMBER_PLATE_H);
     } else if (cd || vd) {
-      // Word plates — FIGHT (countdown) and KNOCKOUT / WIN (verdict) — sized by
-      // the VISIBLE word to a shared cap height so all three read consistently.
-      drawContentPlate(ctx, (cd ?? vd) as HTMLImageElement, WORD_PLATE_H);
+      // Word signs — FIGHT (countdown) and KO / WIN / TIME / DRAW (verdict) —
+      // sized by the VISIBLE word to a shared height so they read consistently.
+      drawContentPlate(ctx, (cd ?? vd) as HTMLCanvasElement, WORD_PLATE_H);
     } else if (message) {
       // No art plate: GLITCH type — the word in the menu's headline face,
       // white, tracked wide, lit by its accent on a cyan / magenta split.

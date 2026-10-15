@@ -17,10 +17,11 @@ import { match } from '../combat/matchState.js';
 import { app } from '../menu/appState.js';
 import { countdownArt } from '../ui/countdownArt.js';
 import { drawContentPlate } from '../ui/plateArt.js';
+import { signColour, signFlicker } from '../ui/signArt.js';
 
 /** The messages that belong to the countdown ritual — drawn with the same
- *  neon-metal plate PNGs the HUD scoreboard uses (countdownArt), with these
- *  colours as the stencil fallback for the frames before a plate decodes. */
+ *  neon signs the HUD scoreboard uses (countdownArt), with these colours as
+ *  the stencil fallback for the frames before the house face has loaded. */
 const BEAT_STYLE: Record<string, { fill: string; glow: string }> = {
   '3': { fill: '#f4f6fb', glow: 'rgba(170,225,255,0.95)' },
   '2': { fill: '#f4f6fb', glow: 'rgba(170,225,255,0.95)' },
@@ -28,13 +29,13 @@ const BEAT_STYLE: Record<string, { fill: string; glow: string }> = {
   FIGHT: { fill: '#ff3b1e', glow: 'rgba(255,60,20,0.95)' },
 };
 
-/** The aura tint behind each beat — the HUD plates' reads: 3 and 2 arc-light
- *  blue, 1 hot amber, FIGHT danger red. */
-const BEAT_ACCENT: Record<string, number> = {
-  '3': 0x9fd4ff,
-  '2': 0x9fd4ff,
-  '1': 0xffb62e,
-  FIGHT: 0xff3b1e,
+/** The aura tint behind each beat — the sign's own tube colour: 3 and 2
+ *  cyan, 1 amber, FIGHT red (the clock's escalation). */
+const BEAT_ACCENT: Record<string, string> = {
+  '3': signColour('3'),
+  '2': signColour('2'),
+  '1': signColour('1'),
+  FIGHT: signColour('fight'),
 };
 
 function easeOutCubic(x: number): number {
@@ -111,8 +112,8 @@ export class CountdownSystem extends createSystem({}) {
       return;
     }
 
-    // "Has the plate decoded yet" folds into the redraw key, so the stencil
-    // fallback swaps out for the PNG the moment it's ready (same trick as
+    // "Is the sign ready yet" folds into the redraw key, so the stencil
+    // fallback swaps out for the sign the moment it's there (same trick as
     // the HUD scoreboard).
     const art = countdownArt(msg);
     const key = `${msg}|${art ? 'art' : 'txt'}`;
@@ -146,10 +147,11 @@ export class CountdownSystem extends createSystem({}) {
     this.board.position.set(cx, 1.75 + 0.012 * Math.sin(now * 0.0032), cz);
     this.board.rotation.set(0, Math.atan2(-cx, -cz), 0); // +z normal turned to face the origin (me)
     this.board.scale.setScalar(Math.max(0.25, spring * breathe));
-    (this.board.material as MeshBasicMaterial).opacity = 1;
+    // The tube strikes: a couple of shallow dips as each figure lights.
+    (this.board.material as MeshBasicMaterial).opacity = signFlicker(t);
 
     const glowMat = this.glow.material as MeshBasicMaterial;
-    glowMat.color.setHex(BEAT_ACCENT[msg] ?? 0xffffff);
+    glowMat.color.setStyle(BEAT_ACCENT[msg] ?? '#ffffff');
     const intro = easeOutCubic(Math.min(1, t / 0.25));
     const flash = 0.55 * Math.exp(-t * 5);
     const pulse = 0.26 + 0.12 * Math.sin(now * 0.005);
@@ -157,11 +159,11 @@ export class CountdownSystem extends createSystem({}) {
     this.glow.scale.setScalar(1 + 0.18 * Math.exp(-t * 6) + 0.05 * Math.sin(now * 0.005));
   }
 
-  private draw(text: string, art: HTMLImageElement | null, fill: string, glow: string): void {
+  private draw(text: string, art: HTMLCanvasElement | null, fill: string, glow: string): void {
     const ctx = this.canvas.getContext('2d')!;
     ctx.clearRect(0, 0, 1024, 512);
     if (art) {
-      // The HUD's neon-metal plate, sized by its visible glyph: digits tall,
+      // The HUD's neon sign, sized by its visible content: digits tall,
       // the FIGHT word wide.
       drawContentPlate(ctx, art, 1024, 512, text.length > 2 ? 310 : 440, 24);
     } else {

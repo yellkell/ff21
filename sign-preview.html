@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- DEV-ONLY harness: lays every neon sign (ui/signArt.ts) out flat — the
+     countdown 3 / 2 / 1 / FIGHT, the KO / WIN / TIME / DRAW verdicts and the
+     pub ring's OPEN — each fitted the way the centre scoreboard fits it
+     (880×420, digits and words at their own heights), over a stand-in
+     backdrop, for screenshots.
+     Not part of the game; never ship or link this page.
+     ?bg=street|room  the dark district, or a bright passthrough stand-in -->
+<html>
+  <body style="margin:0; background:#05060c">
+    <canvas id="c"></canvas>
+    <script type="module">
+      import { SIGN_KEYS, signArt } from '/src/ui/signArt.ts';
+      import { drawContentPlate } from '/src/ui/plateArt.ts';
+      import { onFontsReady } from '/src/ui/kit/fonts.ts';
+
+      const BG = new URLSearchParams(location.search).get('bg') ?? 'street';
+      // The centre scoreboard's board and plate heights (ui/scoreboard.ts).
+      const W = 880, H = 420, WORD_H = 357, NUMBER_H = 300, MARGIN = 26;
+      const COLS = 3;
+
+      function backdrop(g, x, y, w, h) {
+        g.save();
+        if (BG === 'room') {
+          const s = g.createLinearGradient(0, y, 0, y + h);
+          s.addColorStop(0, '#b9ab98'); s.addColorStop(1, '#7d6f60');
+          g.fillStyle = s; g.fillRect(x, y, w, h);
+        } else {
+          const s = g.createLinearGradient(0, y, 0, y + h);
+          s.addColorStop(0, '#120a24'); s.addColorStop(1, '#05060c');
+          g.fillStyle = s; g.fillRect(x, y, w, h);
+          for (let i = 0; i < 7; i++) {
+            g.fillStyle = i % 2 ? 'rgba(255,61,166,0.10)' : 'rgba(63,242,255,0.08)';
+            g.fillRect(x + ((i * 131) % w), y + 30 + ((i * 71) % (h - 100)), 26 + (i % 3) * 18, 80);
+          }
+        }
+        g.restore();
+      }
+
+      onFontsReady(() => {
+        const c = document.getElementById('c');
+        const rows = Math.ceil(SIGN_KEYS.length / COLS);
+        c.width = W * COLS; c.height = H * rows;
+        const g = c.getContext('2d');
+        SIGN_KEYS.forEach((key, i) => {
+          const x = (i % COLS) * W, y = Math.floor(i / COLS) * H;
+          backdrop(g, x, y, W, H);
+          const t0 = performance.now();
+          const sign = signArt(key);
+          const paintMs = performance.now() - t0;
+          g.save();
+          g.translate(x, y);
+          drawContentPlate(g, sign, W, H, key.length === 1 ? NUMBER_H : WORD_H, MARGIN);
+          g.fillStyle = 'rgba(255,255,255,0.35)';
+          g.font = '14px monospace';
+          g.fillText(`${key} · ${paintMs.toFixed(1)} ms`, 10, H - 10);
+          g.restore();
+        });
+        document.title = 'ready';
+      });
+    </script>
+  </body>
+</html>
