@@ -21,6 +21,7 @@
       import { paletteFor } from '/src/rave/arena/spectrum/palettes.ts';
       import { DiscoRig } from '/src/rave/arena/disco.ts';
       import { forceLook } from '/src/rave/arena/lightshow.ts';
+      import { driveRim } from '/src/rave/arena/stage.ts';
       import { buildArena } from '/src/rave/arena/arena.ts';
       import { VOID_BG } from '/src/rave/arena/voidkit.ts';
       import { BOARD_Y, HoloBoard } from '/src/rave/ui/board.ts';
@@ -71,6 +72,19 @@
         env.update(dt, beat, act, energy);
         if (env.palette) rig.setPalette(env.palette.lasers);
         rig.update(dt, beat, act, energy, env.cue ? { cue: env.cue, focus: env.focus, bass: env.bass } : {});
+        if (env.cue) {
+          // The DJ's rim, as DiscoSystem drives it.
+          const c = env.cue;
+          const k = c.open * (1 - c.gather);
+          const L = env.palette.lasers;
+          driveRim(a.stageRimMat, {
+            base: new Color(0x20bfd5), a: new Color(L[0]), b: new Color(L[1 % L.length]), lamps: rig.lamps,
+            gain: energy, beat, hit: c.hit, gather: c.gather, swing: c.swing, head: c.head,
+            dir: Math.floor(c.beat / 8) % 2 === 0 ? 1 : -1,
+            wave: c.look === 'wave' ? k : 0, chase: c.look === 'chase' ? k : 0,
+            mirror: c.look === 'mirror' ? k : 0, sweep: c.look === 'sweep' ? k : 0,
+          });
+        }
         renderer.render(scene, camera);
       };
       renderer.setAnimationLoop(() => frame(1 / 60));

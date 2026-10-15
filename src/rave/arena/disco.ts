@@ -124,6 +124,9 @@ export class DiscoRig {
   /** The record's laser colours (SpectrumSet's sleeve). */
   private colors: Color[] = PALETTES.synthwave.lasers.map((h) => new Color(h));
   private peak = new Color(0xffffff);
+  /** Per crown lamp, this frame: its beams' colour × brightness (flat rgb,
+   *  before energy). The DJ's rim is lit from these (stage.ts driveRim). */
+  readonly lamps = new Float32Array(CROWN_N * 3);
 
   /** Dress the lasers in a record's colours. */
   setPalette(colors: number[] | null): void {
@@ -276,6 +279,10 @@ export class DiscoRig {
         lens = Math.max(lens, g);
       }
       this.lenses.set(em.i, _o, _col, Math.min(1.6, lens) * energy);
+      const k = Math.min(1.6, lens);
+      this.lamps[em.i * 3] = _col.r * k;
+      this.lamps[em.i * 3 + 1] = _col.g * k;
+      this.lamps[em.i * 3 + 2] = _col.b * k;
     }
     this.beams.gain = energy * 0.75;
     this.beams.commit(dt);

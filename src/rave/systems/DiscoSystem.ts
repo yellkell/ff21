@@ -23,10 +23,11 @@
  */
 
 import { createSystem } from '@iwsdk/core';
-import { FogExp2, type Scene } from 'three';
+import { Color, FogExp2, type Scene } from 'three';
 import { arena } from '../arena/arena.js';
 import { DiscoRig } from '../arena/disco.js';
 import { SpectrumSet } from '../arena/spectrum/set.js';
+import { RIM_LAMPS, driveRim, type RimDrive } from '../arena/stage.js';
 import { VOID_BG } from '../arena/voidkit.js';
 import { actOfBeat } from '../choreo/setlist.js';
 import { match, showBeat } from '../game/state.js';
@@ -46,6 +47,10 @@ export class DiscoSystem extends createSystem({}) {
   private fogOn = false;
   /** 0..1 — how far the party stands back while a telegraph owns MY deck. */
   private duck = 0;
+  private rim: RimDrive = {
+    base: new Color(), a: new Color(), b: new Color(), lamps: new Float32Array(RIM_LAMPS * 3),
+    gain: 0, beat: 0, hit: 0, gather: 0, swing: 0, head: 0, dir: 1, wave: 0, chase: 0, mirror: 0, sweep: 0,
+  };
   init(): void {
     rig = new DiscoRig();
     this.scene.add(rig.root);
@@ -110,14 +115,36 @@ export class DiscoSystem extends createSystem({}) {
     }
 
     const pulse = Math.max(0, 1 - (beat - Math.floor(beat)) * 2.2);
-    // The MC already eases his wardrobe colour between records. Carry that
-    // same hue through the glass instead of fixing the whole stage to pink.
     if (a) {
-      a.stageNeonMat.emissive.setHSL(mcView.hue, 0.85, 0.42);
-      a.stageNeonMat.color.copy(a.stageNeonMat.emissive).multiplyScalar(0.55);
-      a.stageHaloMat.color.copy(a.stageNeonMat.emissive);
-      a.stageNeonMat.emissiveIntensity = 0.45 + energy * (0.2 + pulse * 0.08);
       a.stageFootlightMat.emissiveIntensity = 0.8 + energy * (0.25 + pulse * 0.15);
+      // THE DJ'S RIM is part of the laser show: it rests in the MC's
+      // wardrobe colour (he eases it between records) and the show — the
+      // crown lamps' light, the look's pattern, the gather, the hit — is
+      // laid over it at the ducked energy.
+      const r = this.rim;
+      r.base.setHSL(mcView.hue, 0.85, 0.42);
+      const lasers = this.env.palette.lasers;
+      r.a.setHex(lasers[0]);
+      r.b.setHex(lasers[1 % lasers.length]);
+      r.lamps.set(rig.lamps);
+      r.beat = beat;
+      if (inSet) {
+        const cue = this.env.cue;
+        const k = cue.open * (1 - cue.gather);
+        r.gain = energy;
+        r.hit = cue.hit;
+        r.gather = cue.gather;
+        r.swing = cue.swing;
+        r.head = cue.head;
+        r.dir = Math.floor(cue.beat / 8) % 2 === 0 ? 1 : -1;
+        r.wave = cue.look === 'wave' ? k : 0;
+        r.chase = cue.look === 'chase' ? k : 0;
+        r.mirror = cue.look === 'mirror' ? k : 0;
+        r.sweep = cue.look === 'sweep' ? k : 0;
+      } else {
+        r.gain = r.hit = r.gather = r.wave = r.chase = r.mirror = r.sweep = 0;
+      }
+      driveRim(a.stageRimMat, r);
     }
   }
 }
