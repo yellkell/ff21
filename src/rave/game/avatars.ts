@@ -191,12 +191,34 @@ export interface DancerRig {
    */
   setDetail(near: boolean): void;
   dispose(): void;
-  /** Where COSTUME pieces hang (the MC's helmet, mantle and gauntlets —
-   *  McSystem): the head; the YOKE, riding the shoulder line and turning
-   *  with the chest (+y up the spine, the figure's front toward −z); and the
-   *  two hands. Children added here are posed with the figure for free.
-   *  (The house figures carry it; the players' blank doesn't.) */
-  mount?: { head: Group; yoke: Group; handL: Group; handR: Group };
+  /** Where COSTUME pieces hang (the MC's suit — game/mcCostume.ts): the
+   *  head; the YOKE, riding the shoulder line and turning with the chest
+   *  (+y up the spine, the figure's front toward −z); the PELVIS, at the hip
+   *  centre the same way up; the two hands; the BOOTS (ankle origin, turned
+   *  with the yaw); and one frame per limb bone — origin at the bone's top
+   *  joint, the bone hanging down −y at rest, front −z — that swings with
+   *  the bone without stretching (see limbFrame). Children added here are
+   *  posed with the figure for free. (The house figures carry it; the
+   *  players' blank doesn't.) */
+  mount?: DancerMounts;
+}
+
+export interface DancerMounts {
+  head: Group;
+  yoke: Group;
+  pelvis: Group;
+  handL: Group;
+  handR: Group;
+  upperL: Group;
+  upperR: Group;
+  foreL: Group;
+  foreR: Group;
+  thighL: Group;
+  thighR: Group;
+  shinL: Group;
+  shinR: Group;
+  bootL: Group;
+  bootR: Group;
 }
 
 /* Figure proportions (metres) — deliberately long-limbed and narrow:
@@ -300,6 +322,28 @@ const _q = new Quaternion();
 const _yawQ = new Quaternion();
 /** Pre-rotation that turns a torus (axis +Z) into a ring around +Y. */
 const X90 = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2);
+const DOWN = new Vector3(0, -1, 0);
+const _limb = new Vector3();
+const _limbQ = new Quaternion();
+const _yawInv = new Quaternion();
+
+/**
+ * Pose a limb's costume FRAME from joint `a` to joint `b`: origin at `a`,
+ * local −y down the bone, never scaled. The swing is the shortest turn from
+ * the bone's rest (hanging straight down in the body's own frame) to where
+ * it points now, applied inside the body's yaw — so armour authored on a
+ * limb hanging at the figure's side keeps its front facing front through
+ * every reach, kick and crouch (the segments' own UP-based alignment spins
+ * freely about the bone, which a round sleeve never shows and a shin plate
+ * would). Uses _yawQ/_yawInv, set by pose().
+ */
+function limbFrame(g: Group, a: Vector3, b: Vector3): void {
+  g.position.copy(a);
+  _limb.copy(b).sub(a).applyQuaternion(_yawInv);
+  if (_limb.lengthSq() < 1e-8) _limb.copy(DOWN);
+  _limbQ.setFromUnitVectors(DOWN, _limb.normalize());
+  g.quaternion.copy(_yawQ).multiply(_limbQ);
+}
 
 /* ── shared unit geometry, cached module-wide ──
  * 24 rigs can be live at once; every mesh here draws one of a small fixed
@@ -752,7 +796,23 @@ export function buildDancer(hue: number): DancerRig {
   belt.scale.set(TORSO_X, TORSO_Z, 1);
   root.add(collar, choker, belt);
   const yoke = new Group(); // costume mount: the shoulder line (see DancerRig.mount)
-  root.add(yoke);
+  const pelvis = new Group(); // …and the hip centre
+  root.add(yoke, pelvis);
+  // One costume frame per limb bone (see limbFrame) — empty on everyone
+  // but the MC, and cheap to pose.
+  const limbMount = (): Group => {
+    const g = new Group();
+    root.add(g);
+    return g;
+  };
+  const upperMountL = limbMount();
+  const upperMountR = limbMount();
+  const foreMountL = limbMount();
+  const foreMountR = limbMount();
+  const thighMountL = limbMount();
+  const thighMountR = limbMount();
+  const shinMountL = limbMount();
+  const shinMountR = limbMount();
   // THE GORGET — a lit panel across the collar's throat. Seen from above
   // (THE CLIMB spends whole songs looking down on the MC), the dark yoke
   // under the glowing ring crushed to two near-black lobes either side of
@@ -946,6 +1006,8 @@ export function buildDancer(hue: number): DancerRig {
     upper: Mesh,
     fore: Mesh,
     elbow: Mesh,
+    upperMount: Group,
+    foreMount: Group,
   ): void => {
     _target.set(hx, hy, hz);
     // THE ELBOW POLE. The natural bend for a hand working at its own side
@@ -969,6 +1031,8 @@ export function buildDancer(hue: number): DancerRig {
     _hint.normalize();
     twoBone(shoulder, _target, UPPER_ARM, FOREARM, _hint, _solved, _tip);
     align(upper, shoulder, _solved);
+    limbFrame(upperMount, shoulder, _solved);
+    limbFrame(foreMount, _solved, _tip);
     align(fore, _solved, _tip); // leaves _dir = the forearm's own direction
     elbow.position.copy(_solved);
     hand.position.copy(_tip);
@@ -1032,6 +1096,7 @@ export function buildDancer(hue: number): DancerRig {
     _right.set(cos, 0, -sin);
     _fwd.set(-sin, 0, -cos);
     _yawQ.setFromAxisAngle(UP, p.yaw);
+    _yawInv.copy(_yawQ).invert();
 
     // Shoulder line under the head, turned with the yaw.
     const shY = hy - SHOULDER_DROP;
@@ -1065,6 +1130,8 @@ export function buildDancer(hue: number): DancerRig {
     yoke.quaternion.copy(bodice.quaternion);
     belt.position.copy(_mid);
     belt.quaternion.copy(basque.quaternion).multiply(X90);
+    pelvis.position.set(hipX, hipY, hipZ);
+    pelvis.quaternion.copy(basque.quaternion);
 
     // Clavicle V from the sternum notch out to each shoulder; caps pin the
     // arms to the torso at any pose angle. The notch sits LOW — a real
@@ -1081,8 +1148,8 @@ export function buildDancer(hue: number): DancerRig {
     capR.rotation.y = p.yaw;
 
     // Arms.
-    solveArm(-1, shoulderL, handL, p.lx, p.ly * (1 - melt * 0.6), p.lz, upperL, foreL, elbowL);
-    solveArm(1, shoulderR, handR, p.rx, p.ry * (1 - melt * 0.6), p.rz, upperR, foreR, elbowR);
+    solveArm(-1, shoulderL, handL, p.lx, p.ly * (1 - melt * 0.6), p.lz, upperL, foreL, elbowL, upperMountL, foreMountL);
+    solveArm(1, shoulderR, handR, p.rx, p.ry * (1 - melt * 0.6), p.rz, upperR, foreR, elbowR, upperMountR, foreMountR);
 
     // Legs: ankles plant a shade inside the hips (real legs converge), and
     // trail the body a touch. Knees bend FORWARD with a slight outward
@@ -1099,6 +1166,8 @@ export function buildDancer(hue: number): DancerRig {
       align(leg.shin, _tip, _solved);
       align(leg.thigh, _solved, hip);
       leg.knee.position.copy(_solved);
+      limbFrame(side < 0 ? thighMountL : thighMountR, hip, _solved);
+      limbFrame(side < 0 ? shinMountL : shinMountR, _solved, _tip);
       const boot = side < 0 ? bootL : bootR;
       boot.position.copy(_tip);
       boot.rotation.y = p.yaw;
@@ -1117,7 +1186,23 @@ export function buildDancer(hue: number): DancerRig {
     accents,
     baseColor: color,
     pose,
-    mount: { head, yoke, handL, handR },
+    mount: {
+      head,
+      yoke,
+      pelvis,
+      handL,
+      handR,
+      upperL: upperMountL,
+      upperR: upperMountR,
+      foreL: foreMountL,
+      foreR: foreMountR,
+      thighL: thighMountL,
+      thighR: thighMountR,
+      shinL: shinMountL,
+      shinR: shinMountR,
+      bootL,
+      bootR,
+    },
     setCrown(on: boolean) {
       if (on && !crown) {
         crown = buildCrown();

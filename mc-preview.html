@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- DEV-ONLY harness: the MC in his suit (src/rave/game/mcCostume.ts) under
+     the raid stage's light, in four views — front at rest, three-quarter
+     with a stick thrown up, the back, and a deep duck with both sticks
+     forward. ?hue=0.8 picks the wardrobe colour, ?warn=1 burns the amber.
+     Not part of the game; never ship or link this page. -->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>mc preview</title>
+    <style>html, body { margin: 0; background: #05040a; overflow: hidden; }</style>
+  </head>
+  <body>
+    <script type="module">
+      import { Color, HemisphereLight, PerspectiveCamera, PointLight, Scene, WebGLRenderer, SRGBColorSpace, Vector4 } from 'three';
+      import { ACCENT_REST, accentHex, buildDancer } from '/src/rave/game/avatars.ts';
+      import { dressMc } from '/src/rave/game/mcCostume.ts';
+      import { hueToColor, MC } from '/src/rave/config.ts';
+
+      const q = new URLSearchParams(location.search);
+      const hue = Number(q.get('hue') ?? MC.hue);
+      const warn = q.get('warn') === '1';
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = SRGBColorSpace;
+      renderer.setScissorTest(true);
+      document.body.appendChild(renderer.domElement);
+
+      const POSES = [
+        { hx: 0, hy: 1.56, hz: 0, yaw: 0, pitch: 0, roll: 0, lx: -0.3, ly: 1.0, lz: -0.1, rx: 0.3, ry: 1.0, rz: -0.1, slump: 0 },
+        { hx: 0, hy: 1.56, hz: 0, yaw: 0, pitch: -0.1, roll: 0.1, lx: -0.28, ly: 0.95, lz: -0.12, rx: 0.32, ry: 2.05, rz: -0.12, slump: 0 },
+        { hx: 0, hy: 1.56, hz: 0, yaw: 0, pitch: 0, roll: 0, lx: -0.36, ly: 1.75, lz: -0.05, rx: 0.36, ry: 1.75, rz: -0.05, slump: 0 },
+        { hx: 0, hy: 1.0, hz: 0, yaw: 0, pitch: 0.2, roll: 0, lx: -0.1, ly: 1.05, lz: -0.55, rx: 0.1, ry: 1.05, rz: -0.55, slump: 0 },
+      ];
+      // Camera yaw around the figure for each panel (0 = facing him head on).
+      const VIEWS = [0, 0.75, Math.PI, -0.5];
+      const scenes = POSES.map((pose, i) => {
+        const scene = new Scene();
+        scene.background = new Color(0x07060d);
+        scene.add(new HemisphereLight(0xbfd4ff, 0x0c0a14, 0.75));
+        const key = new PointLight(0xd3e5ff, 4.5 * 2.1 * 2.1, 26 * 2.1, 1.6);
+        key.position.set(0, 3.8, -1.4);
+        scene.add(key);
+        const rig = buildDancer(hue);
+        dressMc(rig);
+        rig.root.scale.setScalar(MC.scale);
+        rig.pose(pose);
+        scene.add(rig.root);
+        const cam = new PerspectiveCamera(32, 1, 0.1, 100);
+        const a = VIEWS[i];
+        // The figure faces −Z; stand the camera out front of him.
+        cam.position.set(Math.sin(a) * -8.2, 2.3, Math.cos(a) * -8.2);
+        cam.lookAt(0, 2.05, 0);
+        return { scene, rig, cam };
+      });
+
+      const paint = () => {
+        for (const { rig } of scenes) {
+          for (const acc of rig.accents) {
+            const c = accentHex(acc, acc.neon && warn ? MC.warnColor : hueToColor(hue, 0.6));
+            if (acc.mat.emissive) {
+              acc.mat.emissive.setHex(c);
+              acc.mat.emissiveIntensity = (acc.neon ? (warn ? 2.6 : 1.1) : ACCENT_REST) * acc.gain;
+            } else acc.mat.color.setHex(c);
+          }
+        }
+        const W = innerWidth / scenes.length;
+        scenes.forEach(({ scene, cam }, i) => {
+          cam.aspect = W / innerHeight;
+          cam.updateProjectionMatrix();
+          renderer.setViewport(new Vector4(i * W, 0, W, innerHeight));
+          renderer.setScissor(new Vector4(i * W, 0, W, innerHeight));
+          renderer.render(scene, cam);
+        });
+      };
+      // The suit streams in; give it a beat, then paint and flag ready.
+      const wait = () => (scenes.every((s) => s.rig.root.getObjectByName('HELMET')) ? (paint(), (window.__ready = true)) : setTimeout(wait, 100));
+      wait();
+      setInterval(paint, 500);
+    </script>
+  </body>
+</html>
