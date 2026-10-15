@@ -312,20 +312,15 @@ try {
       check('DONE returns to the packs', ids.includes('bank-pack-pocket') && !ids.includes('bank-done'), ids.filter((b) => b.startsWith('bank-')).join(','));
     }
 
-    // THE SHELVES and the second wave.
+    // THE SHELVES and the second wave. Platform sales are PAUSED
+    // (avatar/skins.ts PLATFORMS_OPEN): the chip stands greyed out,
+    // and even a forced tab shows the GEAR board with no pad for sale.
     await wrap(`act('tab-platforms')`);
     await page.waitForTimeout(300);
     ids = await m(`buttons('shop')`);
-    check('the PLATFORMS board is shelved: TIMBER · STONE · FORGE · HONOURS', has(ids, 'shelf-timber', 'shelf-stone', 'shelf-forge', 'shelf-honours'), ids.filter((b) => b.startsWith('shelf-')).join(','));
-    await wrap(`act('shelf-forge')`);
-    await page.waitForTimeout(300);
-    ids = await m(`buttons('shop')`);
-    check('FORGE: BULLION, COPPER, MAGMA, METEORITE', has(ids, 'shop-pf-9', 'shop-pf-11', 'shop-pf-12', 'shop-pf-13') && !ids.includes('shop-pf-4'), ids.filter((b) => b.startsWith('shop-pf-')).join(','));
-    await shot('store-forge');
-    await wrap(`act('shelf-honours')`);
-    await page.waitForTimeout(300);
-    ids = await m(`buttons('shop')`);
-    check('HONOURS: the three earned pads, nothing for sale', has(ids, 'shop-pf-14', 'shop-pf-15', 'shop-pf-16') && !ids.includes('shop-pf-9'), ids.filter((b) => b.startsWith('shop-pf-')).join(','));
+    const liveIds = await m(`live('shop')`);
+    check('PLATFORMS in the STORE is greyed out: no shelves, no pads, the chip dead', ids.includes('tab-platforms') && !liveIds.includes('tab-platforms') && !ids.some((b) => b.startsWith('shelf-') || b.startsWith('shop-pf-')), ids.filter((b) => b.startsWith('shelf-') || b.startsWith('shop-pf-') || b.startsWith('tab-')).join(','));
+    await shot('store-platforms-paused');
     await wrap(`act('tab-gear')`);
     await wrap(`act('gear-head')`);
     await page.waitForTimeout(300);

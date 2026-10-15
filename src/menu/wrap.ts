@@ -9,6 +9,7 @@ import { Panel, KIT, type PanelButton, type PanelOpts } from '../ui/kit/panel.js
 import { font } from '../ui/kit/fonts.js';
 import { app } from './appState.js';
 import { coins } from './wallet.js';
+import { PLATFORMS_OPEN } from '../avatar/skins.js';
 import { leaderboard, setLeaderboardTab } from '../net/leaderboard.js';
 import { gazette } from '../net/gazette.js';
 import { ladderFace } from './ladder.js';
@@ -524,7 +525,7 @@ function storeBoard(): Face {
     title: '',
     body: () => {},
     buttons: [
-      { id: 'open-shop', label: 'BROWSE THE STORE', sub: 'Gear, platforms and paint', x: 96, y: 190, w: 640, h: 210 },
+      { id: 'open-shop', label: 'BROWSE THE STORE', sub: PLATFORMS_OPEN ? 'Gear, platforms and paint' : 'Gear and paint', x: 96, y: 190, w: 640, h: 210 },
       { id: 'open-bank', label: 'BANK', sub: 'Top up or recover your purchases', x: 96, y: 450, w: 640, h: 150, small: true },
       { id: 'store-balance', label: `$ ${coins.balance}`, sub: 'iron-dollars available', x: 96, y: 650, w: 640, h: 110, small: true, display: true },
     ],

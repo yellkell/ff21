@@ -109,10 +109,12 @@ import {
   type DeckShelf,
   OPPONENT_DEFAULT_PLATFORM,
   PLATFORM_SKINS,
+  PLATFORMS_OPEN,
   applyAvatarSkin,
   applyPlatformSkin,
   platformSkin,
   resolveAvatarSkin,
+  shownPlatform,
 } from '../avatar/skins.js';
 import { match } from '../combat/matchState.js';
 import { applyArenaLayout, tintPlatform } from '../arena/arena.js';
@@ -1634,7 +1636,7 @@ export class MenuSystem extends createSystem({}) {
         }
         if (action.startsWith('shop-buy-pf-')) {
           const skin = PLATFORM_SKINS[Number(action.slice('shop-buy-pf-'.length))];
-          if (skin && !skin.earnedBy && !platformOwned(skin.id)) {
+          if (PLATFORMS_OPEN && skin && !skin.earnedBy && !platformOwned(skin.id)) {
             this.buyOrEquipPlatform(skin.id, skin.price ?? 0);
             if (platformOwned(skin.id)) clearShopPreview();
           }
@@ -1652,7 +1654,7 @@ export class MenuSystem extends createSystem({}) {
         }
         if (action.startsWith('shop-pf-')) {
           const skin = PLATFORM_SKINS[Number(action.slice(8))];
-          if (!skin) break;
+          if (!skin || !PLATFORMS_OPEN) break; // paused (avatar/skins.ts)
           if (customization.shopOpen && !platformOwned(skin.id)) {
             // Even the earned-only CHAMPION pad can be tried on — its tile
             // just never grows a BUY button (the campaign awards it).
@@ -2001,7 +2003,7 @@ export class MenuSystem extends createSystem({}) {
       }
       if (app.paintBayOpen) this.collectBayMeshes();
       const pad = this.scene.getObjectByName('player-platform');
-      if (pad) applyPlatformSkin(pad, platformSkin(customization.platform));
+      if (pad) applyPlatformSkin(pad, shownPlatform(customization.platform));
       // A platform try-on models on the OPPONENT's pad across the gap — the
       // whole deck in view at once, no craning at your own feet. When the
       // try-on ends, the pad goes back to the house look the lobby paints

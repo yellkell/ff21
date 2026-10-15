@@ -19,6 +19,9 @@
  *   public/arena/neon/vehicles.glb     the hover-traffic fleet (animated here)
  *   public/arena/neon/sky_dome.jpg     night sky (equirect)
  *   public/arena/neon/env_*.jpg        each site's own reflections for the wet ground/puddles
+ *   public/arena/neon/billboard_fire_fight.jpg
+ *                                      the plaza's big screen (SCREEN_b): ファイア・ファイト
+ *                                      (tools/neon-billboard.py)
  *   public/draco/                      Draco decoders (vendored, no CDN)
  *   public/basis/                      KTX2/Basis transcoder (vendored): the atlases ship
  *                                      as UASTC KTX2 and stay GPU-compressed (ASTC on Quest)
@@ -75,6 +78,12 @@ export interface Neon {
 }
 
 const BASE = 'arena/neon/';
+/** The plaza's wide screen, hung 32-38 m over the square. Baked, it carried a
+ *  NEURO//LINK ad, and the atlas wall it hangs on (ALLEY_high) has that same
+ *  ad painted 1 cm behind it, so it bled through. It gets its own art, and
+ *  steps forward off the wall far enough that the old ad never wins. */
+const BILLBOARD = 'SCREEN_b';
+const BILLBOARD_ART = 'billboard_fire_fight.jpg';
 const SKY = new Color(0x150a1c);
 
 /** `renderer` lets the KTX2 loader pick the GPU's compressed format. */
@@ -149,6 +158,7 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
       gltf.scene.traverse((o: Object3D) => {
         const mesh = o as Mesh;
         if (!mesh.isMesh) return;
+        if (o.name === BILLBOARD) dressBillboard(mesh);
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
         const ud = o.userData ?? {};
@@ -179,6 +189,18 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
       group.add(gltf.scene);
       loaded++;
     }, onBytes(file));
+  };
+  const dressBillboard = (mesh: Mesh) => {
+    mesh.position.z += 0.08; // off the wall (it faces +z, toward the square)
+    const mat = mesh.material as MeshBasicMaterial;
+    tex.load(BASE + BILLBOARD_ART, (t) => {
+      t.colorSpace = SRGBColorSpace;
+      t.flipY = false; // glTF UVs: v = 0 is the top edge
+      t.anisotropy = 4; // seen steeply from the fight floor
+      mat.map?.dispose();
+      mat.map = t;
+      mat.needsUpdate = true;
+    });
   };
   dress('backstreet', sites.backstreet, 'backstreet.glb', 'env_backstreet.jpg');
   dress('plaza', sites.plaza, 'neon_plaza.glb', 'env_plaza.jpg');
