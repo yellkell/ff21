@@ -12,7 +12,7 @@
  */
 
 import { fadeInMenuMusic, isMusicMuted, noteInLobby } from './menuMusic.js';
-import { MusicTrack } from './musicTrack.js';
+import { MusicTrack, preloadMusic } from './musicTrack.js';
 import { musicVolume } from './musicVolume.js';
 import victoryUrl from '../assets/music/victory.mp3?url';
 import brainEaterUrl from '../assets/music/brain-eater.mp3?url';
@@ -50,6 +50,24 @@ let victory: MusicTrack | null = null;
 let finale: MusicTrack | null = null;
 let timers: number[] = [];
 let handoffActive = false;
+/** The track the NEXT bout will open on — picked (and decoded) ahead of time
+ *  so the score lands on the bout's first frame. Picking at bout start meant
+ *  fetching + decoding a 4–6 MB mp3 right then, and on a headset the music
+ *  came in a second or two behind the fight. */
+let nextUrl: string | null = null;
+
+function pickBattleUrl(): string {
+  return battleUrls[Math.floor(Math.random() * battleUrls.length)];
+}
+
+/** Pick the next bout's track and start decoding it now (boot, and each
+ *  return to the lobby). Only the one track that will actually play next is
+ *  decoded, so this costs no memory the bout wouldn't spend anyway. */
+export function preloadBattleMusic(): void {
+  if (isMusicMuted() || battleUrls.length === 0) return;
+  nextUrl ??= pickBattleUrl();
+  void preloadMusic(nextUrl);
+}
 
 /** Cancel any in-flight victory→lobby handoff (timers + the ended listener). */
 function clearHandoff(): void {
@@ -81,7 +99,8 @@ export function startBattleMusic(volume: number = BATTLE_VOLUME): void {
     battle.volume = volume * musicVolume(); // already scoring — just match the level
     return;
   }
-  const url = battleUrls[Math.floor(Math.random() * battleUrls.length)];
+  const url = nextUrl ?? pickBattleUrl();
+  nextUrl = null; // spent — the lobby picks (and decodes) the next bout's
   if (!battle) battle = new MusicTrack();
   battle.loop = false;
   battle.onended = () => rollNextTrack(volume);
@@ -163,6 +182,7 @@ export function handoffToLobby(): void {
   // the player is still there when it finally fires (they may have launched
   // another bout during the sting's airtime; the fade must stay silent then).
   noteInLobby();
+  preloadBattleMusic(); // decode the next bout's track while we're between fights
 
   const v = victory;
   if (!v || v.paused || v.ended) {

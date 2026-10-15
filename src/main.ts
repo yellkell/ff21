@@ -22,6 +22,7 @@ import { initLeaderboard, myName } from './net/leaderboard.js';
 import { enter as enterRoom } from './net/presence.js';
 import { myPackedLook } from './avatar/paint.js';
 import { initGazette } from './net/gazette.js';
+import { preloadBattleMusic } from './audio/battleMusic.js';
 import { enterMenuMusic, preloadMenuMusic } from './audio/menuMusic.js';
 import { runBootIntro } from './experience/BootIntro.js';
 import { ensureAudio } from './audio/sfx.js';
@@ -328,6 +329,9 @@ World.create(container, {
   // Every texture up to the GPU now — the fight district's too, hidden as it
   // is — so the first crossing doesn't stall on uploads behind the curtain.
   warmTextures(world.renderer, world.scene);
+  // The first bout's score decodes now, after the boot load rather than
+  // inside it, so it's ready to land on that bout's opening frame.
+  preloadBattleMusic();
 
   await loadStep(0.95, 'Checking for a headset…');
 
