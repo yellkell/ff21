@@ -129,15 +129,18 @@
     "decor": [
       {
         "x": 9.55,
-        "kind": "a"
+        "kind": "a",
+        "game": "pebbles"
       },
       {
         "x": 10.45,
-        "kind": "b"
+        "kind": "b",
+        "game": "octagon"
       },
       {
         "x": 11.35,
-        "kind": "c"
+        "kind": "c",
+        "game": "pebbles"
       }
     ]
   },

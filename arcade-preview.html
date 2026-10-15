@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- DEV-ONLY harness: THE ARCADE's four cabinets with their live screens
+     painted, for screenshots. Not shipped, not in build inputs.
+     ?x= ?y= ?z= ?yaw= ?pitch= camera (defaults: facing the cabinet row)
+     ?play=<0-3> runs that cabinet's game for ?t= seconds (default 3) with a
+     scripted laser, so the in-game screen shows; ?dead=1 holds GAME OVER. -->
+<html>
+  <body style="margin:0; background:#000">
+    <script type="module">
+      import { Color, FogExp2, NoToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+      import { buildClub } from '/src/rave/club/build.ts';
+      import { arcadeRefs } from '/src/rave/club/arcade.ts';
+      import { OctagonGame } from '/src/rave/club/games/octagon.ts';
+      import { PebblesGame } from '/src/rave/club/games/pebbles.ts';
+
+      const params = new URLSearchParams(location.search);
+      const num = (k, d) => Number(params.get(k) ?? d);
+      const scene = new Scene();
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = NoToneMapping;
+      document.body.appendChild(renderer.domElement);
+      scene.background = new Color(0x0b0810);
+      scene.fog = new FogExp2(0x0b0810, 0.008);
+      const refs = buildClub(scene, renderer);
+      refs.root.visible = true;
+
+      const camera = new PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.05, 200);
+      camera.position.set(num('x', 10), num('y', 1.5), num('z', 3.2));
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = num('yaw', Math.PI);
+      camera.rotation.x = num('pitch', 0);
+
+      const games = arcadeRefs().cabinets.map((c) => (c.game === 'pebbles' ? new PebblesGame(c) : new OctagonGame(c)));
+      let clock = 0;
+      for (const g of games) g.paint(clock);
+      const play = params.get('play');
+      if (play !== null) {
+        const g = games[Number(play)];
+        g.phase = 'playing';
+        g.start();
+        const idle = { at: null, down: false, up: false };
+        const frames = Math.round(num('t', 3) * 60);
+        for (let f = 0; f < frames; f++) {
+          clock += 1 / 60;
+          // A scripted laser drifting over the glass, pulling every half second.
+          const at = [200 + Math.sin(clock * 1.3) * 120, 150 + Math.cos(clock * 0.9) * 90];
+          const pull = f % 30 === 0;
+          if (g.step(1 / 60, { left: idle, right: { at, down: pull, up: false } })) break;
+        }
+        if (params.get('solve') === '1' && g.id === 'pebbles') {
+          // One swap from home: stones 0 and 8 traded. Pick 0, then 8.
+          g.solveT = 0;
+          g.target = [0, 1, 2, 3, 4, 5, 0, 1, 2];
+          g.board = [2, 1, 2, 3, 4, 5, 0, 1, 0];
+          g.picked = -1;
+          const tap = (at) => g.step(1 / 60, { left: idle, right: { at, down: true, up: false } });
+          tap([196, 97]);
+          tap([336, 237]);
+          for (let f = 0; f < 15; f++) g.step(1 / 60, { left: idle, right: { at: [336, 237], down: false, up: false } });
+        }
+        if (params.get('dead') === '1') g.phase = 'dead';
+        g.paint(clock);
+      }
+      window.__ready = true;
+      window.__scene = scene;
+      renderer.setAnimationLoop(() => renderer.render(scene, camera));
+    </script>
+  </body>
+</html>

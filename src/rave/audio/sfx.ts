@@ -340,6 +340,35 @@ export function huntOver(): void {
   whooshNoise(0.42, 0.06, 380, 70, 0.32);
 }
 
+// --- PEBBLES (the arcade's other machine) ---------------------------------
+// The original's soft sine voice — stones, not lasers.
+
+/** A stone picked up (or, `tick`, the last-five-seconds count). */
+export function pebbleTap(tick: boolean): void {
+  if (tick) tone({ freq: 880, type: 'sine', dur: 0.12, gain: 0.08 });
+  else tone({ freq: 220 + Math.random() * 40, type: 'sine', dur: 0.25, gain: 0.08 });
+}
+
+/** Two stones trade places: a low knock with a little grit. */
+export function pebbleSwap(): void {
+  tone({ freq: 250 + Math.random() * 100, type: 'sine', dur: 0.4, gain: 0.14 });
+  noiseHit(0.05, 0.05, 2600, 900, 0.8);
+}
+
+/** Pattern matched: the zen chime, G4 · D5 · G5. */
+export function pebblesSolve(): void {
+  tone({ freq: 392, type: 'sine', dur: 1.0, gain: 0.12 });
+  tone({ freq: 587.33, type: 'sine', dur: 1.0, gain: 0.09, delay: 0.12 });
+  tone({ freq: 783.99, type: 'sine', dur: 1.1, gain: 0.08, delay: 0.24 });
+}
+
+/** The clock ran out: a gong-ish fall. */
+export function pebblesTime(): void {
+  tone({ freq: 523.25, type: 'sine', dur: 0.5, gain: 0.1 });
+  tone({ freq: 392, type: 'sine', dur: 0.6, gain: 0.1, delay: 0.18 });
+  tone({ freq: 261.63, type: 'triangle', dur: 1.2, gain: 0.12, delay: 0.36 });
+}
+
 // --- Game sounds ---------------------------------------------------------
 
 /** Trigger pulled at the fist — a latch clacks and the furnace lights. */
