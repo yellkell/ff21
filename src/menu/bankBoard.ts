@@ -7,7 +7,7 @@
  *               PROTECT WITH EMAIL and RECOVER for a bare headset, or the
  *               PROTECTED chip — and the terms in one honest line.
  *   THE CHECKOUT a PAY CODE: six letters on lit plates, to type at
- *               yellkell.com/dollars on a phone or computer, where you
+ *               yellkell.com/support on a phone or computer, where you
  *               pick a pack and pay — or PAY THROUGH YOUR HEADSET (the
  *               pay page in the headset's own browser, code filled in).
  *               Under it the pack, the price, the state of play, CANCEL.

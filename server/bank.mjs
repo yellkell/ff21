@@ -47,7 +47,7 @@
  *
  * PAY CODES. A headset can't hand anyone a link, and a QR code inside a
  * headset can't be scanned. So the board asks for a six-letter code and
- * shows it; the buyer types it at yellkell.com/dollars (PAY_PAGE) on a
+ * shows it; the buyer types it at yellkell.com/support (PAY_PAGE) on a
  * phone or computer, picks a pack there and pays. The code stands for the
  * headset's uid, which only this server knows: the page never sees it. The
  * Checkout carries the uid in its metadata like any other, so the webhook
@@ -73,7 +73,7 @@
  *   BANK_TAX_CODE            the packs' Stripe tax code (default the general
  *                            electronically-supplied-services code)
  *   PUBLIC_URL               where paid.html lives (default https://ff2.web.app)
- *   PAY_PAGE                 where pay codes are typed (default https://yellkell.com/dollars)
+ *   PAY_PAGE                 where pay codes are typed (default https://yellkell.com/support)
  *   BANK_REQUIRE_TOS=1       ask Stripe to collect terms consent (needs the
  *                            terms URL set in the Stripe dashboard)
  *   BANK_DEV=1               force dev mode
@@ -101,7 +101,7 @@ const MANAGED = process.env.BANK_MANAGED === '1';
 // to a video game's own currency.
 const TAX_CODE = process.env.BANK_TAX_CODE || 'txcd_10201000';
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://ff2.web.app').replace(/\/$/, '');
-const PAY_PAGE = (process.env.PAY_PAGE || 'https://yellkell.com/dollars').replace(/\/$/, '');
+const PAY_PAGE = (process.env.PAY_PAGE || 'https://yellkell.com/support').replace(/\/$/, '');
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || '';
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const FORCE_DEV = process.env.BANK_DEV === '1';

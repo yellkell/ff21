@@ -10,7 +10,7 @@
  *      which uid is buying. The code is six letters, and stands for this
  *      uid at the bank (a QR inside a headset can't be scanned, and a
  *      headset can't hand anyone a link).
- *   2. You type it at yellkell.com/dollars on your phone or computer,
+ *   2. You type it at yellkell.com/support on your phone or computer,
  *      pick a pack and pay there (or PAY THROUGH YOUR HEADSET, code filled
  *      in). Stripe takes the card; this code never sees a digit of it.
  *   3. Stripe tells the server it was paid (a signed webhook). The server
@@ -53,7 +53,7 @@ export type BankMode = 'live' | 'test' | 'dev' | '';
 export interface Checkout {
   /** The six letters to type on the pay page. */
   code: string;
-  /** The pay page, as the board writes it (yellkell.com/dollars). */
+  /** The pay page, as the board writes it (yellkell.com/support). */
   page: string;
   /** The pay page with the code filled in — what PAY THROUGH YOUR HEADSET opens. */
   url: string;

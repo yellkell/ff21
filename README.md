@@ -348,10 +348,10 @@ carried over verbatim: everything in it still applies to this code.
   `public/paid.html` is where Stripe lands you after paying, and the
   privacy page says what the ledger keeps. **PAY CODES** — a QR inside a
   headset can't be scanned, so tapping a pack shows a six-letter code
-  and `yellkell.com/dollars` (`PAY_PAGE`); the buyer types it there on a
+  and `yellkell.com/support` (`PAY_PAGE`); the buyer types it there on a
   phone or computer, picks a pack and pays (`/bank/code`, `/code/<CODE>`,
-  `/pay`, `/done`). The page is `site/dollars.html` — upload it to
-  Hostinger as `public_html/dollars.html`; it talks to
+  `/pay`, `/done`). The page is `site/support.html` — upload it to
+  Hostinger as `public_html/support.html`; it talks to
   `ff2-room.onrender.com/bank` (on localhost, the dev room server on
   :8787). Every checkout carries `metadata.app = 'ff2'`, and the webhook
   ignores sessions another game on the same Stripe account opened. Probe: `npm run check:bank`

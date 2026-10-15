@@ -12,7 +12,7 @@
  * checkout with no identity, a checkout for the 500 pack, the short
  * link's redirect, the dev PAY, a replayed PAY that credits nothing
  * twice, a claim that hands over the coins once and then nothing — and
- * the PAY CODE loop the yellkell.com/dollars page drives.
+ * the PAY CODE loop the yellkell.com/support page drives.
  *
  * PART 2 (--headset) boots index.html against that server, opens the
  * STORE's BANK board, taps a pack, asserts the pay code is up, pays it
@@ -113,14 +113,14 @@ try {
   check('a dead short link says so', dead.status === 404, String(dead.status));
 
   // PAY CODES: the board shows six letters, the buyer types them at
-  // yellkell.com/dollars, picks a pack there and pays.
-  console.log('\n=== PAY CODES: yellkell.com/dollars ===');
+  // yellkell.com/support, picks a pack there and pays.
+  console.log('\n=== PAY CODES: yellkell.com/support ===');
   {
     const anon = await api('/code', { method: 'POST', headers: jsonH, body: JSON.stringify({ pack: 'strongbox' }) });
     check('a code with nobody signed in is refused', anon.status === 401, String(anon.status));
     const made = await api('/code', { method: 'POST', headers: { ...jsonH, 'x-dev-uid': 'coder' }, body: JSON.stringify({ pack: 'strongbox' }) });
     const code = made.body?.code ?? '';
-    check('the headset gets a six-letter code and the page to type it on', /^[A-HJKMNP-Z2-9]{6}$/.test(code) && made.body?.page === 'yellkell.com/dollars' && made.body?.url === `https://yellkell.com/dollars?c=${code}`, JSON.stringify(made.body));
+    check('the headset gets a six-letter code and the page to type it on', /^[A-HJKMNP-Z2-9]{6}$/.test(code) && made.body?.page === 'yellkell.com/support' && made.body?.url === `https://yellkell.com/support?c=${code}`, JSON.stringify(made.body));
     const st = await api(`/code/${code.toLowerCase().slice(0, 3)}-${code.toLowerCase().slice(3)}`, { headers: { 'x-forwarded-for': '10.9.0.1' } });
     check('the page finds it however it is typed, with the pack the board chose', st.body?.state === 'waiting' && st.body?.pack === 'strongbox' && st.body?.packs?.length === 4, JSON.stringify(st.body));
     check('and never learns whose it is', !JSON.stringify(st.body).includes('coder'));
@@ -136,7 +136,7 @@ try {
     // (the dev PAY button is a form post, like a buyer's tap)
     const paid = await fetch(`${base}/dev-pay`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: `s=${sid}`, redirect: 'manual' });
     const back = paid.headers.get('location') ?? '';
-    check('paying goes back to the page with the code and the session', paid.status === 303 && back.startsWith('https://yellkell.com/dollars?c=') && back.includes(code) && back.includes(sid), back);
+    check('paying goes back to the page with the code and the session', paid.status === 303 && back.startsWith('https://yellkell.com/support?c=') && back.includes(code) && back.includes(sid), back);
     const done = await api(`/code/${code}/done`, { method: 'POST', headers: jsonH, body: JSON.stringify({ session: sid }) });
     check('back on the page, it is paid', done.body?.state === 'paid' && done.body?.coins === 1300, JSON.stringify(done.body));
     const claim = await api('/claim', { method: 'POST', headers: { ...jsonH, 'x-dev-uid': 'coder' }, body: '{}' });
