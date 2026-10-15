@@ -272,6 +272,8 @@ const _eyeAccent = new Color();
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+/** THE TRIDENT's first blow: the one read that shows through the whole wind-up. */
+const isTridentTell = (z: Zone): boolean => z.kind === 'pair' && z.step === 0;
 
 
 export class CampaignSystem extends createSystem({
@@ -594,6 +596,7 @@ export class CampaignSystem extends createSystem({
               const due = a.chargeTime + a.staggers[i];
               const rem = due - a.time;
               const open =
+                isTridentTell(a.zones[i]) ||
                 a.zones[i].kind === 'half'
                   ? rem < GOOPLIATH.seesawGap * 1.9
                   : a.windows[i] === undefined || rem <= Math.min(a.windows[i], due);
@@ -2309,8 +2312,11 @@ export class CampaignSystem extends createSystem({
             // THE TRIDENT's blow, by RAVE RAID's law: the floor stays dark
             // but for the chalk quarter lines (below) — the read is the
             // weapon's colour and where it is cocked — and the doomed
-            // quarters ignite as the blow lands (the afterburn).
-            tg = this.mount(quadTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, gz.hit, false), seat);
+            // quarters ignite as the blow lands (the afterburn). The FIRST
+            // blow is the one tell: its quarters glow in the weapon's
+            // colour through the whole wind-up.
+            const tell = gz.step === 0 ? (TRIDENT.forms[gz.form]?.color ?? null) : null;
+            tg = this.mount(quadTelegraph(OCTAGON_HALF_WIDTH, OCTAGON_HALF_DEPTH, gz.hit, false, tell), seat);
           } else if (gz.kind === 'sweep') {
             tg = this.mount(this.sweepMark(sweepY, arm, seat), seat, 0, 0, 0);
           }
@@ -2812,6 +2818,9 @@ export class CampaignSystem extends createSystem({
         const window = Math.min(a.windows[i] ?? dueAt, dueAt);
         const remaining = dueAt - a.time;
         const fill = clamp(1 - remaining / window, 0, 1);
+        // THE TRIDENT's tell (its first blow) is up through the whole
+        // wind-up, its glow building over all of it.
+        const tell = isTridentTell(a.zones[i]);
         // THE DELIVERY: the blow leaves the fist early enough to land on
         // the beat, then flies on its own clock until the zone detonates.
         if (a.thrown[i] === 0 && remaining <= this.throwTravel()) this.throwAt(a, i, remaining);
@@ -2822,12 +2831,12 @@ export class CampaignSystem extends createSystem({
         }
         const tg = a.telegraphs[i];
         if (tg) {
-          tg.update(fill, this.time);
+          tg.update(tell ? clamp(a.time / dueAt, 0, 1) : fill, this.time);
           // The seesaw shows only the IMMINENT beat and the one after — five
           // panes at once made "which side is next" a shrug; two reads as
           // "THIS side now, THAT side next".
           if (a.zones[i].kind === 'half') tg.group.visible = dueAt - a.time < GOOPLIATH.seesawGap * 1.9;
-          else if (a.windows[i] !== undefined) tg.group.visible = remaining <= window;
+          else if (a.windows[i] !== undefined) tg.group.visible = tell || remaining <= window;
         }
         const m = a.markers[i];
         const zone = a.zones[i];

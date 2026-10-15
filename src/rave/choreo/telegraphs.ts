@@ -36,6 +36,7 @@ import {
   PlaneGeometry,
   ShaderMaterial,
   Vector2,
+  Vector3,
 } from 'three';
 
 export interface Telegraph {
@@ -252,7 +253,8 @@ const X_FRAG = /* glsl */ `
  */
 const QUAD_FRAG = /* glsl */ `
   ${COMMON}
-  uniform float uHit, uLines;
+  uniform float uHit, uLines, uTellOn;
+  uniform vec3 uTell;
   float bit(float i){ return mod(floor(uHit / exp2(i) + 0.5 / exp2(i)), 2.0); }
   void main(){
     vec2 q = vDeck;
@@ -272,7 +274,12 @@ const QUAD_FRAG = /* glsl */ `
     float line = doomed * (neon(abs(q.x)) * (1.0 - bit(idxX)) + neon(abs(q.y)) * (1.0 - bit(idxZ)));
     line += doomed * deckRim(q) * 0.75;
     vec3 burn = ink(wash, line).rgb * landed();
-    gl_FragColor = vec4((burn + CHALK * chalk) * mask, 1.0);
+    // THE TELL (the first blow only): before it lands, its quarters glow in
+    // the weapon's own colour, brightening with the charge — the pattern's
+    // opening move, shown once. Every blow after it stays dark.
+    float tellA = (1.4 * wash + line) * (0.35 + 0.65 * F()) * pulse();
+    vec3 tell = uTell * tellA * uTellOn * (1.0 - landed());
+    gl_FragColor = vec4((burn + tell + CHALK * chalk) * mask, 1.0);
   }
 `;
 
@@ -506,10 +513,25 @@ export function xTelegraph(halfW: number): Telegraph {
  * THE TRIDENT's blow on one deck: dark until it lands, then the quarters
  * in `hit` burn. `lines` adds the chalk quarter split for the pane's whole
  * life (ChoreoSystem hangs it on the move's last blow, opening with the
- * move). Place the group at the deck centre on the floor.
+ * move). `tell` (a colour, for the FIRST blow) lights the doomed quarters
+ * in the weapon's colour while it charges. Place the group at the deck
+ * centre on the floor.
  */
-export function quadTelegraph(halfWidth: number, halfDepth: number, hit: number, lines: boolean): Telegraph {
-  const mat = warnMat(QUAD_FRAG, { uHit: { value: hit }, uLines: { value: lines ? 1 : 0 } });
+export function quadTelegraph(
+  halfWidth: number,
+  halfDepth: number,
+  hit: number,
+  lines: boolean,
+  tell: number | null = null,
+): Telegraph {
+  const c = tell ?? 0;
+  const mat = warnMat(QUAD_FRAG, {
+    uHit: { value: hit },
+    uLines: { value: lines ? 1 : 0 },
+    uTellOn: { value: tell === null ? 0 : 1 },
+    // Raw 0..1 channels, the same way the heat ramp's constants are laid in.
+    uTell: { value: new Vector3(((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255) },
+  });
   const pane = new Mesh(new PlaneGeometry(halfWidth * 2, halfDepth * 2), mat);
   pane.rotation.x = -Math.PI / 2;
   return makeTelegraph([pane], [mat]);
