@@ -127,7 +127,6 @@ export type PeerMessage =
         | 'cross'
         | 'gate'
         | 'donut'
-        | 'recital'
         | 'trident'
         | 'wave'
         | 'duckdonut';

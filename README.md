@@ -13,6 +13,23 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE TITANS' MOVES WEAR RAVE RAID'S DANGER KIT.** Every campaign floor
+  mark and platform hit is RAVE RAID's own (`rave/choreo/telegraphs.ts`,
+  `strikes.ts`): one heat ramp (amber charging, red arriving, white-hot on
+  the landing), neon lines, one hazard hatch, every mark clipped to the
+  deck, and the AFTERBURN — a landed mark burns out instead of vanishing.
+  The hits are sheets of light throwing hot-metal tracer sparks (the
+  slam's crater too), never glitter. THE TRIDENT's floor stays dark but
+  for its chalk lines until each blow lands: read the weapon.
+  `deck-preview.html` shows every attack.
+- **NO ROUTINE, EVER.** THE RECITAL — the campaign's routine — is gone from
+  the code, not just the bill: its lesson marks, falling blocks, notes,
+  `quad` zone and the TEACH/CONDUCT gestures. GOLIATH's memory test is
+  the trident; `check:grammar` fails if a routine comes back.
+- **GG IN POP ART.** The B-button salute, a fist bump and the rival's
+  echoed GG (arena and pub) pop in the damage number's comic lettering —
+  Ben-Day dots, ink keyline, paper border, hard shadow, a lean — in pop-art
+  yellow, so a GG never reads as a hit. `impact-preview.html?gg&t=0.25`.
 - **THE CAREER AND ITS BELTS** (FIRE FIGHT FLUX's title run and title
   belts, brought to the campaign — `src/campaign/career.ts`,
   `src/campaign/belts.ts`).

@@ -240,8 +240,9 @@ export class StrikeFx {
    *  is ABOVE the limbo line, fading upward off a white-hot lip, and it
    *  never touches the floor — so up close it reads "danger overhead, air
    *  below", not "the deck is about to be cut in half". Embers shed off the
-   *  lip. `fromSide` = which local-x side the swing enters from. */
-  sweep(parent: Object3D, fromSide: 1 | -1): void {
+   *  lip. `fromSide` = which local-x side the swing enters from; `y` is
+   *  the limbo line (the campaign cuts at each player's own height). */
+  sweep(parent: Object3D, fromSide: 1 | -1, y: number = CHOREO.sweepY): void {
     // Enters at the rim: the deck clip would hide any travel over the void.
     const span = OCTAGON_HALF_WIDTH + 0.07;
     const curtainH = 0.9;
@@ -263,17 +264,17 @@ export class StrikeFx {
         if (age > emberClock) {
           emberClock = age + 0.045;
           const zr = (Math.random() * 2 - 1) * OCTAGON_HALF_DEPTH;
-          sparks.emit(bx, CHOREO.sweepY + 0.04, zr, 4, 1.2);
+          sparks.emit(bx, y + 0.04, zr, 4, 1.2);
         }
       },
       (g) => {
         const depth = OCTAGON_HALF_DEPTH * 2 + 0.2;
         const curtain = wall(0.14, curtainH, depth, { rise: 3 });
-        curtain.position.set(fromSide * span, CHOREO.sweepY + curtainH / 2, 0);
+        curtain.position.set(fromSide * span, y + curtainH / 2, 0);
         g.add(curtain);
         const lip = sheet(depth, 0.06, { rise: 0.5 });
         lip.rotation.y = Math.PI / 2;
-        lip.position.set(fromSide * span, CHOREO.sweepY + 0.03, 0);
+        lip.position.set(fromSide * span, y + 0.03, 0);
         g.add(lip);
         g.add(sparks.mesh);
       },
@@ -603,6 +604,21 @@ export class StrikeFx {
     );
   }
 
+  /** Put out everything still burning (a bout torn down mid-strike). */
+  clear(): void {
+    for (const s of this.live) this.burnOut(s.group);
+    this.live = [];
+  }
+
+  private burnOut(group: Group): void {
+    group.removeFromParent();
+    group.traverse((o) => {
+      const m = o as Mesh;
+      m.geometry?.dispose?.();
+      (m.material as ShaderMaterial)?.dispose?.();
+    });
+  }
+
   update(dt: number): void {
     for (let i = this.live.length - 1; i >= 0; i--) {
       const s = this.live[i];
@@ -613,12 +629,7 @@ export class StrikeFx {
       place(s);
       s.step?.(dt);
       if (k >= 1) {
-        s.group.removeFromParent();
-        s.group.traverse((o) => {
-          const m = o as Mesh;
-          m.geometry?.dispose?.();
-          (m.material as ShaderMaterial)?.dispose?.();
-        });
+        this.burnOut(s.group);
         this.live.splice(i, 1);
       }
     }

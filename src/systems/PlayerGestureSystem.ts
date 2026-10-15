@@ -8,7 +8,7 @@
 
 import { createSystem, InputComponent, Vector3 } from '@iwsdk/core';
 import { opponent } from '../combat/opponentBus.js';
-import { spawnGestureCue, spawnPopup } from '../fx/effects.js';
+import { spawnGestureCue, spawnGgPopup } from '../fx/effects.js';
 import { pulseHand } from '../input/haptics.js';
 import { app } from '../menu/appState.js';
 import { net } from '../net/client.js';
@@ -162,7 +162,7 @@ export class PlayerGestureSystem extends createSystem({}) {
   private emitGg(cue: Vector3, hands: 'left' | 'right' | 'both'): void {
     spawnGestureCue(this.world, cue, 0.32);
     _mid.copy(cue).y += 0.18;
-    spawnPopup(this.world, _mid, 'GG', '#ffffff', 'rgba(255,255,255,0.95)', 2.4);
+    spawnGgPopup(this.world, _mid, 2.4);
     sfx.fistBump();
     if (hands === 'both') {
       pulseHand(this.world.session, 'left', 0.55, 80);

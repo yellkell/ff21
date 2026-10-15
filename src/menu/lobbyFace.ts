@@ -276,7 +276,6 @@ function squadRoom(mode: ArcadeMode): LobbyFace {
       {
         id: 'lobby-goopliath',
         label: 'FIGHT GOOPLIATH',
-        sub: 'the tide, not the titans',
         x: M + (INNER - 20) / 2 + 20, y: L.breakerY, w: (INNER - 20) / 2, h: BREAKER_H,
         small: true,
         selected: mesh.raidGoopliath,

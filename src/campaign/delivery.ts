@@ -29,8 +29,7 @@ const INSET = 0.45;
  * Where on the TARGET's deck (target-local, y = 0) a zone's blow lands, or
  * null when the zone has no thrown blow: the sweep is the arm itself (see
  * the scythe shaft), the beam already fires from the visor, a volley shot
- * is its own projectile, and the recital is CONDUCTED — the body never
- * points at the answer.
+ * is its own projectile.
  */
 export function impactOf(zone: Zone): { x: number; z: number } | null {
   switch (zone.kind) {
