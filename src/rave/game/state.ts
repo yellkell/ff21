@@ -108,7 +108,9 @@ export interface MatchState {
    *  record and match.beat counts the record's eighths. The danger keeps
    *  that clock; the SHOW dances to showBeat() below. */
   doubleTime: boolean;
-  /** Total phrases in the current set — derived from the track's length. */
+  /** Total phrases in the current set — derived from the track's length.
+   *  Off the tour it can be fractional: whole phrases plus a short last
+   *  one, so the set reaches the end of the record (trackPhrases). */
   phrases: number;
   /** Online only: AudioContext-clock time for beat 0 handed down by the
    *  relay sync (NaN = start whenever the music system likes). */
