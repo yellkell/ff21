@@ -13,6 +13,15 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE CLUB'S TELEPORT MARKER IS GAMBLE FISH'S.** The landing octagon in
+  the social area is drawn in light now, not a ghosted steel puck
+  (`src/rave/club/teleportMarker.ts`, brought over from GAMBLE FISH). It
+  has a glowing rim with a white-hot core, a tinted fill, two chevrons
+  that ripple toward your facing, a ring that pings out from the rim and a
+  low curtain of light on its outline, and it pops in when you start
+  aiming. A good landing (and its arc) is sea-glass `#5ee8d8`; a refused
+  one turns hazard `#e8352a` with stripes. Controls, arc and landing rules
+  are unchanged. It costs two draws.
 - **THE TITANS' MOVES WEAR RAVE RAID'S DANGER KIT.** Every campaign floor
   mark and platform hit is RAVE RAID's own (`rave/choreo/telegraphs.ts`,
   `strikes.ts`): one heat ramp (amber charging, red arriving, white-hot on
