@@ -1059,7 +1059,8 @@ export class MenuSystem extends createSystem({}) {
       this.hideBelt();
       return;
     }
-    if (this.beltShow.update(delta, this.world.camera)) playCash();
+    // No cash sting here — that's for winning a belt, not admiring one.
+    this.beltShow.update(delta, this.world.camera);
   }
 
   /** Click a belt on THE BELT RACK: one you hold rises in front of you as
