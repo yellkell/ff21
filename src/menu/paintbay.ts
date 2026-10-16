@@ -14,7 +14,10 @@
  *                a trip to another screen.
  *   THE HAND     what's on your pointer and the verbs for it: turn it,
  *                size it (a stripe's thickness too), send it back. With
- *                nothing held, UNDO takes the last mark back off the body.
+ *                nothing held, UNDO takes the last mark back off the body
+ *                and RESET takes every mark off (two taps: the second
+ *                confirms) — the blank back to its base tone, every unit
+ *                back in the locker.
  *   THE TURN     spin the blank to reach its back (the thumbstick spins it
  *                too — see MenuSystem), and CLOSE.
  *
@@ -24,7 +27,8 @@
  * (grip switches a stripe to thickness), pointing at a placed mark and
  * squeezing lifts it back into the hand, B sends the hand back, A undoes.
  * The state ops live in avatar/paint.ts; this module is the face and the
- * local `pb:*` click routing (the STORE's paint board rides it too).
+ * local `pb:*` click routing. This is the ONLY place paint is sold: the
+ * STORE has no paint board (two paint shops was one too many).
  */
 
 import { KIT, type PanelButton } from '../ui/kit/panel.js';
@@ -39,6 +43,7 @@ import {
   myLook,
   ownedCount,
   paintState,
+  stripAll,
   undoLast,
   unitPrice,
   PAINT_KINDS,
@@ -77,7 +82,12 @@ export function rackColours(): number[] {
  * (radians, 0 = facing you): the ◂ ▸ buttons step it an eighth at a time
  * and the thumbstick spins it freely; MenuSystem eases the mirror after it.
  */
-export const bayFaceState = { kind: 'stripe' as PaintKind, yaw: 0, version: 1 };
+export const bayFaceState = { kind: 'stripe' as PaintKind, yaw: 0, version: 1, resetAt: -1 };
+
+/** RESET is armed by its first tap, for as long as the paint on the body
+ *  stays exactly as it was then: a mark placed, lifted or undone stands
+ *  it down, as does any other tap on the face. */
+const resetArmed = (): boolean => bayFaceState.resetAt === paintState.version;
 
 /** The eight faces, named for the side of the blank they put in front of you. */
 const TURN_FACE = ['FRONT', 'FRONT L', 'LEFT', 'BACK L', 'BACK', 'BACK R', 'RIGHT', 'FRONT R'];
@@ -148,8 +158,7 @@ export interface BayFace {
   buttons: PanelButton[];
 }
 
-/** The shape chips as ghost buttons (the body draws them). Shared with the
- *  STORE's paint board, which lays them on its shelf row. */
+/** The shape chips as ghost buttons (the body draws them). */
 export function shapeButtons(top = SHAPE_Y, h = SHAPE_H): PanelButton[] {
   return PAINT_KINDS.map((k, i) => ({ id: `pb:kind-${k}`, label: '', ghost: true, ...shapeRect(i, top, h) }));
 }
@@ -177,25 +186,18 @@ export function drawShapeChips(g: CanvasRenderingContext2D, hover: string | null
   });
 }
 
-/** One colour chip. `mode` 'paint' shows counts and takes; 'store' shows
- *  price and buys. */
-export function drawColourChip(
-  g: CanvasRenderingContext2D,
-  colour: number,
-  r: { x: number; y: number; w: number; h: number },
-  mode: 'paint' | 'store',
-  hot: boolean,
-): void {
+/** One colour chip: its count if you own it, its price if you don't. */
+export function drawColourChip(g: CanvasRenderingContext2D, colour: number, r: { x: number; y: number; w: number; h: number }, hot: boolean): void {
   const kind = bayFaceState.kind;
   const owned = ownedCount(kind, colour);
   const price = unitPrice(kind, colour);
-  const inHand = mode === 'paint' && bay.held?.kind === kind && bay.held.colour === colour;
+  const inHand = bay.held?.kind === kind && bay.held.colour === colour;
   g.beginPath();
   g.roundRect(r.x, r.y, r.w, r.h, 14);
   g.fillStyle = css(PAINT.colours[colour]);
   g.fill();
   // A colour you'd have to buy reads a shade back, so the ones you own pop.
-  if (mode === 'paint' && owned === 0) {
+  if (owned === 0) {
     g.fillStyle = 'rgba(10,8,6,0.38)';
     g.fill();
   }
@@ -219,12 +221,12 @@ export function drawColourChip(
   g.roundRect(r.x + 6, r.y + r.h - 38, r.w - 12, 32, 8);
   g.fill();
   g.font = font(700, 20);
-  if (mode === 'paint' && owned > 0) {
+  if (owned > 0) {
     g.fillStyle = '#fff';
     g.fillText(`× ${owned}`, r.x + r.w / 2, footY);
   } else {
     g.fillStyle = canAfford(price) ? '#ffd98f' : 'rgba(255,255,255,0.4)';
-    g.fillText(mode === 'store' && owned > 0 ? `$${price}  · ${owned} owned` : `$${price}`, r.x + r.w / 2, footY, r.w - 20);
+    g.fillText(`$${price}`, r.x + r.w / 2, footY, r.w - 20);
   }
 }
 
@@ -252,14 +254,29 @@ export function bayFace(): BayFace {
     buttons.push({ id: 'pb:return', label: 'BACK', sub: 'or press B', x: BAY_W - M - 104, y: HAND_Y, w: 104, h: HAND_H, small: true, tone: KIT.warn });
   } else {
     const n = myLook().paint.length;
-    buttons.push({
-      id: 'pb:undo',
-      label: 'UNDO',
-      sub: n ? 'last mark back · or press A' : 'nothing painted yet',
-      x: M, y: HAND_Y, w: 300, h: HAND_H,
-      small: true,
-      disabled: n === 0,
-    });
+    const armed = n > 0 && resetArmed();
+    buttons.push(
+      {
+        id: 'pb:undo',
+        label: 'UNDO',
+        sub: n ? 'last mark · or press A' : 'nothing painted yet',
+        x: M, y: HAND_Y, w: 220, h: HAND_H,
+        small: true,
+        disabled: n === 0,
+      },
+      // RESET TO BASE: every mark off at once. The first tap arms it, the
+      // second strips — a whole paint job is too much to lose to a slip.
+      {
+        id: 'pb:reset',
+        label: armed ? 'SURE?' : 'RESET',
+        sub: armed ? 'tap again · all paint off' : 'back to base',
+        x: M + 232, y: HAND_Y, w: 220, h: HAND_H,
+        small: true,
+        disabled: n === 0,
+        tone: armed ? KIT.warn : undefined,
+        selected: armed,
+      },
+    );
   }
 
   // THE TURN, the purse and CLOSE.
@@ -289,7 +306,7 @@ export function bayFace(): BayFace {
     g.textAlign = 'right';
     g.fillStyle = KIT.faint;
     g.fillText('$ = buy one', BAY_W - M, 270);
-    rackColours().forEach((c, slot) => drawColourChip(g, c, colourRect(slot), 'paint', hover === `pb:take-${c}`));
+    rackColours().forEach((c, slot) => drawColourChip(g, c, colourRect(slot), hover === `pb:take-${c}`));
 
     // THE HAND.
     g.textAlign = 'left';
@@ -320,12 +337,19 @@ export function bayFace(): BayFace {
       );
     } else {
       const n = myLook().paint.length;
+      const tx = M + 476;
+      const tw = BAY_W - M - tx;
       g.font = font(600, 24);
       g.fillStyle = KIT.text;
-      g.fillText(`${n} / ${PAINT.maxUnits} marks placed`, M + 324, HAND_Y + 34);
+      g.fillText(`${n} / ${PAINT.maxUnits} marks placed`, tx, HAND_Y + 34, tw);
       g.font = font(500, 20);
       g.fillStyle = KIT.faint;
-      g.fillText('point at a mark + trigger to pick it back up', M + 324, HAND_Y + 70);
+      g.fillText(
+        n > 0 && resetArmed() ? 'every mark goes back in your locker' : 'point at a mark + trigger to lift it',
+        tx,
+        HAND_Y + 70,
+        tw,
+      );
     }
   };
 
@@ -357,6 +381,18 @@ export function bayClick(id: string): boolean {
     bayFaceState.version += 1;
     return true;
   };
+  // RESET is two taps in a row: anything else in between stands it down.
+  if (id === 'pb:reset') {
+    if (resetArmed()) {
+      bayFaceState.resetAt = -1;
+      stripAll();
+    } else if (myLook().paint.length) bayFaceState.resetAt = paintState.version;
+    return done();
+  }
+  if (id.startsWith('pb:') && resetArmed()) {
+    bayFaceState.resetAt = -1;
+    bayFaceState.version += 1;
+  }
   if (id === 'pb:turn-') return stepTurn(-1), done();
   if (id === 'pb:turn+') return stepTurn(1), done();
   if (id === 'pb:turn' || id === 'pb:wallet') return true; // readouts, not buttons
@@ -379,10 +415,6 @@ export function bayClick(id: string): boolean {
     const colour = Number(id.slice(8));
     const kind = bayFaceState.kind;
     if (ownedCount(kind, colour) > 0 || buyOne(colour)) handTake(kind, colour);
-    return done();
-  }
-  if (id.startsWith('pb:buy-')) {
-    buyOne(Number(id.slice(7)));
     return done();
   }
   return false;

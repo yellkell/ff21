@@ -12,7 +12,9 @@
  * offers — PLATFORMS · GEAR · COLOUR in the locker, PLATFORMS · GEAR ·
  * BANK in the store (there is nothing to buy about your own base tone,
  * and the BANK — iron-dollars for money, menu/bankBoard.ts — is nothing
- * to wear).
+ * to wear). PAINT is not sold here: it is bought where it is used, a tap
+ * on a colour on the PAINT tab buying one unit — a second paint shop in
+ * the STORE only left you wondering which one to use.
  *
  * Both catalogue boards carry a SHELF row under the chips: the GEAR board
  * shows one slot at a time (HEAD · BODY · HANDS) and the PLATFORMS board
@@ -39,7 +41,7 @@ import { DECK_SHELVES, PLATFORM_SKINS, PLATFORMS_OPEN, type PlatformSkin, platfo
 import { GEAR as GEAR_CATALOGUE, type GearDef, type GearSlot } from '../avatar/gear.js';
 import { drawGearIcon, drawPlatformIcon } from './skinIcons.js';
 import { bankBoard } from './bankBoard.js';
-import { HUB_TITLE, bayFaceState, colourRect, drawColourChip, drawShapeChips, hubTabs, rackColours, shapeButtons } from './paintbay.js';
+import { HUB_TITLE, hubTabs } from './paintbay.js';
 
 export const LOCKER_W = 1024;
 export const LOCKER_H = 1024;
@@ -78,12 +80,12 @@ export interface LockerFace {
 
 /* ── which board is showing ───────────────────────────────────────────── */
 
-type Board = 'platforms' | 'gear' | 'colour' | 'paint' | 'bank';
+type Board = 'platforms' | 'gear' | 'colour' | 'bank';
 
-/** COLOUR is the locker's alone, PAINT and the BANK the store's; the other
- *  face falls back to pads (or to GEAR while PLATFORMS are paused,
- *  avatar/skins.ts PLATFORMS_OPEN). (The paint you OWN lives on the PAINT
- *  tab, where it is used.) */
+/** COLOUR is the locker's alone, the BANK the store's; the other face
+ *  falls back to pads (or to GEAR while PLATFORMS are paused,
+ *  avatar/skins.ts PLATFORMS_OPEN). (Paint is bought and used on the PAINT
+ *  tab.) */
 function board(locker: boolean): Board {
   const b = pickBoard(locker);
   return b === 'platforms' && !PLATFORMS_OPEN ? 'gear' : b;
@@ -92,8 +94,8 @@ function board(locker: boolean): Board {
 function pickBoard(locker: boolean): Board {
   const t = customization.tab;
   if (!locker && t === 'colour') return 'platforms';
-  if (locker && (t === 'bank' || t === 'paint')) return 'platforms';
-  if (t === 'gear' || t === 'colour' || t === 'bank' || t === 'paint') return t;
+  if (locker && t === 'bank') return 'platforms';
+  if (t === 'gear' || t === 'colour' || t === 'bank') return t;
   return 'platforms';
 }
 
@@ -171,7 +173,6 @@ export function lockerFace(locker: boolean): LockerFace {
     : [
         ['platforms', 'PLATFORMS', 'tab-platforms'],
         ['gear', 'GEAR', 'tab-gear'],
-        ['paint', 'PAINT', 'tab-paint'],
         ['bank', 'BANK', 'tab-bank'],
       ];
   const cw = (INNER - (boards.length - 1) * 16) / boards.length;
@@ -231,7 +232,6 @@ export function lockerFace(locker: boolean): LockerFace {
   }
 
   if (b === 'colour') return { title: TITLE, buttons: [...buttons, ...colourButtons()], body: colourBody };
-  if (b === 'paint') return { title: TITLE, buttons: [...buttons, ...paintBoardButtons()], body: paintBoardBody };
   if (b === 'bank') {
     const bb = bankBoard(SHELF_Y, FOOT_Y);
     return { title: TITLE, buttons: [...buttons, ...bb.buttons], body: bb.body };
@@ -357,32 +357,4 @@ function colourBody(g: CanvasRenderingContext2D): void {
   g.font = font(500, 22);
   g.fillStyle = KIT.dim;
   g.fillText('everything past the base tone is PAINT — the PAINT tab, up top', M, BASE_Y + BASE_H + 26);
-}
-
-/* ── PAINT: the racks, for stocking up ────────────────────────────────── */
-//
-// The same shapes and colour grid as the PAINT tab, priced: a tap buys ONE
-// unit of the lit shape in that colour (paint is sold a unit at a time).
-// The PAINT tab can buy too, as you run out; this board is for filling
-// the locker before you start. Its `pb:*` ids route through paintbay.ts.
-
-const PAINT_GRID_Y = GRID_TOP + 8;
-const PAINT_CHIP_H = 104;
-
-function paintBoardButtons(): PanelButton[] {
-  const buttons = shapeButtons(SHELF_Y, SHELF_H + 20);
-  rackColours().forEach((c, slot) => buttons.push({ id: `pb:buy-${c}`, label: '', ghost: true, ...colourRect(slot, PAINT_GRID_Y + 28, PAINT_CHIP_H) }));
-  return buttons;
-}
-
-function paintBoardBody(g: CanvasRenderingContext2D, hover: string | null): void {
-  drawShapeChips(g, hover, SHELF_Y, SHELF_H + 20);
-  g.textAlign = 'left';
-  g.textBaseline = 'middle';
-  g.font = font(600, 22);
-  g.fillStyle = KIT.dim;
-  g.fillText(`tap to buy one ${bayFaceState.kind} — paint it on the PAINT tab`, M, PAINT_GRID_Y + 10);
-  rackColours().forEach((c, slot) =>
-    drawColourChip(g, c, colourRect(slot, PAINT_GRID_Y + 28, PAINT_CHIP_H), 'store', hover === `pb:buy-${c}`),
-  );
 }
