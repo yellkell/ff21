@@ -28,7 +28,7 @@
  */
 
 import { createSystem, InputComponent } from '@iwsdk/core';
-import { Quaternion, Vector3, type Group } from 'three';
+import { Quaternion, Vector3, type Group, type Object3D } from 'three';
 import { setGloveLit } from '../avatar/boxer.js';
 import { applyGear } from '../avatar/gear.js';
 import { buildHand, HAND_ADDUCTION, handIndexTip, INDEX_TIP_LENGTH, setHandPose, type HandPose } from '../avatar/hands.js';
@@ -120,6 +120,32 @@ export class PlayerGloveSystem extends createSystem({
   balls: { required: [Fireball] },
 }) {
   private gloves: Partial<Record<Hand, Group>> = {};
+  /** Where each controller model hangs, so the lobby can have it back. */
+  private padHome = new WeakMap<Object3D, Object3D>();
+
+  /**
+   * Your hands ARE the controllers in a fight: the moulded controller
+   * models go while the hands show, and come back for the lobby's lasers.
+   * Done by UNPARENTING, not by `visible` — IWSDK's input manager writes
+   * `visual.model.visible` every frame, so a flag set here never sticks
+   * (the rave learned this first: rave/systems/PlayerSystem.ts). Re-checked
+   * every frame, as a controller that reconnects rebuilds its visual.
+   */
+  private showControllers(show: boolean): void {
+    const pads = this.input?.xr?.visualAdapters?.controller;
+    if (!pads) return;
+    for (const hand of HANDS) {
+      const model = pads[hand]?.visual?.model;
+      if (!model) continue;
+      if (show) {
+        const home = this.padHome.get(model);
+        if (!model.parent && home) home.add(model);
+      } else if (model.parent) {
+        this.padHome.set(model, model.parent);
+        model.removeFromParent();
+      }
+    }
+  }
   private states: Record<Hand, HandState> = { left: newState(), right: newState() };
 
   /** This hand's bound ball, if it's homing back to it. */
@@ -139,8 +165,12 @@ export class PlayerGloveSystem extends createSystem({
   }
 
   update(delta: number): void {
-    if (app.spectating) return; // nothing to light up on the terrace
+    if (app.spectating) {
+      this.showControllers(true); // nothing to light up on the terrace
+      return;
+    }
     const show = app.state === 'playing' || app.state === 'training';
+    this.showControllers(!show);
     const dt = Math.min(delta, 0.05);
     for (const hand of HANDS) {
       const grip = this.world.playerSpaceEntities.gripSpaces[hand]?.object3D;
