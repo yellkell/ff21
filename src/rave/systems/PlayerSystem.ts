@@ -34,7 +34,7 @@
  * meniscus across the ring and 46 more slosh sims would buy nothing.
  */
 
-import { createSystem, Vector3 } from '@iwsdk/core';
+import { createSystem, InputComponent, Vector3 } from '@iwsdk/core';
 import {
   BackSide,
   CapsuleGeometry,
@@ -50,6 +50,13 @@ import { TracerField } from '../materials/tracers.js';
 import { createLiquid, HandMotion, type LiquidVisual } from '../materials/liquid.js';
 import { danceHue } from '../game/profile.js';
 import { match, me, showBeat } from '../game/state.js';
+import { setGloveLit } from '../../avatar/boxer.js';
+import { applyGear } from '../../avatar/gear.js';
+import { buildHand, HAND_ADDUCTION, setHandGrip, setHandPose } from '../../avatar/hands.js';
+import { applyLook, myLook, paintState } from '../../avatar/paint.js';
+import { applyAvatarSkin } from '../../avatar/skins.js';
+import { customization, myAvatarSkin, myGear, myTone } from '../../menu/customization.js';
+import { gripStick, GRIP_POSE } from '../game/stickGrip.js';
 
 const _head = new Vector3();
 const _hand = new Vector3();
@@ -63,6 +70,8 @@ const _tube = new Vector3();
 const _axis = new Vector3();
 const _ws = new Vector3();
 const _q = new Quaternion();
+const _gripQ = new Quaternion();
+const _rayQ = new Quaternion();
 const _c = new Color();
 const _white = new Color(0xffffff);
 
@@ -125,8 +134,6 @@ interface Stick {
   attachedTo: Object3D | null;
   /** Last frame's on-show state, so un-bagging can reset the slosh. */
   shown: boolean;
-  /** Eased slide up the stick's axis to clear a drawn controller. */
-  push: number;
 }
 
 /** Stick dimensions, and how thick its black casing runs. */
@@ -150,14 +157,8 @@ const LIQUID_R = STICK_R - 0.0015;
  *  wobbles around this, so it has to be a named rest pose rather than a
  *  number set once at build time. */
 const STICK_TILT = -0.55;
-/** How far the stick slides up its own axis to clear a controller that is
- *  being drawn in the same hand (metres). Outside a song the moulded grip
- *  is on screen and the two share the same few centimetres; this pushes the
- *  stick's near end out past the controller's nose instead of through it. */
-const STICK_PAD_PUSH = 0.12;
-/** The stick's rest axis in hand space — local +Y turned by STICK_TILT. */
-const PUSH_Y = Math.cos(STICK_TILT);
-const PUSH_Z = Math.sin(STICK_TILT);
+/** The tube's centre, up the stick group's own axis (buildStick). */
+const STICK_MID = 0.02;
 
 /** One near-black casing material for both hands — never lit, never tinted. */
 let _casingMat: MeshBasicMaterial | null = null;
@@ -275,9 +276,8 @@ export class PlayerSystem extends createSystem({}) {
   private stickColor = new Color(0xffffff);
   /** Free-running seconds — the shake's oscillator. */
   private clock = 0;
-  /** Where each controller model hangs when it's on show, so a song can
-   *  lift it out of the rig and put it back afterwards. */
-  private padHome = new WeakMap<Object3D, Object3D>();
+  /** Your steel hands — the quick match's, see updateHands. */
+  private hands: Partial<Record<'left' | 'right', Group>> = {};
 
   init(): void {
     this.sticks = { left: this.buildStick(), right: this.buildStick() };
@@ -348,7 +348,7 @@ export class PlayerSystem extends createSystem({}) {
     // only, so its far wall sits behind the core and rings it in black
     // from every angle, with no second render pass.
     const casing = new Mesh(new CapsuleGeometry(STICK_R + STICK_CASE, shaft, 3, 10), casingMat());
-    casing.position.y = 0.02;
+    casing.position.y = STICK_MID;
     group.add(casing);
 
     // THE TUBE. Was a solid neon rod; now it's the FROSTED SHELL over the
@@ -363,7 +363,7 @@ export class PlayerSystem extends createSystem({}) {
       depthWrite: false,
     });
     const stick = new Mesh(new CapsuleGeometry(STICK_R, shaft, 3, 10), mat);
-    stick.position.y = 0.02;
+    stick.position.y = STICK_MID;
     stick.renderOrder = 2; // blends over the opaque liquid inside
     group.add(stick);
     // THE LIQUID — the glow itself, sloshing inside the tube. It takes the
@@ -373,7 +373,7 @@ export class PlayerSystem extends createSystem({}) {
     // copy of the tube (the same capsule, walls running parallel) wearing
     // the world-space clipped-liquid shader.
     const liquid = createLiquid(new CapsuleGeometry(LIQUID_R, shaft, 3, 10));
-    liquid.mesh.position.y = 0.02;
+    liquid.mesh.position.y = STICK_MID;
     group.add(liquid.mesh);
 
     // AND NOTHING ELSE ON THE BODY. No halo sprite, no tip glow, no grip
@@ -395,7 +395,7 @@ export class PlayerSystem extends createSystem({}) {
     //    burst leaves from the tip marker below on the frame a swap lands,
     //    which is a better badge than a lamp that's on all night.
     const tip = new Object3D();
-    tip.position.y = 0.02 + STICK_LEN / 2 - 0.006;
+    tip.position.y = STICK_MID + STICK_LEN / 2 - 0.006;
     group.add(tip);
     group.name = 'live-glowstick';
     group.rotation.x = STICK_TILT;
@@ -412,7 +412,6 @@ export class PlayerSystem extends createSystem({}) {
       pulse: 0,
       attachedTo: null,
       shown: false,
-      push: 0,
     };
   }
 
@@ -459,17 +458,13 @@ export class PlayerSystem extends createSystem({}) {
     // podium, and go straight back.
     const clubFloor = !(match.screen === 'countdown' || match.screen === 'raid' || match.screen === 'podium');
 
-    // ONCE THE RECORD DROPS, THE PLASTIC GOES. Through a set you are a
-    // dancer holding two glowsticks, not somebody wearing two controllers:
-    // the moulded grips are hidden for the whole song and handed back at
-    // the podium. Only the controller MODEL goes — tracked hands are your
-    // actual hands and stay, and the pointer's own ray and cursor still
-    // draw, so the pause card is as pokeable as ever.
-    this.showControllers(!(match.screen === 'countdown' || match.screen === 'raid'));
-
-    // Whose models are actually on screen this frame — the sticks shift out
-    // of their way below.
-    const pads = this.input?.xr?.visualAdapters?.controller;
+    // NO PLASTIC, EVER. The moulded controller models never draw: you
+    // wear the quick match's steel hands instead — open on the club floor
+    // and in the foyer, and closed round the glowsticks from the count-in
+    // to the podium (updateHands, after the sticks are posed). Tracked
+    // hands are your actual hands and stay, and the pointer's own ray and
+    // cursor still draw, so every panel is as pokeable as ever.
+    this.hideControllers();
 
     for (const hand of ['left', 'right'] as const) {
       const s = this.sticks[hand];
@@ -494,16 +489,6 @@ export class PlayerSystem extends createSystem({}) {
       }
       s.shown = show;
       s.group.visible = show;
-
-      // MAKE ROOM FOR THE PLASTIC. Outside a song the moulded controller is
-      // drawn in this same hand, and the stick's near end runs straight
-      // through it. Slide the stick up its own axis so it starts past the
-      // controller's nose — eased, because the model appears and vanishes
-      // at the edges of a song and a snap there would read as a glitch.
-      const padDrawn = !!pads?.[hand]?.visual?.model?.parent;
-      const wantPush = padDrawn ? STICK_PAD_PUSH : 0;
-      s.push += (wantPush - s.push) * Math.min(1, delta * 8);
-      s.group.position.set(0, PUSH_Y * s.push, PUSH_Z * s.push);
 
       // THE SWING: the tip's velocity, sampled per frame, so a rewarded
       // swap can throw its sparks the way the stick was actually moving.
@@ -587,11 +572,13 @@ export class PlayerSystem extends createSystem({}) {
       // ever seen. Set on one frame, shown on that frame.
       s.pulse = Math.max(0, s.pulse - Math.min(delta, 0.05) * 4);
     }
+
+    this.updateHands(delta, !clubFloor);
   }
 
   /**
-   * Show or hide the moulded controller models — by UNPARENTING them, not
-   * by their `visible` flag.
+   * Hide the moulded controller models — by UNPARENTING them, not by their
+   * `visible` flag.
    *
    * The flag is not ours to hold. IWSDK's input manager assigns
    * `visual.model.visible = isPrimary` every single frame, so setting it
@@ -604,17 +591,79 @@ export class PlayerSystem extends createSystem({}) {
    * Re-checked every frame because a controller that reconnects (or a
    * headset waking) rebuilds its visual and re-adds it to the rig.
    */
-  private showControllers(show: boolean): void {
+  private hideControllers(): void {
     const pads = this.input?.xr?.visualAdapters?.controller;
     if (!pads) return;
-    for (const hand of ['left', 'right'] as const) {
-      const model = pads[hand]?.visual?.model;
-      if (!model) continue;
-      if (show) {
-        if (!model.parent) (this.padHome.get(model) ?? this.player).add(model);
-      } else if (model.parent) {
-        this.padHome.set(model, model.parent);
-        model.removeFromParent();
+    for (const hand of ['left', 'right'] as const) pads[hand]?.visual?.model?.removeFromParent();
+  }
+
+  /**
+   * THE STEEL HANDS — the quick match's articulated hands (avatar/hands.ts),
+   * wearing your skin, gear and paint, worn wherever the controllers used
+   * to show and then some:
+   *
+   *   OPEN     on the club floor, in the foyer, at the board: locked to each
+   *            grip, aimed down the pointing ray like a fighter's fists (so
+   *            a menu laser leaves from the knuckles), closing as you
+   *            squeeze and blooming while you do.
+   *   HOLDING  from the count-in to the podium: closed round the glowstick
+   *            (rave/game/stickGrip.ts). The stick leads — the hand is
+   *            fitted to its pose after the shake has moved it, so the fist
+   *            rattles with the stick it holds — and a rewarded swap
+   *            blooms the hand along with the tube.
+   *
+   * A tracked hand is your real hand, so no steel one is drawn over it.
+   * Named `rave-hand-*`, not `player-glove-*`: in the arena the fight's own
+   * hands go by those names and its menu repaints them.
+   */
+  private updateHands(delta: number, holding: boolean): void {
+    const dress = `${customization.version}|${paintState.version}`;
+    for (const [i, hand] of (['left', 'right'] as const).entries()) {
+      const grip = this.world.playerSpaceEntities?.gripSpaces?.[hand]?.object3D;
+      if (!grip) continue;
+      let glove = this.hands[hand];
+      if (!glove) {
+        glove = buildHand(hand === 'left' ? 1 : -1);
+        glove.name = `rave-hand-${hand}`;
+        this.hands[hand] = glove;
+      }
+      // Dressed when built, and again whenever the locker or the bay moves
+      // — gear first, as fresh gear is a fresh paint surface.
+      if (glove.userData.dress !== dress) {
+        glove.userData.dress = dress;
+        applyAvatarSkin(glove, myAvatarSkin());
+        applyGear(glove, myGear(), myTone());
+        applyLook(glove, myLook());
+      }
+      const show = !this.input.xr.isPrimary('hand', hand);
+      glove.visible = show;
+      if (!show) continue;
+
+      const gp = this.input.xr.gamepads[hand];
+      const trig = gp?.getButtonValue(InputComponent.Trigger) ?? 0;
+      const sq = gp?.getButtonValue(InputComponent.Squeeze) ?? 0;
+      const squeezing = trig > 0.5 || sq > 0.5;
+      const stick = this.sticks[hand];
+
+      if (holding && stick.attachedTo) {
+        if (glove.parent !== stick.attachedTo) stick.attachedTo.add(glove);
+        gripStick(glove, stick.group, i as 0 | 1, STICK_MID);
+        setHandPose(glove, GRIP_POSE);
+        setGloveLit(glove, squeezing || stick.pulse > 0.15, delta);
+        continue;
+      }
+
+      if (glove.parent !== grip) grip.add(glove);
+      glove.position.set(0, 0, 0);
+      setHandGrip(glove, trig, sq);
+      setGloveLit(glove, squeezing, delta);
+      // Knuckles down the pointing ray: cancel the grip's tilt, take the
+      // ray's (PlayerGloveSystem does the same for a fight).
+      const ray = this.world.playerSpaceEntities?.raySpaces?.[hand]?.object3D;
+      if (ray) {
+        grip.getWorldQuaternion(_gripQ);
+        ray.getWorldQuaternion(_rayQ);
+        glove.quaternion.copy(_gripQ).invert().multiply(_rayQ).multiply(HAND_ADDUCTION[i]);
       }
     }
   }

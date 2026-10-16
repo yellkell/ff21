@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- DEV-ONLY harness: the steel hands holding RAVE RAID's glowsticks, posed
+     by the game's own grip (src/rave/game/stickGrip.ts), for screenshots.
+     The stick here is a stand-in with the live stick's dimensions, tilt and
+     casing — the liquid is a solid core. Not part of the game; never ship
+     or link this page.
+       ?cam=fp|side|close|front|top   framing (default fp: from your own eyes)
+       ?hue=0..1            stick colour (default 0.85)
+       ?free=1              the club floor's open hands instead -->
+<html>
+  <body style="margin:0; background:#07080b; overflow:hidden">
+    <script type="module">
+      import {
+        ACESFilmicToneMapping,
+        BackSide,
+        CapsuleGeometry,
+        Color,
+        DirectionalLight,
+        EquirectangularReflectionMapping,
+        Group,
+        HemisphereLight,
+        Mesh,
+        MeshBasicMaterial,
+        PerspectiveCamera,
+        PMREMGenerator,
+        Quaternion,
+        Scene,
+        SRGBColorSpace,
+        TextureLoader,
+        Vector3,
+        WebGLRenderer,
+      } from 'three';
+      import { buildHand, HAND_ADDUCTION, setHandPose } from '/src/avatar/hands.ts';
+      import { applyAvatarSkin, avatarSkin } from '/src/avatar/skins.ts';
+      import { gripStick, GRIP_POSE } from '/src/rave/game/stickGrip.ts';
+
+      const q = new URLSearchParams(location.search);
+      const cam = q.get('cam') ?? 'fp';
+      const hue = Number(q.get('hue') ?? 0.85);
+      const free = q.get('free') === '1';
+
+      const scene = new Scene();
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.outputColorSpace = SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+
+      const pmrem = new PMREMGenerator(renderer);
+      new TextureLoader().load('arena/neon/env_backstreet.jpg', (t) => {
+        t.mapping = EquirectangularReflectionMapping;
+        t.colorSpace = SRGBColorSpace;
+        scene.environment = pmrem.fromEquirectangular(t).texture;
+        scene.background = t;
+        scene.backgroundBlurriness = 0.35;
+        scene.backgroundIntensity = 0.35;
+      });
+      scene.add(new HemisphereLight(0x9fb8ff, 0x251a14, 0.35));
+      const key = new DirectionalLight(0xffe8d0, 2.4);
+      key.position.set(1.5, 2.5, 1.0);
+      scene.add(key);
+
+      const camera = new PerspectiveCamera(cam === 'close' ? 30 : 60, innerWidth / innerHeight, 0.01, 50);
+      if (cam === 'side') {
+        camera.position.set(0.75, 1.45, -0.15);
+        camera.lookAt(0.1, 1.3, -0.4);
+      } else if (cam === 'front') {
+        // Facing the dancer, on the right fist.
+        camera.fov = 28;
+        camera.updateProjectionMatrix();
+        camera.position.set(0.32, 1.42, -1.05);
+        camera.lookAt(0.2, 1.3, -0.4);
+      } else if (cam === 'top') {
+        // Straight down onto the right fist.
+        camera.fov = 26;
+        camera.updateProjectionMatrix();
+        camera.position.set(0.2, 2.0, -0.42);
+        camera.up.set(0, 0, -1);
+        camera.lookAt(0.2, 1.3, -0.42);
+      } else if (cam === 'close') {
+        camera.position.set(0.05, 1.55, 0.02);
+        camera.lookAt(0.2, 1.32, -0.38);
+      } else {
+        camera.position.set(0, 1.6, 0);
+        camera.lookAt(0, 1.3, -0.6);
+      }
+
+      // The live stick's numbers (rave/systems/PlayerSystem.ts).
+      const STICK_R = 0.016;
+      const STICK_LEN = 0.3;
+      const STICK_CASE = 0.007;
+      const STICK_TILT = -0.55;
+      const shaft = STICK_LEN - STICK_R * 2;
+      const color = new Color().setHSL(hue, 1, 0.6);
+      function buildStick() {
+        const group = new Group();
+        const casing = new Mesh(
+          new CapsuleGeometry(STICK_R + STICK_CASE, shaft, 3, 10),
+          new MeshBasicMaterial({ color: 0x02010a, side: BackSide }),
+        );
+        casing.position.y = 0.02;
+        const tube = new Mesh(
+          new CapsuleGeometry(STICK_R, shaft, 3, 10),
+          new MeshBasicMaterial({ color, transparent: true, opacity: 0.34, depthWrite: false }),
+        );
+        tube.position.y = 0.02;
+        tube.renderOrder = 2;
+        const core = new Mesh(
+          new CapsuleGeometry(STICK_R - 0.0015, shaft * 0.85, 3, 10),
+          new MeshBasicMaterial({ color: color.clone().lerp(new Color(0xffffff), 0.25) }),
+        );
+        core.position.y = 0.02 - shaft * 0.075;
+        group.add(casing, tube, core);
+        group.rotation.x = STICK_TILT;
+        group.position.set(0, 0.01, -0.02);
+        return group;
+      }
+
+      // Two ray spaces where a dancer holds them: chest high, a forearm out,
+      // pointing ahead and a little in.
+      for (const side of [0, 1]) {
+        const s = side === 0 ? -1 : 1;
+        const ray = new Group();
+        ray.position.set(s * 0.2, 1.3, -0.4);
+        ray.quaternion
+          .setFromAxisAngle(new Vector3(0, 1, 0), -s * 0.18)
+          .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -0.25));
+        scene.add(ray);
+        const glove = buildHand(side === 0 ? 1 : -1);
+        applyAvatarSkin(glove, avatarSkin(q.get('skin') ?? 'blank'));
+        ray.add(glove);
+        if (free) {
+          glove.quaternion.copy(HAND_ADDUCTION[side]);
+          setHandPose(glove, { curl: [0.32, 0.3, 0.31, 0.32], spread: 0.18, thumb: 0.45, thumbUp: 0.2 });
+        } else {
+          const stick = buildStick();
+          ray.add(stick);
+          gripStick(glove, stick, side, 0.02);
+          setHandPose(glove, GRIP_POSE);
+        }
+      }
+
+      function frame() {
+        renderer.render(scene, camera);
+        requestAnimationFrame(frame);
+      }
+      frame();
+    </script>
+  </body>
+</html>

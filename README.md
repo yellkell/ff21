@@ -13,6 +13,19 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **STEEL HANDS EVERYWHERE, NO PLASTIC.** The quick match's articulated
+  steel hands (`avatar/hands.ts`) are your hands in the menus now, not
+  just in a bout: the arena lobby and the terrace
+  (`systems/PlayerGloveSystem.ts`), and in RAVE RAID the foyer, the board
+  and the club's social area (`rave/systems/PlayerSystem.ts`), wearing
+  your skin, gear and paint, aimed down the pointing ray so a menu laser
+  leaves from the knuckles. The moulded controller models never draw.
+  Through a set, from the count-in to the podium, the hands CLOSE ROUND
+  THE GLOWSTICKS (`rave/game/stickGrip.ts`): thumb on top, the fist
+  rattling with the stick and blooming with it on a rewarded swap. A
+  tracked hand is your real hand, so no steel one is drawn over it.
+  `grip-preview.html` shows the grip (`?cam=fp|front|close|side|top`,
+  `?free=1` for the open hands).
 - **THE CLUB'S TELEPORT MARKER IS GAMBLE FISH'S.** The landing octagon in
   the social area is drawn in light now, not a ghosted steel puck
   (`src/rave/club/teleportMarker.ts`, brought over from GAMBLE FISH). It
