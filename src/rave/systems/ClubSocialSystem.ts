@@ -44,7 +44,7 @@ import { preload } from '../audio/music.js';
 import { pickRaidTrack, trackById, tracksFor } from '../audio/tracks.js';
 import { platformRoot } from '../arena/arena.js';
 import { ballSpawnPos } from '../club/ball.js';
-import { CLUB_NET } from '../club/config.js';
+import { CLUB_NET, inStillRoom } from '../club/config.js';
 import { myHandFlags } from '../club/fingerGun.js';
 // MUTE and BLOCK are the safety console's to toggle now (ui/safety.ts owns
 // both homes); the floor's own MUSIC switch stays here, because it belongs
@@ -58,6 +58,7 @@ import {
   pushVoiceFrame,
   setVoiceSpeakerMuted,
   setVoiceSpeakerPosition,
+  setVoiceSpeakerWalled,
   startVoiceCapture,
   stopVoiceCapture,
   toggleVoiceMuted,
@@ -381,6 +382,8 @@ export class ClubSocialSystem extends createSystem({}) {
           root.localToWorld(_v);
           setVoiceSpeakerPosition(String(p.idx), _v);
         }
+        // No still room on the ring: nothing walls a fellow dancer off.
+        setVoiceSpeakerWalled(String(p.idx), false);
         continue;
       }
 
@@ -427,6 +430,10 @@ export class ClubSocialSystem extends createSystem({}) {
       // Their voice speaks from their figure's head.
       _v.set(p.pose.hx, p.pose.hy, p.pose.hz);
       setVoiceSpeakerPosition(String(p.idx), _v);
+      // THE STILL ROOM's wall: if one of you is inside it and the other
+      // isn't, they're a murmur through it — the room stays still, and
+      // what's said in it stays in it.
+      setVoiceSpeakerWalled(String(p.idx), inStillRoom(p.pose.hx, p.pose.hz) !== inStillRoom(match.headX, match.headZ));
       // The name tag rides over the head, faces you, and swells a touch
       // while they hold the floor.
       p.tag.position.set(p.pose.hx, p.pose.hy + 0.38, p.pose.hz);

@@ -13,12 +13,20 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE STILL ROOM IS STILL.** Step through its door and the hall's
+  record drops to 0.3% (about −50 dB; it was 3%) and is muffled down to
+  the kick (~240 Hz, where it used to leave the hats and vocal at
+  3.7 kHz); the bar's dumbwaiter
+  isn't heard through the wall; and talk on the other side of the wall is
+  a murmur — a fifth of its level, lowpassed to 500 Hz — so the hall's
+  chatter stays out and what's said in the room stays in. Voices inside
+  the room are untouched (`club/voice.ts` `setVoiceSpeakerWalled`).
 - **GRABS AND FINGER GUNS YOU CAN SEE ACROSS THE CLUB.** Your hands on
   the club floor run the arena's sprung hand now (`avatar/handDriver.ts`,
   shared with `systems/PlayerGloveSystem.ts`): a squeeze rolls shut as a
   GRAB, and grip held with your finger off the trigger is a FINGER GUN —
-  thumb up to cock the hammer, thumb down for the BANG (the hammer falls,
-  the hand kicks, the palm thumps — a gesture, so no sparks, in the club
+  thumb up to cock the hammer, thumb down for the BANG (the hammer falls
+  and the hand kicks — a gesture, so no sparks and no buzz, in the club
   or the arena). The club's pose frame
   carries each hand's touch and a shot COUNT (`'cp'` numbers 24–25,
   `packHandFlags`), so every room-mate's figure runs the same hand off

@@ -30,7 +30,8 @@
  *
  * THE STILL ROOM's law is enforced here: step through its door and the
  * club's music drops to a muffled thud through the wall (setAmbientDuck
- * takes the level down AND the top end off), voices untouched.
+ * takes the level down AND the top end off). The room's voices are
+ * untouched; the hall's come through the wall (ClubSocialSystem).
  */
 
 import { createSystem } from '@iwsdk/core';
@@ -40,11 +41,16 @@ import { TRACKS } from '../audio/tracks.js';
 import { VOID_BG } from '../arena/voidkit.js';
 import { buildClub, buildFoyer, type ClubRefs, type FoyerRefs } from '../club/build.js';
 import { clubFloorOpen } from '../club/doors.js';
-import { CLUB } from '../club/config.js';
+import { CLUB, inStillRoom } from '../club/config.js';
 import { stepRefs } from '../club/step.js';
 import { stageShow } from '../club/stageShow.js';
 import { course } from '../course/state.js';
 import { match } from '../game/state.js';
+
+/** The hall's record inside THE STILL ROOM: 0.3% of the floor's level
+ *  (about −50 dB), muffled down to the kick (music.ts duckCutoff) — the
+ *  faint thud of a party two rooms away, not a party with the door shut. */
+const STILL_DUCK = 0.003;
 
 export class ClubSystem extends createSystem({}) {
   private club: ClubRefs | null = null;
@@ -157,13 +163,12 @@ export class ClubSystem extends createSystem({}) {
       }
 
       // ── THE STILL ROOM's hush ─────────────────────────────────────────
-      const Q = CLUB.quiet;
-      const inside =
-        match.headX >= Q.minX && match.headX <= Q.maxX && match.headZ >= Q.minZ && match.headZ <= Q.maxZ;
+      const inside = inStillRoom(match.headX, match.headZ);
       // Properly quiet, not just turned down: at 0.1 the club was still in
-      // the room with you. The muffle rides this same number, so the low
-      // setting is a wall's worth of both.
-      const target = inside ? 0.03 : 1;
+      // the room with you, and at 0.03 the muffle still let the hats and
+      // the vocal through. The muffle rides this same number, so the low
+      // setting is a wall's worth of both: a kick you feel more than hear.
+      const target = inside ? STILL_DUCK : 1;
       if (target !== this.duckTarget) {
         this.duckTarget = target;
         setAmbientDuck(target);

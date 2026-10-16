@@ -473,9 +473,12 @@ export function ambientTrackId(): string | null {
 }
 
 /** The lowpass corner that goes with a duck level: open at full, down to a
- *  through-the-wall thud when the room is hushed. */
+ *  through-the-wall thud when the room is hushed. Linear in the level, so
+ *  the still room's 0.3% closes to ~240 Hz — the kick, nothing above it
+ *  (the square-root curve this replaced left it at 3.7 kHz, hats and
+ *  vocal and all). */
 function duckCutoff(mult: number): number {
-  return 320 + Math.pow(Math.min(1, Math.max(0, mult)), 0.5) * 19680;
+  return 180 + Math.min(1, Math.max(0, mult)) * 19820;
 }
 
 /**

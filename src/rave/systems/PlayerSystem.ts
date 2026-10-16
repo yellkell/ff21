@@ -674,7 +674,7 @@ export class PlayerSystem extends createSystem({}) {
 
       if (glove.parent !== grip) grip.add(glove);
       glove.position.set(0, 0, 0);
-      const bang = sprung.step(input, dt);
+      sprung.step(input, dt);
       setHandPose(glove, sprung.pose);
       myHandFlags[i] = packHandFlags(input.trigTouch, input.thumbDown, sprung.shots);
       setGloveLit(glove, squeezing, delta);
@@ -690,8 +690,6 @@ export class PlayerSystem extends createSystem({}) {
           glove.quaternion.multiply(_q.setFromAxisAngle(UP, (hand === 'left' ? -1 : 1) * sprung.kick * 0.06));
         }
       }
-      // BANG: a thump in the palm. A gesture, not a weapon — no sparks.
-      if (bang) this.buzz(hand, 0.55, 45);
     }
   }
 

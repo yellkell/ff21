@@ -17,9 +17,8 @@
  *                   meet it, wider the nearer it gets…
  *   CATCH           …and snaps shut the instant it lands, with a flash.
  *   FINGER GUN      grip held, index finger OFF the trigger, thumb up for
- *                   the hammer and down for the BANG: the hand kicks and
- *                   the controller thumps. A gesture — no sparks, and the
- *                   ball doesn't care.
+ *                   the hammer and down and the hand kicks. A gesture —
+ *                   no sparks, no buzz, and the ball doesn't care.
  *
  * All of it is local — what other headsets see of your hands is still the
  * two analogue reads (setHandGrip) over the wire.
@@ -34,7 +33,6 @@ import { buildHand, HAND_ADDUCTION, setHandPose } from '../avatar/hands.js';
 import { applyLook, myLook } from '../avatar/paint.js';
 import { applyAvatarSkin } from '../avatar/skins.js';
 import { BallState, Fireball } from '../components/Fireball.js';
-import { pulseHand } from '../input/haptics.js';
 import { myAvatarSkin, myGear, myTone } from '../menu/customization.js';
 
 const HANDS = ['left', 'right'] as const;
@@ -158,7 +156,7 @@ export class PlayerGloveSystem extends createSystem({
       st.wasReturning = returning;
 
       // --- spring everything toward its target, and BANG -----------------
-      if (st.hand.step(input, dt)) pulseHand(this.world.session as never, hand, 0.55, 45);
+      st.hand.step(input, dt);
       setHandPose(glove, st.hand.pose);
 
       // --- aim: knuckles down the pointing ray ---------------------------
