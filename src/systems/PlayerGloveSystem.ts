@@ -1,10 +1,13 @@
 /**
  * Your boxing gloves: an articulated steel hand locked to each controller
- * grip whenever you're in the arena (bout or training), wearing your skin
- * and YOUR PAINT (avatar/paint.ts, part 'hand'). The fists are aimed along
- * the controller's POINTING ray (not the tilted grip pose, which left the
- * knuckles facing the ceiling), and their LEDs flare while you squeeze
- * trigger or grip. Hidden in the lobby so the menu lasers read clearly.
+ * grip wherever you are in the arena — bout, training, the menus and the
+ * terrace alike — wearing your skin and YOUR PAINT (avatar/paint.ts, part
+ * 'hand'). The fists are aimed along the controller's POINTING ray (not the
+ * tilted grip pose, which left the knuckles facing the ceiling), so in the
+ * menus the laser leaves from the knuckles, and their LEDs flare while you
+ * squeeze trigger or grip. The moulded controller models are never drawn:
+ * the hands ARE the controllers. Tracked hands are your actual hands, so a
+ * steel one only shows over a controller.
  *
  * THE FINGERS ARE SPRUNG, not set: each one chases its target on its own
  * spring, the pinky quickest, so a grab rolls shut little finger first and
@@ -28,7 +31,7 @@
  */
 
 import { createSystem, InputComponent } from '@iwsdk/core';
-import { Quaternion, Vector3, type Group, type Object3D } from 'three';
+import { Quaternion, Vector3, type Group } from 'three';
 import { setGloveLit } from '../avatar/boxer.js';
 import { applyGear } from '../avatar/gear.js';
 import { buildHand, HAND_ADDUCTION, handIndexTip, INDEX_TIP_LENGTH, setHandPose, type HandPose } from '../avatar/hands.js';
@@ -37,7 +40,6 @@ import { applyAvatarSkin } from '../avatar/skins.js';
 import { BallState, Fireball } from '../components/Fireball.js';
 import { emberBurst } from '../fx/fire.js';
 import { pulseHand } from '../input/haptics.js';
-import { app } from '../menu/appState.js';
 import { myAvatarSkin, myGear, myTone } from '../menu/customization.js';
 
 const HANDS = ['left', 'right'] as const;
@@ -120,31 +122,19 @@ export class PlayerGloveSystem extends createSystem({
   balls: { required: [Fireball] },
 }) {
   private gloves: Partial<Record<Hand, Group>> = {};
-  /** Where each controller model hangs, so the lobby can have it back. */
-  private padHome = new WeakMap<Object3D, Object3D>();
 
   /**
-   * Your hands ARE the controllers in a fight: the moulded controller
-   * models go while the hands show, and come back for the lobby's lasers.
-   * Done by UNPARENTING, not by `visible` — IWSDK's input manager writes
-   * `visual.model.visible` every frame, so a flag set here never sticks
-   * (the rave learned this first: rave/systems/PlayerSystem.ts). Re-checked
-   * every frame, as a controller that reconnects rebuilds its visual.
+   * Your hands ARE the controllers, menus included: the moulded controller
+   * models never draw. Done by UNPARENTING, not by `visible` — IWSDK's input
+   * manager writes `visual.model.visible` every frame, so a flag set here
+   * never sticks (the rave learned this first: rave/systems/PlayerSystem.ts).
+   * Re-checked every frame, as a controller that reconnects rebuilds its
+   * visual and hangs it back in the rig.
    */
-  private showControllers(show: boolean): void {
+  private hideControllers(): void {
     const pads = this.input?.xr?.visualAdapters?.controller;
     if (!pads) return;
-    for (const hand of HANDS) {
-      const model = pads[hand]?.visual?.model;
-      if (!model) continue;
-      if (show) {
-        const home = this.padHome.get(model);
-        if (!model.parent && home) home.add(model);
-      } else if (model.parent) {
-        this.padHome.set(model, model.parent);
-        model.removeFromParent();
-      }
-    }
+    for (const hand of HANDS) pads[hand]?.visual?.model?.removeFromParent();
   }
   private states: Record<Hand, HandState> = { left: newState(), right: newState() };
 
@@ -165,12 +155,7 @@ export class PlayerGloveSystem extends createSystem({
   }
 
   update(delta: number): void {
-    if (app.spectating) {
-      this.showControllers(true); // nothing to light up on the terrace
-      return;
-    }
-    const show = app.state === 'playing' || app.state === 'training';
-    this.showControllers(!show);
+    this.hideControllers();
     const dt = Math.min(delta, 0.05);
     for (const hand of HANDS) {
       const grip = this.world.playerSpaceEntities.gripSpaces[hand]?.object3D;
@@ -195,6 +180,8 @@ export class PlayerGloveSystem extends createSystem({
         grip.add(glove);
         this.gloves[hand] = glove;
       }
+      // A tracked hand is your real hand — no steel one over it.
+      const show = !this.input.xr.isPrimary('hand', hand);
       glove.visible = show;
       if (!show) continue;
       const st = this.states[hand];
