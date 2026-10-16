@@ -34,6 +34,8 @@ function loadDifficulty(): Difficulty {
 /** The arena backdrop: bare AR passthrough, the papercraft desert, the salt
  *  flats, THE COVE (sundown on Tidewater's beach), or the (shelved) factory. */
 export type AppEnvironment = 'ar' | 'desert' | 'saltflats' | 'cove' | 'factory' | 'neon';
+/** Set once the NEON UPDATE has moved this device's saved arena to NEON. */
+const NEON_UPDATE_KEY = 'ff-env-neon-update';
 
 export interface LifetimeStats {
   wins: number;
@@ -296,11 +298,22 @@ export const app: {
   raidSize: 4,
   difficulty: loadDifficulty(),
   environment: ((): AppEnvironment => {
+    // THE NEON UPDATE: everyone — returning boxers with an old arena saved
+    // included — opens once in NEON, in the back street. The marker makes it
+    // one-shot, so a pick made in SETTINGS » ARENA after that sticks.
+    try {
+      if (localStorage.getItem(NEON_UPDATE_KEY) !== '1') {
+        localStorage.setItem(NEON_UPDATE_KEY, '1');
+        localStorage.setItem('ff-env', 'neon');
+        return 'neon';
+      }
+    } catch {
+      return 'neon';
+    }
     const e = localStorage.getItem('ff-env');
-    // First-ever launch (nothing stored) opens in NEON, in the back street; after that we
-    // honour whatever the player last chose in SETTINGS » ARENA — including
-    // bare AR. The OLD FACTORY backdrop is shelved, so anyone who had it
-    // equipped lands in NEON too.
+    // After that we honour whatever the player last chose — including bare
+    // AR. The OLD FACTORY backdrop is shelved, so anyone who had it equipped
+    // lands in NEON too.
     if (e === 'desert' || e === 'saltflats' || e === 'cove' || e === 'neon' || e === 'ar') return e;
     return 'neon';
   })(),
