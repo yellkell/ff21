@@ -20,9 +20,9 @@
  * The core's flames and the corona stream back along the flight too. The
  * puffs are drawn from a small flame atlas generated here at boot (domain-
  * warped value noise in a teardrop): each puff erodes into tongues as it
- * dies and cools white → yellow → orange → red, and a thin dark smoke rises
- * behind the hottest fire. Texture lookups, not per-pixel noise, keep the
- * fill cheap on Quest.
+ * dies and cools white → yellow → orange → red. Texture lookups, not
+ * per-pixel noise, keep the fill cheap on Quest — and a burnt-out sprite is
+ * collapsed before it reaches the rasteriser, never drawn just to discard.
  *
  * Each ball is tintable per team: your fire burns orange, theirs burns blue
  * (`uCool` mixes the two colour ramps in-shader).
@@ -39,7 +39,6 @@ import {
   LinearFilter,
   LinearMipmapLinearFilter,
   Mesh,
-  NormalBlending,
   PlaneGeometry,
   Points,
   Quaternion,
@@ -135,7 +134,10 @@ const CORONA_FRAG = /* glsl */ `
     float r = length(p);
     if (r > 1.0) discard;
     float ang = atan(p.y, p.x);
-    float ripple = fbm(vec3(cos(ang), sin(ang), uTime * 0.7) * 1.4);
+    // One octave is plenty for a rim wobble — the corona is a big quad, and
+    // three octaves of 3D noise on every one of its pixels was the costliest
+    // thing a ball drew.
+    float ripple = snoise(vec3(cos(ang), sin(ang), uTime * 0.7) * 1.4) * 0.55;
     float maxR = 0.62 + ripple * 0.22;
     float fall = pow(clamp(1.0 - r / maxR, 0.0, 1.0), 1.6);
     float glow = fall * uHeat;
@@ -235,7 +237,6 @@ export function createFireVisual(team: 0 | 1): FireVisual {
   let flare = 0;
   let flareCooldown = 0;
   let emitAcc = Math.random();
-  let smokeAcc = Math.random();
   const flow = uFlow.value;
 
   return {
@@ -350,16 +351,6 @@ export function createFireVisual(team: 0 | 1): FireVisual {
             shown * (0.85 + Math.random() * 0.3),
             cool,
           );
-        }
-        // Smoke off the hottest fire, a thin dark veil rising behind it.
-        if (smokeFx && heat > 0.9) {
-          smokeAcc += (3 + speed * 2.4) * dt;
-          while (smokeAcc >= 1) {
-            smokeAcc -= 1;
-            randomUnit(_u);
-            _p.copy(_wp).addScaledVector(_u, r * 0.5).addScaledVector(_back, r * 1.6 * streamK);
-            smokeFx.spawnSmoke(_p, vel.x * 0.08 + _u.x * 0.1, vel.y * 0.08 + 0.42, vel.z * 0.08 + _u.z * 0.1, 0.9 + Math.random() * 0.6, r * (2.6 + Math.random() * 1.4));
-          }
         }
       }
       tracked = true;
@@ -492,9 +483,9 @@ const PUFF_CELL_GLSL = /* glsl */ `
 `;
 
 /**
- * World-space flame puffs (or smoke): one Points draw for every ball's fire.
- * Each puff remembers its own start heat, team and seed; it swells, erodes
- * into tongues and cools as it ages.
+ * World-space flame puffs: one Points draw for every ball's fire. Each puff
+ * remembers its own start heat, team and seed; it swells, erodes into
+ * tongues and cools as it ages.
  */
 class FlamePool {
   readonly points: Points;
@@ -513,7 +504,6 @@ class FlamePool {
 
   constructor(
     private readonly max: number,
-    private readonly smoke: boolean,
     atlas: DataTexture,
   ) {
     this.pos = new Float32Array(max * 3);
@@ -537,11 +527,15 @@ class FlamePool {
         attribute float aLife, aSize, aHeat, aCool, aSeed;
         varying float vLife, vHeat, vCool, vSeed, vNear;
         void main(){
+          // A burnt-out slot never reaches the rasteriser: parked outside
+          // the clip volume at zero size, instead of drawing its whole
+          // sprite only for every pixel to discard.
+          if (aLife <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
           vLife = aLife; vHeat = aHeat; vCool = aCool; vSeed = aSeed;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           float age = 1.0 - aLife;
-          // Fire swells as it burns; smoke billows wider still.
-          float grow = ${smoke ? 'mix(0.7, 2.2, age)' : 'mix(0.55, 1.45, sqrt(age))'};
+          // Fire swells as it burns.
+          float grow = mix(0.55, 1.45, sqrt(age));
           // TRUE size: metres through the projection to this viewport's
           // pixels — a fixed pixel scale drew every sprite 3-4x too small
           // on a Quest eye (~1700 px tall). Capped at a fifth of the view,
@@ -568,15 +562,12 @@ class FlamePool {
           c = mat2(cos(a), -sin(a), sin(a), cos(a)) * c;
           if (fract(vSeed * 5.13) > 0.5) c.x = -c.x;
           float v = texture2D(uPuff, puffCell(vSeed, c + 0.5)).r;
-          ${smoke ? `
-          // Smoke: soft, dark, in then out.
-          float d = smoothstep(0.05 + age * 0.3, 0.55 + age * 0.3, v);
-          float al = d * 0.26 * sin(3.14159 * clamp(age * 1.3, 0.0, 1.0)) * vNear;
-          gl_FragColor = vec4(vec3(0.05, 0.045, 0.042), al);
-          ` : `
           // Fire ERODES as it dies: the threshold climbs, so a puff breaks
           // into tongues and wisps before it goes.
           float er = age * age * 0.6;
+          // The sprite's empty corners (and what erosion has eaten) add
+          // nothing: skip the colour and the blend there.
+          if (v <= er + 0.01) discard;
           float d = smoothstep(er, er + 0.55, v);
           // …and cools: yellow at birth, red at the end. One puff is faint;
           // white only where many burn on top of each other.
@@ -584,11 +575,10 @@ class FlamePool {
           vec3 col = fireRamp(T, vCool);
           float e = d * mix(0.35, 1.0, v) * (0.25 + T * 1.0) * sqrt(vLife) * vNear * 1.2;
           gl_FragColor = vec4(col * e, e);
-          `}
         }
       `,
       transparent: true,
-      blending: smoke ? NormalBlending : AdditiveBlending,
+      blending: AdditiveBlending,
       depthWrite: false,
     });
     this.points = new Points(this.geo, mat);
@@ -598,8 +588,8 @@ class FlamePool {
       renderer.getCurrentViewport(_viewport);
       if (_viewport.w > 0) mat.uniforms.uViewH.value = _viewport.w;
     };
-    // Smoke under the fire, both after the solid world.
-    this.points.renderOrder = smoke ? 1 : 3;
+    // After the solid world.
+    this.points.renderOrder = 3;
   }
 
   private slot(): number {
@@ -615,10 +605,6 @@ class FlamePool {
     this.set(i, p, vx, vy, vz, life, size);
     this.heat[i] = heat;
     this.cool[i] = cool;
-  }
-
-  spawnSmoke(p: Vector3, vx: number, vy: number, vz: number, life: number, size: number): void {
-    this.set(this.slot(), p, vx, vy, vz, life, size);
   }
 
   private set(i: number, p: Vector3, vx: number, vy: number, vz: number, life: number, size: number): void {
@@ -638,8 +624,8 @@ class FlamePool {
     if (this.alive === 0) return;
     // Air: fire is dragged hard (it stops dead off a thrown ball and lifts),
     // rises on its own heat, and is shoved about by a cheap swirl.
-    const drag = Math.exp(-(this.smoke ? 1.6 : 3.2) * dt);
-    const lift = (this.smoke ? 0.35 : 1.5) * dt;
+    const drag = Math.exp(-3.2 * dt);
+    const lift = 1.5 * dt;
     let alive = 0;
     for (let i = 0; i < this.max; i++) {
       if (this.life[i] <= 0) continue;
@@ -718,7 +704,10 @@ class ParticlePool {
         uniform float uScale;
         attribute vec3 aColor; attribute float aLife; attribute float aSize;
         varying vec3 vColor; varying float vLife;
-        void main(){ vColor=aColor; vLife=aLife;
+        void main(){
+          // Burnt out: never rasterised (see FlamePool).
+          if (aLife <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+          vColor=aColor; vLife=aLife;
           vec4 mv = modelViewMatrix * vec4(position,1.0);
           gl_PointSize = clamp(aSize * (uScale / -mv.z), 1.0, ${(opts.maxPx ?? 60).toFixed(1)});
           gl_Position = projectionMatrix * mv; }
@@ -790,9 +779,8 @@ class ParticlePool {
 }
 
 let emberPool: ParticlePool | undefined;
-/** Every ball's shed fire, and the smoke off it: one draw each. */
+/** Every ball's shed fire: one draw for all of it. */
 let fireFx: FlamePool | undefined;
-let smokeFx: FlamePool | undefined;
 let poolTime = 0;
 const _c = new Color();
 
@@ -804,9 +792,8 @@ export function initFirePools(scene: Scene): void {
   // Sized for four balls in full flight (~110 live puffs each) with room
   // for launch flares; the point size caps (260 px) keep a puff against
   // your face from going full-screen in stereo.
-  fireFx = new FlamePool(1536, false, atlas);
-  smokeFx = new FlamePool(256, true, atlas);
-  scene.add(emberPool.points, smokeFx.points, fireFx.points);
+  fireFx = new FlamePool(1536, atlas);
+  scene.add(emberPool.points, fireFx.points);
 }
 
 /** Integrate all live particles. Call once per frame (FXSystem does). */
@@ -814,14 +801,12 @@ export function updateFirePools(dt: number): void {
   poolTime += dt;
   emberPool?.update(dt);
   fireFx?.update(dt, poolTime);
-  smokeFx?.update(dt, poolTime);
 }
 
 /** Remove particles when crossing between spatially unrelated experiences. */
 export function clearFirePools(): void {
   emberPool?.clear();
   fireFx?.clear();
-  smokeFx?.clear();
 }
 
 /**
