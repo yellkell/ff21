@@ -700,10 +700,29 @@ export function beatLenOf(track: Track): number {
  * file runs out. `bpm` is the CHART tempo (EXPERT doubles slow records) —
  * everything here is measured in chart beats, so a doubled clock affords
  * twice the phrases across the same seconds of music.
+ *
+ * `wholeFile` is FREE PLAY's measure: whole phrases threw away whatever
+ * didn't fill a last one — up to fourteen seconds of outro on some records,
+ * the set ending while the song played on. Instead the set runs to the last
+ * bar of the RECORD (a real bar, so a doubled clock counts two of its own)
+ * that still leaves one bar for the closer's flair before the file runs
+ * out, and the count comes back fractional: whole phrases plus a short
+ * last one. Without it — THE TOUR — sets stay whole phrases, as authored.
  */
-export function trackPhrases(track: Track, countInBeats: number, beatsPerPhrase = 32, bpm = track.bpm): number {
+export function trackPhrases(
+  track: Track,
+  countInBeats: number,
+  beatsPerPhrase = 32,
+  bpm = track.bpm,
+  wholeFile = false,
+): number {
   const beatLen = 60 / bpm;
   const zero = Math.max(track.downbeat, track.startAt ?? 0) + countInBeats * beatLen;
+  if (wholeFile) {
+    const bar = (beatsPerPhrase / 8) * Math.round(bpm / track.bpm);
+    const bars = Math.floor((track.seconds - zero) / beatLen / bar) - 1;
+    return Math.max(2, (bars * bar) / beatsPerPhrase);
+  }
   const beats = (track.seconds - zero) / beatLen - beatsPerPhrase / 8; // tail guard
   return Math.max(2, Math.floor(beats / beatsPerPhrase));
 }

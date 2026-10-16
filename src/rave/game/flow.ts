@@ -32,13 +32,15 @@ const phraseBeats = MUSIC.beatsPerBar * MUSIC.barsPerPhrase;
 /** Apply a track to the match: tempo, set length, id. The tempo mounted is
  *  the CHART tempo — EXPERT runs slow records in double time — so
  *  startRaid settles the difficulty before the track goes on. */
-function mountTrack(track: Track): void {
+function mountTrack(track: Track, tour: boolean): void {
   const bpm = chartBpm(track.bpm, match.difficulty);
   match.trackId = track.id;
   match.bpm = bpm;
   match.doubleTime = bpm !== track.bpm;
   match.beatLen = 60 / bpm;
-  match.phrases = trackPhrases(track, countInBeatsFor(bpm), phraseBeats, bpm);
+  // Off the tour the set rides the whole record, outro and all, with moves
+  // to the last bar; a tour night keeps whole phrases.
+  match.phrases = trackPhrases(track, countInBeatsFor(bpm), phraseBeats, bpm, !tour);
   match.grooveStreak = 0;
 }
 
@@ -91,7 +93,7 @@ export function startRaid(opts: RaidOptions = {}): void {
     (opts.trackId ? trackById(opts.trackId) : undefined) ??
     (match.preferredTrack ? trackById(match.preferredTrack) : undefined) ??
     pickRaidTrack(match.seed);
-  mountTrack(chosen);
+  mountTrack(chosen, Boolean(opts.tour));
   // Campaign nights stay night-sized even on marathon records.
   if (opts.tour) match.phrases = Math.min(match.phrases, TOUR.maxPhrases);
 
