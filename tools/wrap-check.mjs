@@ -314,14 +314,31 @@ check('closing the catalogue returns to STORE', (await wrap(`nav()`)).you === 's
     return { before, held: held ? `${held.kind}:${held.colour}` : null, after: p.owned('triangle', 13) };
   });
   check('HUB: tapping an unowned colour buys one and puts it on the pointer', bought.held === 'triangle:13' && bought.after === bought.before + 1, JSON.stringify(bought));
+  // RESET TO BASE: two taps take every mark off and put each back in the locker.
+  const reset = await page.evaluate(() => {
+    const p = window.__ff2.paint;
+    const prev = p.pack();
+    p.grant('dot', 3);
+    p.grant('stripe', 5);
+    p.take('dot', 3);
+    p.place('body', 0.75, 0.6);
+    p.take('stripe', 5);
+    p.place('head', 0.75, 0.6);
+    const marks = p.count();
+    const before = p.owned('dot', 3) + p.owned('stripe', 5);
+    window.__ff2.bayClick('pb:reset');
+    const afterOne = p.count();
+    window.__ff2.bayClick('pb:reset');
+    const out = { marks, afterOne, afterTwo: p.count(), refunded: p.owned('dot', 3) + p.owned('stripe', 5) - before };
+    p.set(p.unpack(prev));
+    return out;
+  });
+  check('HUB: RESET arms on one tap and strips every mark back to the locker on the second', reset.afterOne === reset.marks && reset.afterTwo === 0 && reset.refunded === reset.marks, JSON.stringify(reset));
   save('paint-tab', await page.evaluate(() => window.__ff2.modals.snap('paintbay')));
   await wrap(`act('open-shop')`);
-  await wrap(`act('tab-paint')`);
   await page.waitForTimeout(200);
   const shopBtns = await btns('shop');
-  check('HUB: STORE → PAINT sells the racks', (await up('shop')) && !(await up('paintbay')) && shopBtns.includes('pb:buy-0') && shopBtns.includes('pb:kind-dot'), shopBtns.filter((b) => b.startsWith('pb:')).slice(0, 6).join(','));
-  save('store-paint', await page.evaluate(() => window.__ff2.modals.snap('shop')));
-  await wrap(`act('tab-platforms')`);
+  check('HUB: the STORE sells no paint — paint is bought on the PAINT tab', (await up('shop')) && !(await up('paintbay')) && !shopBtns.includes('tab-paint') && !shopBtns.some((b) => b.startsWith('pb:')), shopBtns.join(','));
   await wrap(`act('custom-close')`);
   await page.waitForTimeout(200);
   check('HUB: CLOSE on any face closes the plate', !(await up('custom')) && !(await up('shop')) && !(await up('paintbay')));

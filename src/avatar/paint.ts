@@ -106,6 +106,23 @@ export const isGearPart = (part: PaintPart): boolean =>
 const LEGACY_GEAR = 0x80;
 const markLegacy = (p: PlacedPaint): PlacedPaint => (isGearPart(p.part) ? { ...p, variant: p.variant | LEGACY_GEAR } : p);
 
+/**
+ * TRUE SIZE ON THE HEAD. A len of 1 used to span 0.55 m on the bare skull
+ * and 0.2 m on a worn head or headgear (the gear measure), against 0.9 m
+ * on the body — so the dot that read right on the chest landed a third to
+ * a fifth that size on the head, and every mark up there had to be sized
+ * up by hand. A mark placed now carries this `variant` bit and is the same
+ * size in metres on the head as on the body. Marks placed before it keep
+ * their old measure (no bit), so nobody's face grows under them.
+ */
+const TRUE_SIZE = 0x40;
+/** Metres a len of 1 spans on the body (bodyChart) — and, at TRUE_SIZE, on the head. */
+const BODY_S = 0.9;
+const isHeadPart = (part: PaintPart): boolean => part === 'head' || part === 'gearHead' || part === 'gearFace';
+/** The metres-per-len a unit is drawn at: its surface's own `S`, or the
+ *  body's for a TRUE_SIZE mark on the head. */
+const unitS = (p: PlacedPaint, S: number): number => (p.variant & TRUE_SIZE && isHeadPart(p.part) ? BODY_S : S);
+
 /** Before the hands' gear was split (LOOK_VERSION 3, wire 6), one mark on
  *  'gearHands' was worn by BOTH hands — so an older look gets a copy of
  *  each on the right hand's surface, and reads exactly as it did. */
@@ -470,7 +487,7 @@ export function handTake(kind: PaintKind, colour: number): boolean {
   bay.held = {
     kind,
     colour,
-    variant: 0,
+    variant: TRUE_SIZE,
     part: 'body',
     u: 0.75,
     v: 0.5,
@@ -501,7 +518,7 @@ export function handPlace(part: PaintPart, u: number, v: number): boolean {
   const { kind, angle, len, wid } = bay.held;
   lastPose[kind] = { angle, len, wid };
   // A mark placed now is a fresh decal, whatever it was lifted as.
-  setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant: 0 }] });
+  setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant: TRUE_SIZE }] });
   bay.held = null;
   bay.version += 1;
   return true;
@@ -524,7 +541,7 @@ export function unitAt(part: PaintPart, u: number, v: number, map?: GearMap): nu
     const p = look.paint[i];
     if (p.part !== part) continue;
     const [dx, dy] = chartOffset(chart, p.u, p.v, u, v);
-    const d = unitSdf(p, dx, dy, chart.S);
+    const d = unitSdf(p, dx, dy, unitS(p, chart.S));
     if (d <= 0) return i;
     if (d < bestD) {
       bestD = d;
@@ -542,7 +559,14 @@ export function handLift(part: PaintPart, u: number, v: number, map?: GearMap): 
   const paint = [...myLook().paint];
   const [unit] = paint.splice(i, 1);
   setLook({ paint });
-  bay.held = unit;
+  // A head mark from before TRUE_SIZE comes up at the size it was drawn,
+  // so putting it back down doesn't grow it.
+  if (!(unit.variant & TRUE_SIZE) && isHeadPart(part)) {
+    const k = (isGearPart(part) ? GEAR_S : chartOf(part).S) / BODY_S;
+    unit.len = Math.max(0.01, unit.len * k);
+    unit.wid = Math.max(0.01, unit.wid * k);
+  }
+  bay.held = { ...unit, variant: TRUE_SIZE };
   bay.version += 1;
   return true;
 }
@@ -558,6 +582,17 @@ export function undoLast(): boolean {
   setLook({ paint });
   grantUnit(unit.kind, unit.colour);
   return true;
+}
+
+/** RESET TO BASE: every mark comes off the body and back into the locker —
+ *  the blank stands bare in its base tone and nothing bought is lost.
+ *  Returns how many marks came off. */
+export function stripAll(): number {
+  const { paint } = myLook();
+  if (!paint.length) return 0;
+  for (const unit of paint) grantUnit(unit.kind, unit.colour);
+  setLook({ paint: [] });
+  return paint.length;
 }
 
 /** The tutorial's graduation gift: one stripe in the contrast tone, once. */
@@ -625,7 +660,7 @@ function bodyChart(): Chart {
   const total = arc[arc.length - 1] || 1;
   // A len of 1 is 0.9 m: close to what the old flat canvas made of a mark
   // on the chest, so a look painted before the chart keeps its scale.
-  const c = newChart(0.9, CHART_ROWS);
+  const c = newChart(BODY_S, CHART_ROWS);
   for (let k = 0; k <= c.n; k++) {
     const at = (1 - k / c.n) * total;
     let seg = 0;
@@ -1003,7 +1038,7 @@ function bakePart(look: Look, part: PaintPart, fill: string, W: number, H: numbe
   // One word per texel (RGBA bytes, little-endian) — a fill, not a loop.
   new Uint32Array(img.data.buffer).fill(((255 << 24) | (b << 16) | (gg << 8) | r) >>> 0);
   const S = chartOf(part).S;
-  for (const p of look.paint) if (p.part === part) rasterUnit(img.data, g, S, p);
+  for (const p of look.paint) if (p.part === part) rasterUnit(img.data, g, unitS(p, S), p);
   return img;
 }
 
@@ -1073,8 +1108,9 @@ function rasterGearUnit(data: Uint8ClampedArray, map: GearMap, p: PlacedPaint, a
   const c = texelNear(map, p.u, p.v);
   if (c < 0) return;
   const f = decalFrame(map, c, p.angle);
-  const size = unitSize(p, GEAR_S);
-  const reach = unitReach(p, GEAR_S);
+  const S = unitS(p, GEAR_S);
+  const size = unitSize(p, S);
+  const reach = unitReach(p, S);
   const r2 = (reach + 0.004) ** 2;
   const depth = decalDepth(reach);
   const [cr, cg, cb] = rgbOf(PAINT.colours[p.colour] ?? 0xffffff);
@@ -1175,8 +1211,9 @@ function gearUnitAt(look: Look, part: PaintPart, u: number, v: number, map: Gear
       const dy = P[1] - f.o[1];
       const dz = P[2] - f.o[2];
       if (N[0] * f.n[0] + N[1] * f.n[1] + N[2] * f.n[2] < 0.1) continue;
-      if (Math.abs(dx * f.n[0] + dy * f.n[1] + dz * f.n[2]) > decalDepth(unitReach(p, GEAR_S))) continue;
-      d = shapeSdf(p.kind, unitSize(p, GEAR_S), dx * f.x[0] + dy * f.x[1] + dz * f.x[2], dx * f.y[0] + dy * f.y[1] + dz * f.y[2]);
+      const S = unitS(p, GEAR_S);
+      if (Math.abs(dx * f.n[0] + dy * f.n[1] + dz * f.n[2]) > decalDepth(unitReach(p, S))) continue;
+      d = shapeSdf(p.kind, unitSize(p, S), dx * f.x[0] + dy * f.x[1] + dz * f.x[2], dx * f.y[0] + dy * f.y[1] + dz * f.y[2]);
     }
     if (d <= 0) return i;
     if (d < bestD) {
@@ -1294,7 +1331,7 @@ export function applyGhost(root: Object3D, unit: PlacedPaint | null): void {
       store.scratch.data.set(store.base.data);
       const map = o.userData.paintMap as GearMap | undefined;
       if (map) rasterGearUnit(store.scratch.data, map, unit, GHOST_ALPHA);
-      else rasterUnit(store.scratch.data, gridOf(part, W, H), chartOf(part).S, unit, GHOST_ALPHA);
+      else rasterUnit(store.scratch.data, gridOf(part, W, H), unitS(unit, chartOf(part).S), unit, GHOST_ALPHA);
       g2d.putImageData(store.scratch, 0, 0);
       store.ghost = true;
       store.tex.needsUpdate = true;

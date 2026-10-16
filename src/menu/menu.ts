@@ -183,8 +183,6 @@ export type MenuAction =
   | 'gear-face'
   | 'gear-shoulders'
   | 'tab-colour'
-  /** The STORE's paint racks (its `pb:buy-*` ids route through paintbay.ts). */
-  | 'tab-paint'
   /** The PLATFORMS board's shelves (avatar/skins.ts DECK_SHELVES). */
   | `shelf-${string}`
   /** THE BANK: iron-dollars for money (net/bank.ts). `tab-bank` is the

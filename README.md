@@ -13,6 +13,17 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **PAINT IS BOUGHT WHERE IT IS USED, AND IT SITS RIGHT ON THE HEAD.**
+  The STORE's PAINT board is gone: a tap on a colour on the PAINT tab
+  buys one unit, and that is the one paint shop. A mark placed on the
+  head (the bare skull, a worn head or headgear) is now the same size in
+  metres as on the body. It used to land at a third to a fifth of that
+  size, so every mark up there had to be sized up by hand. Marks placed
+  before keep their size (`avatar/paint.ts` `TRUE_SIZE`). The PAINT
+  tab's new **RESET** takes every mark off and puts each unit back in
+  the locker: tap once to arm it (SURE?), tap again to strip. The
+  KNIGHT's great helm is carried smaller (0.95, from 1.09), with its rim
+  kept on the neck and the headgear refit to it (`avatar/heads.ts`).
 - **THE STILL ROOM IS STILL.** Step through its door and the hall's
   record drops to 0.3% (about −50 dB; it was 3%) and is muffled down to
   the kick (~240 Hz, where it used to leave the hats and vocal at
