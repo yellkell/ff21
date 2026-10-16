@@ -17,8 +17,9 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
   the club floor run the arena's sprung hand now (`avatar/handDriver.ts`,
   shared with `systems/PlayerGloveSystem.ts`): a squeeze rolls shut as a
   GRAB, and grip held with your finger off the trigger is a FINGER GUN —
-  thumb up to cock the hammer, thumb down for the BANG (the hand kicks,
-  sparks spit off the fingertip, the palm thumps). The club's pose frame
+  thumb up to cock the hammer, thumb down for the BANG (the hammer falls,
+  the hand kicks, the palm thumps — a gesture, so no sparks, in the club
+  or the arena). The club's pose frame
   carries each hand's touch and a shot COUNT (`'cp'` numbers 24–25,
   `packHandFlags`), so every room-mate's figure runs the same hand off
   your reads and fires on every shot, however quick, and you see theirs —

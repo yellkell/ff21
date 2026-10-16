@@ -35,7 +35,7 @@ import {
 } from 'three';
 import { buildBoxer, setAvatarAccent, solveTorso } from '../../avatar/boxer.js';
 import { SprungHand, unpackHandFlags, type HandInput } from '../../avatar/handDriver.js';
-import { HAND_ADDUCTION, HAND_REST_CURL, handIndexTip, INDEX_TIP_LENGTH, setHandCurl, setHandPose } from '../../avatar/hands.js';
+import { HAND_ADDUCTION, HAND_REST_CURL, setHandCurl, setHandPose } from '../../avatar/hands.js';
 import { toneSkinId, type BlankTone } from '../../avatar/mannequin.js';
 import { applyGear } from '../../avatar/gear.js';
 import { applyLook, type Look } from '../../avatar/paint.js';
@@ -54,10 +54,6 @@ export interface BlankDress {
   /** The glowsticks — a baton of light out of each fist. On by default
    *  (the ring, the course); the club floor and its mirror turn them off. */
   sticks?: boolean;
-  /** A finger gun's BANG (world muzzle, world aim) — the club floor throws
-   *  its sparks here. Without it the hand still kicks and drops its
-   *  hammer; there's just nothing spat out (the glass). */
-  onShot?: (muzzle: Vector3, aim: Vector3) => void;
 }
 
 /* Figure proportions the solver needs (the blank's are in avatar/boxer's
@@ -84,8 +80,6 @@ const _shoulder = new Vector3();
 const _tintC = new Color();
 const _whiteC = new Color(0xffffff);
 const _kickQ = new Quaternion();
-const _muzzle = new Vector3();
-const _aim = new Vector3();
 
 let stickGeo: CapsuleGeometry | null = null;
 function stick(): CapsuleGeometry {
@@ -290,19 +284,10 @@ export function buildDancer(hue: number, dress: BlankDress = {}): DancerRig {
           input.fire = false;
           shotsSeen[h] = null;
         }
-        const bang = hand.step(input, dt);
+        hand.step(input, dt);
         setHandPose(glove, hand.pose);
         // The kick lifts the muzzle, thumb side up, exactly as in a bout.
         if (Math.abs(hand.kick) > 1e-4) glove.quaternion.multiply(_kickQ.setFromAxisAngle(UP, side * hand.kick * 0.06));
-        if (bang && dress.onShot) {
-          const tip = handIndexTip(glove);
-          if (tip) {
-            glove.updateWorldMatrix(true, true);
-            tip.localToWorld(_muzzle.set(0, 0, -INDEX_TIP_LENGTH - 0.004));
-            tip.getWorldQuaternion(_kickQ);
-            dress.onShot(_muzzle, _aim.set(0, 0, -1).applyQuaternion(_kickQ));
-          }
-        }
       } else {
         setHandCurl(glove, ...HAND_REST_CURL);
         if (sprung[h]) {

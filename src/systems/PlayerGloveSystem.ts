@@ -17,9 +17,9 @@
  *                   meet it, wider the nearer it gets…
  *   CATCH           …and snaps shut the instant it lands, with a flash.
  *   FINGER GUN      grip held, index finger OFF the trigger, thumb up for
- *                   the hammer and down for the BANG: the hand kicks,
- *                   sparks spit from the muzzle and the controller thumps.
- *                   Pure show — the ball doesn't care.
+ *                   the hammer and down for the BANG: the hand kicks and
+ *                   the controller thumps. A gesture — no sparks, and the
+ *                   ball doesn't care.
  *
  * All of it is local — what other headsets see of your hands is still the
  * two analogue reads (setHandGrip) over the wire.
@@ -30,11 +30,10 @@ import { Quaternion, Vector3, type Group } from 'three';
 import { setGloveLit } from '../avatar/boxer.js';
 import { applyGear } from '../avatar/gear.js';
 import { readHand, SprungHand, type HandInput } from '../avatar/handDriver.js';
-import { buildHand, HAND_ADDUCTION, handIndexTip, INDEX_TIP_LENGTH, setHandPose } from '../avatar/hands.js';
+import { buildHand, HAND_ADDUCTION, setHandPose } from '../avatar/hands.js';
 import { applyLook, myLook } from '../avatar/paint.js';
 import { applyAvatarSkin } from '../avatar/skins.js';
 import { BallState, Fireball } from '../components/Fireball.js';
-import { emberBurst } from '../fx/fire.js';
 import { pulseHand } from '../input/haptics.js';
 import { myAvatarSkin, myGear, myTone } from '../menu/customization.js';
 
@@ -46,7 +45,6 @@ const _rayQ = new Quaternion();
 const _kickQ = new Quaternion();
 const _ballPos = new Vector3();
 const _handPos = new Vector3();
-const _tip = new Vector3();
 const UP = new Vector3(0, 1, 0);
 
 /** Recall: the hand starts opening when its ball is this close (m)… */
@@ -160,14 +158,7 @@ export class PlayerGloveSystem extends createSystem({
       st.wasReturning = returning;
 
       // --- spring everything toward its target, and BANG -----------------
-      if (st.hand.step(input, dt)) {
-        const tip = handIndexTip(glove);
-        if (tip) {
-          tip.localToWorld(_tip.set(0, 0, -INDEX_TIP_LENGTH - 0.004));
-          emberBurst(_tip, 7);
-        }
-        pulseHand(this.world.session as never, hand, 0.55, 45);
-      }
+      if (st.hand.step(input, dt)) pulseHand(this.world.session as never, hand, 0.55, 45);
       setHandPose(glove, st.hand.pose);
 
       // --- aim: knuckles down the pointing ray ---------------------------

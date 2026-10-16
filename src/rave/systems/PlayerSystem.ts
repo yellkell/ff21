@@ -53,8 +53,8 @@ import { match, me, showBeat } from '../game/state.js';
 import { setGloveLit } from '../../avatar/boxer.js';
 import { applyGear } from '../../avatar/gear.js';
 import { HAND_FLAGS_UNKNOWN, packHandFlags, readHand, SprungHand, type HandInput } from '../../avatar/handDriver.js';
-import { buildHand, HAND_ADDUCTION, handIndexTip, INDEX_TIP_LENGTH, setHandPose } from '../../avatar/hands.js';
-import { muzzleSparks, myHandFlags } from '../club/fingerGun.js';
+import { buildHand, HAND_ADDUCTION, setHandPose } from '../../avatar/hands.js';
+import { myHandFlags } from '../club/fingerGun.js';
 import { applyLook, myLook, paintState } from '../../avatar/paint.js';
 import { applyAvatarSkin } from '../../avatar/skins.js';
 import { customization, myAvatarSkin, myGear, myTone } from '../../menu/customization.js';
@@ -291,7 +291,6 @@ export class PlayerSystem extends createSystem({}) {
   init(): void {
     this.sticks = { left: this.buildStick(), right: this.buildStick() };
     this.scene.add(this.sparks.root);
-    this.scene.add(muzzleSparks.root);
     grooveView.burst = (heat = 1) => {
       const s = this.sticks.right;
       s.pulse = 1; // the whole reward answer, not just the sparks
@@ -444,7 +443,6 @@ export class PlayerSystem extends createSystem({}) {
 
     this.updateSticks(delta);
     this.sparks.update(delta);
-    muzzleSparks.update(Math.min(delta, 0.05));
     this.groove();
   }
 
@@ -692,17 +690,8 @@ export class PlayerSystem extends createSystem({}) {
           glove.quaternion.multiply(_q.setFromAxisAngle(UP, (hand === 'left' ? -1 : 1) * sprung.kick * 0.06));
         }
       }
-      // BANG: sparks off the fingertip, a thump in the palm.
-      if (bang) {
-        const tip = handIndexTip(glove);
-        if (tip) {
-          glove.updateMatrixWorld(true);
-          tip.localToWorld(_hand.set(0, 0, -INDEX_TIP_LENGTH - 0.004));
-          tip.getWorldQuaternion(_q);
-          muzzleSparks.shot(_hand, _tipAxis.set(0, 0, -1).applyQuaternion(_q));
-        }
-        this.buzz(hand, 0.55, 45);
-      }
+      // BANG: a thump in the palm. A gesture, not a weapon — no sparks.
+      if (bang) this.buzz(hand, 0.55, 45);
     }
   }
 
