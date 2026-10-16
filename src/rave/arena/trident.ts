@@ -29,6 +29,7 @@ import {
   Mesh,
   ShaderMaterial,
   TorusGeometry,
+  type Vector3,
   type Sprite,
   type SpriteMaterial,
 } from 'three';
@@ -221,6 +222,12 @@ export class CyberTrident {
     const climbing = reveal < 1;
     this.scanGlow.visible = climbing;
     this.scanGlow.position.y = y;
+  }
+
+  /** Where the prongs meet (world) — the point a blow is thrown out of. */
+  headWorld(out: Vector3): Vector3 {
+    this.root.updateMatrixWorld();
+    return this.root.localToWorld(out.copy(this.headGlow.position));
   }
 
   dispose(): void {

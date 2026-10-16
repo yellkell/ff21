@@ -579,6 +579,7 @@ export class CampaignSystem extends createSystem({
           early: number;
           root: number[];
           step: number[];
+          head: number[] | null;
         } => {
           const a = this.attack;
           const live = (a?.bolts ?? []).filter((b): b is Bolt => !!b);
@@ -600,14 +601,15 @@ export class CampaignSystem extends createSystem({
               const rem = due - a.time;
               const open =
                 isTridentTell(a.zones[i]) ||
-                a.zones[i].kind === 'half'
+                (a.zones[i].kind === 'half'
                   ? rem < GOOPLIATH.seesawGap * 1.9
-                  : a.windows[i] === undefined || rem <= Math.min(a.windows[i], due);
+                  : a.windows[i] === undefined || rem <= Math.min(a.windows[i], due));
               if (!open) early++;
             });
           }
           const root = this.rig || this.goop ? this.bossRootPos().toArray() : [];
-          return { early, root, step: this.lungeOff.toArray(), bolts, origins, fists, lunge: this.lungeCur, thrown: (a?.thrown ?? []).filter((t) => t === 1).length, impactsBurn };
+          const head = this.trident && this.tridentReveal > 0 ? this.trident.headWorld(new Vector3()).toArray() : null;
+          return { early, root, step: this.lungeOff.toArray(), bolts, origins, fists, head, lunge: this.lungeCur, thrown: (a?.thrown ?? []).filter((t) => t === 1).length, impactsBurn };
         },
         heal: (): void => {
           const me = fighterAt(0);
@@ -2556,15 +2558,21 @@ export class CampaignSystem extends createSystem({
     const ry = this.rig ? this.rig.root.rotation.y : Math.PI;
     const side = (target.x - root.x) * -Math.cos(ry) + (target.z - root.z) * Math.sin(ry);
     const arm = throwingArm(side, a.arm);
-    const from = this.fistPos(arm, new Vector3());
+    // THE TRIDENT throws every blow out of its own head, in its own colour,
+    // at EVERY marked deck at once: one stab, the whole squad struck. Out of
+    // whichever fist sat on a deck's side, and trail-less across the pit,
+    // the other decks' bolts read as nothing — he seemed to hit one deck.
+    const trident = zone.kind === 'pair' && this.trident && this.tridentReveal > 0 ? this.trident : null;
+    const from = trident ? trident.headWorld(new Vector3()) : this.fistPos(arm, new Vector3());
     const travel = Math.max(0.08, Math.min(this.throwTravel(), remaining));
     const mine = seat === this.mySeatId();
+    const tint = zone.kind === 'pair' ? (TRIDENT.forms[zone.form]?.color ?? this.def.accent) : this.def.accent;
     a.bolts[i] = new Bolt(this.scene, from, target, travel, DELIVERY.arcLift * from.distanceTo(target), {
-      halo: this.def.accent,
+      halo: tint,
       core: 0xffe9c2,
       size: DELIVERY.boltSize,
       trail: (p) => emberBurst(p, 2, true),
-    }, !mine);
+    }, !mine && !trident);
     this.swingFor(a.kind, zone);
     this.startLunge();
     if (a.time - this.throwSfxAt > 0.05) {
@@ -3788,7 +3796,12 @@ export class CampaignSystem extends createSystem({
         x += (c & 1 ? 1 : -1) * 0.45;
         z += (c & 2 ? 1 : -1) * 0.4;
       }
-      this.seatPoint(this.mySeatId(), x / 2, 0.05, z / 2, _head);
+      // Aimed at the whole squad: the doomed quarters on every marked deck,
+      // averaged — solo (one deck) that is just your own.
+      const seats = live?.seats.length ? live.seats : [this.mySeatId()];
+      _head.set(0, 0, 0);
+      for (const s of seats) _head.add(this.seatPoint(s, x / 2, 0.05, z / 2, _p));
+      _head.divideScalar(seats.length);
       _head.sub(_v).normalize();
       this.tridentAim.lerp(_head, Math.min(1, delta * 8)).normalize();
     }

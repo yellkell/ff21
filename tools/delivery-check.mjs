@@ -14,6 +14,7 @@
  *     to flash every beam at once as the move began);
  *   - a bolt is thrown for every kind that has one, and it LEAVES A FIST
  *     (its launch point is a gauntlet — or the gel's fist — not the deck);
+ *     THE TRIDENT's leave the weapon's own head instead;
  *   - every thrown impact point BURNS under its zone's own law: a throw may
  *     confirm the read, never land on safe ground;
  *   - the body STEPS IN behind the throw (the lunge), sweeps included;
@@ -86,13 +87,14 @@ async function bout(browser, label, acts, boss, kinds) {
   });
 
   /** Step until the attack ends (or the first bolt); fold stats as we go. */
-  const run = (stopAtFirstBolt) =>
-    page.evaluate((stopAtFirstBolt) => {
+  const run = (stopAtFirstBolt, fromHead) =>
+    page.evaluate(([stopAtFirstBolt, fromHead]) => {
       const T = window.__ff2.titan;
       const out = { sawBolt: false, firstFromFist: Infinity, maxLunge: 0, impactsBurn: null, done: false, peakBolts: 0, early: 0, minX: 0, maxX: 0 };
-      // The fists as they stood going INTO each frame — a throw samples the
-      // fist before that frame's swing moves it.
-      let fists = T.delivery().fists;
+      // The fists (or the trident's head) as they stood going INTO each
+      // frame — a throw samples them before that frame's swing moves them.
+      const launchers = (d) => (fromHead ? (d.head ? [d.head] : []) : d.fists);
+      let fists = launchers(T.delivery());
       for (let f = 0; f < 1500; f++) {
         if (!T.kind()) {
           out.done = true;
@@ -115,10 +117,10 @@ async function bout(browser, label, acts, boss, kinds) {
           }
           if (stopAtFirstBolt) break;
         }
-        fists = d.fists;
+        fists = launchers(d);
       }
       return out;
-    }, stopAtFirstBolt);
+    }, [stopAtFirstBolt, fromHead]);
 
   for (const [kind, throws] of Object.entries(kinds)) {
     await page.evaluate(() => window.__ff2.titan.heal());
@@ -133,7 +135,8 @@ async function bout(browser, label, acts, boss, kinds) {
     }
     // Before a single frame has run — what the headset draws right now.
     const atBuild = await page.evaluate(() => window.__ff2.titan.delivery().early);
-    const a = await run(shots);
+    const fromHead = kind === 'trident';
+    const a = await run(shots, fromHead);
     if (shots && a.sawBolt) {
       // Let the bolt get a third of the way out, then look.
       await page.evaluate(() => window.__ff2.titan.step(1 / 60, 7));
@@ -142,7 +145,7 @@ async function bout(browser, label, acts, boss, kinds) {
       writeFileSync(file, await page.screenshot());
       console.log(`  wrote ${file}`);
     }
-    const b = a.done ? a : await run(false);
+    const b = a.done ? a : await run(false, fromHead);
     const sawBolt = a.sawBolt || b.sawBolt;
     const firstFromFist = a.sawBolt ? a.firstFromFist : b.firstFromFist;
     const impactsBurn = a.impactsBurn ?? b.impactsBurn;
@@ -150,7 +153,8 @@ async function bout(browser, label, acts, boss, kinds) {
     check(`${kind}: no read shows before its turn`, atBuild === 0 && a.early === 0 && b.early === 0, `at build ${atBuild}, later ${Math.max(a.early, b.early)}`);
     if (throws) {
       check(`${kind}: a bolt is thrown`, sawBolt, `peak ${Math.max(a.peakBolts, b.peakBolts)} in flight`);
-      check(`${kind}: it leaves a fist`, firstFromFist < 0.05, `launched ${firstFromFist.toFixed(3)} m from a fist`);
+      const from = fromHead ? "the trident's head" : 'a fist';
+      check(`${kind}: it leaves ${from}`, firstFromFist < 0.05, `launched ${firstFromFist.toFixed(3)} m from ${from}`);
       check(
         `${kind}: every impact lands in the danger`,
         !!impactsBurn && impactsBurn.length > 0 && impactsBurn.every(Boolean),
@@ -182,6 +186,9 @@ await bout(browser, 'CHROMEHOOK, every floor attack thrown', ['campaign-0'], 'CH
   cross: true,
   wave: true,
   sweep: false,
+});
+await bout(browser, "VULTURE, the trident's blows out of its head", ['campaign-2'], 'VULTURE', {
+  trident: true,
 });
 await bout(browser, 'GOOPLIATH, every blow his body heaving', ['campaign-goopliath', 'campaign-launch-start'], 'GOOPLIATH', {
   seesaw: false,
