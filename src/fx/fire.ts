@@ -234,12 +234,17 @@ const FLAME_FRAG = /* glsl */ `
     vec2 uv = clamp(vUv, 0.004, 0.996);
     float i0 = mod(floor(uFrame), ${FLIP_FRAMES.toFixed(1)});
     float i1 = mod(i0 + 1.0, ${FLIP_FRAMES.toFixed(1)});
-    float a = texture2D(uAtlas, cell(i0, uv)).r;
-    float b = texture2D(uAtlas, cell(i1, uv)).r;
-    float v = mix(a * a, b * b, fract(uFrame));        // stored as sqrt
+    vec2 a = texture2D(uAtlas, cell(i0, uv)).rg;
+    vec2 b = texture2D(uAtlas, cell(i1, uv)).rg;
+    vec2 fb = mix(a * a, b * b, fract(uFrame));        // stored as sqrt
+    // ENGULF: at rest the fire stands off the iron (R, the 'front' pass —
+    // the cracked shot shows through); spun up and flying it wraps right
+    // over its face (G, the whole fire) and the shot goes white-hot.
+    float engulf = smoothstep(0.95, 1.4, uHeat);
+    float v = mix(fb.x, fb.y, engulf * 0.9);
     // Heat: a dead shot's fire is out; a roaring orbit burns white at heart.
     float lit = smoothstep(0.2, 0.85, uHeat);
-    float hot = clamp(v * (0.7 + 0.35 * uHeat), 0.0, 1.0);
+    float hot = clamp(v * (0.75 + 0.7 * max(uHeat - 0.6, 0.0) + 0.15), 0.0, 1.0);
     vec3 col = fireRamp(hot, uCool);
     float e = v * lit * uGain * (1.0 - 0.25 * vStretch);
     gl_FragColor = vec4(col * e, e);
@@ -440,7 +445,7 @@ const RIBBON_FRAG = /* glsl */ `
     v = max(v, 0.55 * smoothstep(0.35, 1.0, across) * (1.0 - vUv.y));
     float lit = smoothstep(0.2, 0.85, uHeat);
     float cool = 1.0 - 0.55 * vUv.y;                 // the tail burns down as it trails
-    vec3 col = fireRamp(clamp(v * (0.75 + 0.3 * uHeat) * cool, 0.0, 1.0), uCool);
+    vec3 col = fireRamp(clamp(v * (0.8 + 0.55 * uHeat) * cool, 0.0, 1.0), uCool);
     float e = v * lit * uGain * cool * smoothstep(0.0, 0.25, across);
     gl_FragColor = vec4(col * e, e);
   }
