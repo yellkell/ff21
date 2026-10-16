@@ -35,6 +35,7 @@ import { ARENA_BOUNDS, ARENA_GAP, ATTACH, CURL, curlRateFor, FIREBALL, NET } fro
 import { recordThrow } from '../debug/throwProbe.js';
 import { telemetry } from '../net/telemetry.js';
 import { classicDuel } from '../combat/layout.js';
+import { stageHeld } from '../experience/stageGate.js';
 
 const HANDS = ['left', 'right'] as const;
 type Hand = 0 | 1;
@@ -290,11 +291,16 @@ export class FireballSystem extends createSystem({
 
   update(delta: number): void {
     this.time += delta;
-    const live = app.state === 'playing' || app.state === 'training';
+    // THE STAGE, HELD (experience/stageGate.ts): picked from the lobby, the
+    // state flips at once but you're still in the backstreet while the
+    // curtain comes down — no fire burns until you're on the fight ground.
+    const held = stageHeld();
+    const live = (app.state === 'playing' || app.state === 'training') && !held;
 
-    // Lobby / queueing: no fire burns. Hide every ball ONCE, drop transients,
-    // then sleep — no camera reads, no command drain, no per-ball loop while
-    // the player stands at the menu. A bout's opening reset re-parks the pair.
+    // Lobby / queueing / crossing: no fire burns. Hide every ball ONCE, drop
+    // transients, then sleep — no camera reads, no command drain, no per-ball
+    // loop while the player stands at the menu. A bout's opening reset
+    // re-parks the pair.
     if (!live) {
       if (!this.idle) {
         this.idle = true;
@@ -307,7 +313,9 @@ export class FireballSystem extends createSystem({
           else obj.visible = false;
         }
       }
-      if (ballCommands.length) ballCommands.length = 0; // stray late commands
+      // Stray late commands — but mid-crossing they're the bout's own (a peer
+      // already on the ground), so keep them for the first live frame.
+      if (!held && ballCommands.length) ballCommands.length = 0;
       return;
     }
     this.idle = false;
