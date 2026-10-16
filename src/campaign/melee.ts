@@ -30,8 +30,10 @@ export interface MeleeMove {
   strike: number;
   recover: number;
   /** Blows in a chain (the piston): each one after the first comes from
-   *  the OTHER arm, wound up for `beat` seconds, aimed at where you are by
-   *  then. A block breaks the chain. */
+   *  the OTHER arm the moment the last one lands or whiffs, no recovery in
+   *  between, chambered for just `beat` seconds while the spent fist pulls
+   *  home, and aimed at where you are by then. A block breaks the chain;
+   *  only the last blow recovers. */
   combo?: number;
   beat?: number;
 }
@@ -175,9 +177,10 @@ export function segmentDistance(a: Vector3, b: Vector3, p: Vector3): number {
  *
  *  CHROMEHOOK — the manipulator jabs and drops the overhand; the crane hook
  *               does the wide work (the hook, the sweep).
- *  PISTONKAISER — THE PISTON: three straight ram punches from alternating
- *               arms on a beat, each at where you are when it fires — step
- *               left, right, left (or block one and break the chain); the
+ *  PISTONKAISER — THE PISTON: a three-punch combo, RIGHT, LEFT, RIGHT (its
+ *               own right), straight ram punches with only a short chamber
+ *               between each, every one at where you are when it fires —
+ *               keep stepping (or block one and break the chain); the
  *               overhand is its drop-forge.
  *  VULTURE    — the talons hook and scythe, and jab.
  *  JUGGERNAUT — the CLAP: both gauntlets swing in from the sides to meet on
@@ -195,7 +198,8 @@ export const MELEE: Record<Exclude<TitanStyle, 'goop'>, MeleeMove[]> = {
     { path: 'sweep', arm: 1, windup: 1.3, strike: 0.85, recover: 0.8 },
   ],
   piston: [
-    { path: 'piston', arm: 1, windup: 1.0, strike: 0.4, recover: 0.3, combo: 3, beat: 0.55 },
+    // arm 1 is the titan's right (it faces down its own −z): R, L, R.
+    { path: 'piston', arm: 1, windup: 1.0, strike: 0.4, recover: 0.45, combo: 3, beat: 0.3 },
     { path: 'overhand', arm: 0, windup: 1.25, strike: 0.6, recover: 0.75 },
   ],
   vulture: [
@@ -211,7 +215,7 @@ export const MELEE: Record<Exclude<TitanStyle, 'goop'>, MeleeMove[]> = {
   ],
   king: [
     { path: 'clap', arm: 'both', windup: 1.2, strike: 0.6, recover: 0.8 },
-    { path: 'piston', arm: 0, windup: 1.0, strike: 0.4, recover: 0.3, combo: 3, beat: 0.5 },
+    { path: 'piston', arm: 0, windup: 1.0, strike: 0.4, recover: 0.45, combo: 3, beat: 0.3 },
     { path: 'overhand', arm: 1, windup: 1.25, strike: 0.6, recover: 0.75 },
     { path: 'hook', arm: 0, windup: 1.1, strike: 0.6, recover: 0.7 },
     { path: 'spinback', arm: 0, windup: 1.25, strike: 0.48, recover: 0.7 },
