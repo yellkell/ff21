@@ -65,8 +65,8 @@ import {
   soloBoard,
   tourNightUnlocked,
 } from '../game/state.js';
+import { clubFloorLoading, clubFloorOpen } from '../club/doors.js';
 import {
-  inRoom,
   autoJoinFromUrl,
   openPublicFloor,
   hostRoom,
@@ -392,7 +392,7 @@ export class MenuSystem extends createSystem({}) {
     // THE CLUB keeps no front desk: with a room open you're standing on the
     // social floor, and the floor's controls live on the SOCIAL panel
     // (right Ⓐ). The board belongs to the foyer.
-    const social = inRoom() && !match.holdFoyer;
+    const social = clubFloorOpen();
     // `introUp`: the title card is still opaque and the board is sitting
     // right behind it. Holding it down until the black starts lifting does
     // two things at once — it takes no rays and no clicks while nobody can
@@ -760,6 +760,7 @@ export class MenuSystem extends createSystem({}) {
       Math.round(sfxVolume() * 10),
       menuMusic(),
       net.phase,
+      clubFloorLoading(),
       net.code,
       net.members.length,
       clearedTourNights().size,
@@ -781,7 +782,7 @@ export class MenuSystem extends createSystem({}) {
     if (key === this.lastKey) return;
     this.lastKey = key;
 
-    const social = inRoom() && !match.holdFoyer;
+    const social = clubFloorOpen();
     if ((match.screen === 'lobby' || match.screen === 'tour') && !social) {
       this.paintBoard();
     }
@@ -1024,7 +1025,11 @@ export class MenuSystem extends createSystem({}) {
   private drawStatusChip(g: CanvasRenderingContext2D): void {
     let dot = UI.faint;
     let text = 'OFFLINE';
-    if (net.phase === 'error') {
+    if (clubFloorLoading()) {
+      // In the room, but the hall is still landing: the doors open on it.
+      dot = UI.warn;
+      text = 'OPENING THE CLUB…';
+    } else if (net.phase === 'error') {
       dot = UI.danger;
       text = String(net.error ?? 'RELAY ERROR').toUpperCase().slice(0, 40);
     } else if (net.phase === 'connecting') {
@@ -2140,6 +2145,7 @@ export class MenuSystem extends createSystem({}) {
 
   private multiContent(buttons: PanelButton[]): void {
     const connecting = net.phase === 'connecting';
+    const loading = clubFloorLoading();
     // TWO DOORS, and they are genuinely different rooms — which is what
     // the old pair got wrong (both of them hosted). The top one is the
     // PUBLIC floor: press it and you are in, wherever the strangers are.
@@ -2147,9 +2153,9 @@ export class MenuSystem extends createSystem({}) {
     buttons.push({
       id: 'club',
       label: 'ENTER THE CLUB',
-      sub: 'the public floor · walk in, anyone can join you',
+      sub: loading ? 'opening the doors · the hall is loading…' : 'the public floor · walk in, anyone can join you',
       primary: true,
-      disabled: connecting,
+      disabled: connecting || loading,
       x: CONTENT_X,
       y: 210,
       w: CONTENT_W,

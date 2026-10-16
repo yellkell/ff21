@@ -47,7 +47,7 @@ import {
   type Texture,
   type WebGLRenderer,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { PALETTE, hueToColor } from '../config.js';
@@ -60,6 +60,7 @@ import { collapseStatic } from './merge.js';
 import { ARCADE_TITLES, registerArcade, SCREEN_H, SCREEN_W, type ArcadeCabinet, type ArcadeGameId } from './arcade.js';
 import { registerStep } from './step.js';
 import { adoptLedWall, loadDjGear } from './stageShow.js';
+import { markVenueReady, takeVenueBytes, VENUE_GLB } from './venue.js';
 import { font, onFontsReady } from '../ui/fonts.js';
 
 
@@ -168,7 +169,7 @@ function loadVenue(root: Group, renderer: WebGLRenderer | null): void {
       m.needsUpdate = true;
     }
   });
-  loader.load(VENUE + 'neon_club.glb', (gltf) => {
+  const onVenue = (gltf: GLTF): void => {
     const venue = gltf.scene;
     venue.name = 'venue';
     venue.traverse((o: Object3D) => {
@@ -203,7 +204,20 @@ function loadVenue(root: Group, renderer: WebGLRenderer | null): void {
     root.add(venue);
     venueNeon.mats = neonMats;
     mirrorTwin(venue);
-  });
+    markVenueReady();
+  };
+  // A hall that can't be had at all must not hold the floor shut for good:
+  // the doors open on the live layer, as they did before they waited.
+  const onFail = (error: unknown): void => {
+    console.error('[club] the venue failed to load', error);
+    markVenueReady();
+  };
+  // The bytes may already be here — the arena fetches them while its door
+  // is held (club/venue.ts). A failed fetch gets one more go via the loader.
+  takeVenueBytes().then(
+    (buf) => loader.parse(buf, VENUE, onVenue, onFail),
+    () => loader.load(VENUE_GLB, onVenue, undefined, onFail),
+  );
 }
 
 /**

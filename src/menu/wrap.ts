@@ -16,6 +16,7 @@ import { ladderFace } from './ladder.js';
 import { settingsFace } from './settingsFace.js';
 import { CARD_H, CARD_W, CHIP_H, CHIP_W, profileCardFace, profileChipFace } from './profilePop.js';
 import { GAME_TITLE, warmRoomServer } from '../config.js';
+import { prefetchVenue } from '../rave/club/venue.js';
 import { CAMP_W, CAREER_BOTTOM, CAREER_TOP, careerFace } from './campaignFace.js';
 
 /** One face of a wrap panel: everything Panel.paint needs. */
@@ -596,7 +597,12 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
       case 'wrap:tab-club':
         if (sealed() || app.state === 'queueing') return;
         wrapNav.center = id === 'wrap:tab-practice' ? 'practice' : 'club';
-        if (clubUp()) warmRoomServer();
+        if (clubUp()) {
+          warmRoomServer();
+          // The hall is the slow part of the door (sixteen megabytes):
+          // start it down the wire while the player reads the board.
+          prefetchVenue();
+        }
         return;
       case 'wrap:tab-arcade': // legacy deep link: boss activities now live in PLAY
         if (sealed() || app.state === 'queueing') return;
