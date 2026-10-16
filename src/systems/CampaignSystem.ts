@@ -3468,10 +3468,11 @@ export class CampaignSystem extends createSystem({
       // Mid-chain the spent fist rides home as the other one cocks.
       if (m.spent !== null) rig.reach[m.spent].w = 1 - u;
       this.playerHead(_head);
-      // A chained blow keeps the titan pressed in on you; an opening one
-      // only leans a quarter of the way.
-      this.meleeLungeTarget = (m.blow ? 1 : 0.25) * this.planLunge(m.arms, _head);
-      this.meleeLungeRate = m.blow ? 6 : 3;
+      // An opening blow leans a quarter of the way into the lunge; a
+      // chained one steps the titan back to its pad to wind up, so every
+      // punch of the combo comes across the gap again.
+      this.meleeLungeTarget = m.blow ? 0 : 0.25 * this.planLunge(m.arms, _head);
+      this.meleeLungeRate = m.blow ? 8 : 3;
       if (glow && glowMat) {
         glow.position.copy(m.at[m.arms[0]]);
         glowMat.opacity = 0.15 + 0.75 * Math.min(1, m.t / m.windup);
@@ -3593,10 +3594,10 @@ export class CampaignSystem extends createSystem({
   }
 
   /** A blow is spent, landed or whiffed. Mid-chain (THE PISTON) the other
-   *  arm chambers on the spot — no recovery, the spent fist pulling home as
-   *  it cocks — for a short beat, then fires at wherever you are by then.
-   *  The last blow of a chain (or a lone blow) recovers. A block never gets
-   *  here: it breaks the chain. */
+   *  arm chambers straight away — no recovery, the spent fist pulling home
+   *  as it cocks and the titan stepping back to wind up — for a short beat,
+   *  then fires at wherever you are by then. The last blow of a chain (or
+   *  a lone blow) recovers. A block never gets here: it breaks the chain. */
   private meleeFollowThrough(m: NonNullable<CampaignSystem['melee']>): void {
     const rig = this.rig;
     if (m.blow + 1 >= (m.move.combo ?? 1) || !rig?.fistWorld) {
@@ -3610,7 +3611,10 @@ export class CampaignSystem extends createSystem({
     rig.fistWorld(next, m.home[next]);
     m.stage = 'windup';
     m.t = 0;
-    m.windup = (m.move.beat ?? 0.5) * this.diff.charge;
+    // Never so short that the next fist could land inside the i-frames the
+    // last one left you: every punch of the combo can hurt.
+    const strike = m.move.strike * this.diff.charge;
+    m.windup = Math.max((m.move.beat ?? 0.5) * this.diff.charge, this.invuln - 0.5 * strike + 0.05);
     sfx.titanTell(this.def.style, 'melee', m.windup, this.def.scale);
   }
 
