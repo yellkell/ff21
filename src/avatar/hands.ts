@@ -528,10 +528,10 @@ export function setHandCurl(hand: Group, index: number, others: number, thumb: n
  * Pose a hand from the two analogue reads a controller gives, 0 open … 1
  * closed: the TRIGGER curls the index, the GRIP curls the rest, each
  * borrowing a little of the other (a real fist never leaves one finger
- * straight), and the thumb tucks across as either closes. The one formula
- * behind the pub's punters and the club's dancers — so a fist you make is
- * the same fist in the glass and on every other headset. (Your own hands
- * run the springier version in PlayerGloveSystem.)
+ * straight), and the thumb tucks across as either closes. The pub's
+ * punters wear it. (Your own hands, and everyone's on the club floor and
+ * in its glass, run the springier version that can also draw a finger
+ * gun: avatar/handDriver.ts.)
  */
 export function setHandGrip(hand: Group, trigger: number, squeeze: number): void {
   setHandCurl(hand, Math.max(trigger, squeeze * 0.6), Math.max(squeeze, trigger * 0.45), 0.35 + Math.max(trigger, squeeze) * 0.55);

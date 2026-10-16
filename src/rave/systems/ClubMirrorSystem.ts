@@ -58,6 +58,7 @@ import {
 import { mirrorRefs } from '../club/build.js';
 import { CLUB } from '../club/config.js';
 import { buildCoupe, type CoupeRefs } from '../club/props.js';
+import { myHandFlags } from '../club/fingerGun.js';
 import { buildDancer, type DancerPose, type DancerRig } from '../game/blankDancer.js';
 import { customization, myGear, myTone } from '../../menu/customization.js';
 import { myLook, paintState } from '../../avatar/paint.js';
@@ -403,6 +404,7 @@ export class ClubMirrorSystem extends createSystem({}) {
           p.lqw = _q.w;
           p.lt = trig;
           p.lg = sq;
+          p.lf = myHandFlags[0];
         } else {
           p.rqx = _q.x;
           p.rqy = _q.y;
@@ -410,14 +412,15 @@ export class ClubMirrorSystem extends createSystem({}) {
           p.rqw = _q.w;
           p.rt = trig;
           p.rg = sq;
+          p.rf = myHandFlags[1];
         }
       } else {
         if (hand === 'left') {
           p.lqw = 0;
-          p.lt = p.lg = undefined;
+          p.lt = p.lg = p.lf = undefined;
         } else {
           p.rqw = 0;
-          p.rt = p.rg = undefined;
+          p.rt = p.rg = p.rf = undefined;
         }
         // No controllers (headless walks): the same resting-hands guess
         // pumpClubPose() streams, so the glass agrees with the room.

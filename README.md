@@ -13,6 +13,18 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **GRABS AND FINGER GUNS YOU CAN SEE ACROSS THE CLUB.** Your hands on
+  the club floor run the arena's sprung hand now (`avatar/handDriver.ts`,
+  shared with `systems/PlayerGloveSystem.ts`): a squeeze rolls shut as a
+  GRAB, and grip held with your finger off the trigger is a FINGER GUN —
+  thumb up to cock the hammer, thumb down for the BANG (the hand kicks,
+  sparks spit off the fingertip, the palm thumps). The club's pose frame
+  carries each hand's touch and a shot COUNT (`'cp'` numbers 24–25,
+  `packHandFlags`), so every room-mate's figure runs the same hand off
+  your reads and fires on every shot, however quick, and you see theirs —
+  in the glass too. One fall of the hammer is one shot (it used to fire
+  on every frame the hammer took to drop). Older clients' frames still
+  read: their fists close, they just can't draw.
 - **STEEL HANDS EVERYWHERE, NO PLASTIC.** The quick match's articulated
   steel hands (`avatar/hands.ts`) are your hands in the menus now, not
   just in a bout: the arena lobby and the terrace

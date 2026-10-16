@@ -45,6 +45,7 @@ import { pickRaidTrack, trackById, tracksFor } from '../audio/tracks.js';
 import { platformRoot } from '../arena/arena.js';
 import { ballSpawnPos } from '../club/ball.js';
 import { CLUB_NET } from '../club/config.js';
+import { muzzleSparks, myHandFlags } from '../club/fingerGun.js';
 // MUTE and BLOCK are the safety console's to toggle now (ui/safety.ts owns
 // both homes); the floor's own MUSIC switch stays here, because it belongs
 // to the club and not to the ring.
@@ -507,7 +508,8 @@ export class ClubSocialSystem extends createSystem({}) {
       if (existing) continue;
       // No glowsticks on the floor: the club is a room you talk in, and a
       // baton of light in every fist read as a rave that never stopped.
-      const rig = buildDancer(hue, { ...body, sticks: false });
+      // Their finger guns spit into the floor's one spark field.
+      const rig = buildDancer(hue, { ...body, sticks: false, onShot: (muzzle, aim) => muzzleSparks.shot(muzzle, aim) });
       rig.root.visible = false;
       this.crowd.add(rig.root);
       const tagMat = new MeshBasicMaterial({
@@ -552,6 +554,9 @@ export class ClubSocialSystem extends createSystem({}) {
     else t.lt = t.lg = undefined;
     if (s.rg) [t.rt, t.rg] = s.rg;
     else t.rt = t.rg = undefined;
+    // …and their touch + shots: a grab, or a finger gun that fires.
+    t.lf = s.lf;
+    t.rf = s.rf;
     t.hx = s.hx;
     t.hy = s.hy;
     t.hz = s.hz;
@@ -610,6 +615,11 @@ export class ClubSocialSystem extends createSystem({}) {
         Math.round((gp?.getButtonValue(InputComponent.Squeeze) ?? 0) * 100) / 100,
       );
     }
+    // THE FINGER GUNS: each hand's touch and shots fired, one small
+    // integer apiece (club/fingerGun.ts) — so grip-without-trigger is a gun
+    // on every other headset, and its BANG lands there however short the
+    // hammer's fall was between two frames.
+    d.push(myHandFlags[0], myHandFlags[1]);
     sendClubPose(d);
   }
 
