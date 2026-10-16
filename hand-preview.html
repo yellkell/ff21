@@ -1,0 +1,166 @@
+<!doctype html>
+<!-- DEV-ONLY harness: the machined hands and the iron fireballs under the
+     backstreet's light, for screenshots. Not part of the game; never ship
+     or link this page.
+       ?pose=rest|grab|catch|gun|bang|fist   hold one pose (default: cycle)
+       ?lit=1                                bloom the hands
+       ?cam=near|wide                        framing (default near)
+       ?t=SECONDS                            freeze the clock (stable shots) -->
+<html>
+  <body style="margin:0; background:#07080b; overflow:hidden">
+    <div id="hud" style="position:fixed; left:12px; top:10px; font:600 14px system-ui; color:#9fb4d8; letter-spacing:.08em"></div>
+    <script type="module">
+      import {
+        ACESFilmicToneMapping,
+        Clock,
+        Color,
+        DirectionalLight,
+        EquirectangularReflectionMapping,
+        Group,
+        HemisphereLight,
+        PerspectiveCamera,
+        PMREMGenerator,
+        Quaternion,
+        Scene,
+        SRGBColorSpace,
+        TextureLoader,
+        Vector3,
+        WebGLRenderer,
+      } from 'three';
+      import { buildHand, HAND_ADDUCTION, setHandPose } from '/src/avatar/hands.ts';
+      import { setGloveLit } from '/src/avatar/boxer.ts';
+      import { applyAvatarSkin, avatarSkin } from '/src/avatar/skins.ts';
+      import { createFireVisual, initFirePools, stampTrail, updateFirePools } from '/src/fx/fire.ts';
+
+      const q = new URLSearchParams(location.search);
+      const fixedPose = q.get('pose');
+      const litParam = q.get('lit') === '1';
+      const frozen = q.has('t') ? Number(q.get('t')) : null;
+      const wide = q.get('cam') === 'wide';
+
+      const scene = new Scene();
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.outputColorSpace = SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+      window.__renderer = renderer; // dev: renderer.info for draw-call counts
+      window.__scene = scene;
+
+      const pmrem = new PMREMGenerator(renderer);
+      new TextureLoader().load('arena/neon/env_backstreet.jpg', (t) => {
+        t.mapping = EquirectangularReflectionMapping;
+        t.colorSpace = SRGBColorSpace;
+        scene.environment = pmrem.fromEquirectangular(t).texture;
+        scene.background = t;
+        scene.backgroundBlurriness = 0.35;
+        scene.backgroundIntensity = 0.45;
+      });
+      scene.add(new HemisphereLight(0x9fb8ff, 0x251a14, 0.35));
+      const key = new DirectionalLight(0xffe8d0, 2.6);
+      key.position.set(1.5, 2.5, 1.0);
+      scene.add(key);
+
+      const handsCam = q.get('cam') === 'hands';
+      const camera = new PerspectiveCamera(wide ? 70 : handsCam ? 38 : 55, innerWidth / innerHeight, 0.01, 50);
+      camera.position.set(0, 1.55, 0);
+      if (q.get('cam') === 'side') {
+        // Three-quarter on the left hand, from outside and a little ahead.
+        camera.fov = 34;
+        camera.updateProjectionMatrix();
+        camera.position.set(-0.52, 1.47, -0.72);
+        camera.lookAt(-0.17, 1.33, -0.46);
+      } else if (handsCam) camera.lookAt(0, 1.33, -0.42);
+      else camera.lookAt(0, wide ? 1.35 : 1.32, -1);
+
+      initFirePools(scene);
+
+      // --- the hands, held as the game holds them ---------------------------
+      const hands = [];
+      for (const side of [1, -1]) {
+        const g = buildHand(side);
+        applyAvatarSkin(g, avatarSkin(q.get('skin') ?? 'blank'));
+        const holder = new Group();
+        holder.position.set(side === 1 ? -0.17 : 0.17, 1.33, -0.42);
+        // Knuckles down the ray (−Z), a touch turned in and down, in the grip
+        // the controller gives (HAND_ADDUCTION: thumb side up).
+        holder.quaternion
+          .setFromAxisAngle(new Vector3(0, 1, 0), side * 0.22)
+          .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -0.18))
+          .multiply(HAND_ADDUCTION[side === 1 ? 0 : 1]);
+        holder.add(g);
+        scene.add(holder);
+        hands.push({ g, holder, side });
+      }
+
+      // --- fireballs ---------------------------------------------------------
+      const balls = [
+        { v: createFireVisual(0), pos: new Vector3(-0.45, 1.42, -1.1), heat: 0.8, label: 'hover' },
+        { v: createFireVisual(0), pos: new Vector3(0.0, 1.5, -1.25), heat: 1.45, label: 'orbit' },
+        { v: createFireVisual(1), pos: new Vector3(0.45, 1.42, -1.1), heat: 1.35, label: 'rival' },
+        { v: createFireVisual(0), pos: new Vector3(0.9, 1.2, -1.6), heat: 0.18, label: 'dead' },
+        { v: createFireVisual(0), pos: new Vector3(), heat: 1.25, label: 'flying', fly: true },
+      ];
+      for (const b of balls) {
+        b.v.group.position.copy(b.pos);
+        scene.add(b.v.group);
+      }
+
+      // --- poses -------------------------------------------------------------
+      const POSES = {
+        rest: { curl: [0.32, 0.3, 0.31, 0.32], spread: 0.18, thumb: 0.45, thumbUp: 0.2 },
+        grab: { curl: [0.85, 0.9, 0.95, 1.0], spread: 0.02, thumb: 0.8, thumbUp: 0 },
+        fist: { curl: [1, 1, 1, 1], spread: 0, thumb: 0.9, thumbUp: 0 },
+        catch: { curl: [-0.12, -0.12, -0.12, -0.12], spread: 1, thumb: 0.05, thumbUp: 0.3 },
+        gun: { curl: [0, 1, 1.04, 1.08], spread: 0, thumb: 0, thumbUp: 1 },
+        bang: { curl: [0, 1, 1.04, 1.08], spread: 0, thumb: 0.55, thumbUp: 0 },
+      };
+      const CYCLE = ['rest', 'grab', 'fist', 'catch', 'gun', 'bang'];
+      const cur = structuredClone(POSES.rest);
+      const lerp = (a, b, k) => a + (b - a) * k;
+
+      const camQ = new Quaternion();
+      const clock = new Clock();
+      let simT = 0;
+      const hud = document.getElementById('hud');
+      function frame() {
+        const dt = frozen === null ? Math.min(clock.getDelta(), 0.05) : 1 / 60;
+        simT = frozen === null ? simT + dt : frozen;
+        const name = fixedPose ?? CYCLE[Math.floor(simT / 1.6) % CYCLE.length];
+        const tgt = POSES[name];
+        const k = frozen === null ? Math.min(1, dt * 12) : 1;
+        for (let i = 0; i < 4; i++) cur.curl[i] = lerp(cur.curl[i], tgt.curl[i], k);
+        cur.spread = lerp(cur.spread, tgt.spread, k);
+        cur.thumb = lerp(cur.thumb, tgt.thumb, k);
+        cur.thumbUp = lerp(cur.thumbUp, tgt.thumbUp, k);
+        const lit = litParam || name === 'grab' || name === 'fist' || name === 'catch';
+        for (const h of hands) {
+          setHandPose(h.g, cur);
+          setGloveLit(h.g, lit, frozen === null ? dt : 1);
+        }
+        hud.textContent = `${name.toUpperCase()}${lit ? ' · LIT' : ''}`;
+
+        camera.getWorldQuaternion(camQ);
+        for (const b of balls) {
+          if (b.fly) {
+            // A throw across the alley, left to right, on a loop.
+            const u = ((frozen === null ? simT : frozen) * 1.9) % 1; // ~6 m/s, a real throw
+            b.v.group.position.set(-1.6 + 3.2 * u, 1.25 + Math.sin(u * Math.PI) * 0.35, -1.9);
+            if (frozen === null) stampTrail(b.v.group.position, false);
+          }
+          b.v.update(simT, b.heat, camQ);
+        }
+        updateFirePools(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(frame);
+      }
+      frame();
+      addEventListener('resize', () => {
+        renderer.setSize(innerWidth, innerHeight);
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+      });
+    </script>
+  </body>
+</html>
