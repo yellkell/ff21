@@ -41,23 +41,15 @@
  */
 
 import { createSystem, InputComponent } from '@iwsdk/core';
-import {
-  Group,
-  Mesh,
-  MeshBasicMaterial,
-  Quaternion,
-  Shape,
-  ShapeGeometry,
-  Vector3,
-} from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { XROrigin } from '@iwsdk/xr-input';
-import { OCTAGON_VERTICES, PALETTE } from '../config.js';
-import { octagonSlab } from '../arena/octagon.js';
+import { OCTAGON_VERTICES } from '../config.js';
 import * as sfx from '../audio/sfx.js';
-import { DECOR, TELEPORT, TELEPORT_AREAS, crossesWall, floorYAt, type FloorArea } from '../club/config.js';
+import { TELEPORT, TELEPORT_AREAS, TELEPORT_COLOURS, crossesWall, floorYAt, type FloorArea } from '../club/config.js';
+import { TeleportMarker } from '../club/teleportMarker.js';
 import { match } from '../game/state.js';
 import { course } from '../course/state.js';
 import { inRoom } from '../net/session.js';
@@ -133,9 +125,7 @@ export class ClubTeleportSystem extends createSystem({}) {
   private arcGeo!: LineGeometry;
   private arcMat!: LineMaterial;
   private arcBuf = new Array<number>(TELEPORT.arcPoints * 3).fill(0);
-  private marker!: Group;
-  private markerMat!: MeshBasicMaterial;
-  private arrowMat!: MeshBasicMaterial;
+  private marker!: TeleportMarker;
   private landing = new Vector3();
   private landingArea: FloorArea | null = null;
   private landingYaw = 0;
@@ -168,12 +158,13 @@ export class ClubTeleportSystem extends createSystem({}) {
   init(): void {
     teleportView.stepBack = () => this.stepBack();
     teleportView.snapTurn = (dir) => snapTurn(this.player, dir > 0 ? -TELEPORT.snapAngle : TELEPORT.snapAngle);
-    // Arc line — a fat world-unit ribbon in club brass (hazard-red when the
-    // landing is refused), LineBasicMaterial ignores width so Line2 it is.
+    // Arc line — a fat world-unit ribbon in the architecture's neon
+    // (hazard-red when the landing is refused), LineBasicMaterial ignores
+    // width so Line2 it is.
     this.arcGeo = new LineGeometry();
     this.arcGeo.setPositions(this.arcBuf);
     this.arcMat = new LineMaterial({
-      color: DECOR.brass,
+      color: TELEPORT_COLOURS.ok,
       linewidth: 0.014,
       worldUnits: true,
       transparent: true,
@@ -185,44 +176,15 @@ export class ClubTeleportSystem extends createSystem({}) {
     this.arc.visible = false;
     this.scene.add(this.arc);
 
-    // Octagon landing marker — the dancer's platform silhouette, ghosted.
-    this.markerMat = new MeshBasicMaterial({
-      color: DECOR.brass,
-      transparent: true,
-      opacity: 0.4,
-      depthWrite: false,
-    });
-    const slab = new Mesh(octagonSlab(OCTAGON_VERTICES, 0.012), this.markerMat);
-    this.marker = new Group();
-    this.marker.scale.setScalar(0.42); // a compact puck, not a full platform
-    this.marker.add(slab);
-
-    // The facing arrow inside it (points −z at yaw 0, like the camera).
-    const shape = new Shape();
-    shape.moveTo(0, 0.34);
-    shape.lineTo(0.16, 0.06);
-    shape.lineTo(0.06, 0.06);
-    shape.lineTo(0.06, -0.26);
-    shape.lineTo(-0.06, -0.26);
-    shape.lineTo(-0.06, 0.06);
-    shape.lineTo(-0.16, 0.06);
-    shape.closePath();
-    this.arrowMat = new MeshBasicMaterial({
-      color: DECOR.brass,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    });
-    const arrow = new Mesh(new ShapeGeometry(shape), this.arrowMat);
-    arrow.rotation.x = -Math.PI / 2;
-    arrow.position.y = 0.03;
-    this.marker.add(arrow);
-    this.marker.visible = false;
-    this.scene.add(this.marker);
+    // Octagon landing marker — the dancer's platform silhouette, drawn in
+    // light, with chevrons for the facing (see club/teleportMarker.ts).
+    this.marker = new TeleportMarker(OCTAGON_VERTICES, TELEPORT_COLOURS);
+    this.scene.add(this.marker.group);
   }
 
-  update(): void {
+  update(delta: number): void {
     this.watchRecenter();
+    this.marker.update(delta);
 
     // Movement belongs to the SOCIAL place only: the club floor, which is
     // open while a room is (hosting/joined) on a menu screen. The foyer is
@@ -366,13 +328,10 @@ export class ClubTeleportSystem extends createSystem({}) {
     const stickAngle = Math.atan2(axes.x, -axes.y); // 0 = pushed forward
     this.landingYaw = ctrlYaw - stickAngle;
 
-    const colour = this.valid ? DECOR.brass : PALETTE.danger;
-    this.markerMat.color.set(colour);
-    this.arrowMat.color.set(colour);
-    this.arcMat.color.set(colour);
-    this.marker.position.set(this.landing.x, this.landing.y + 0.012, this.landing.z);
-    this.marker.rotation.y = this.landingYaw;
-    this.marker.visible = true;
+    this.arcMat.color.set(this.valid ? TELEPORT_COLOURS.ok : TELEPORT_COLOURS.refused);
+    this.marker.group.position.set(this.landing.x, this.landing.y + 0.012, this.landing.z);
+    this.marker.group.rotation.y = this.landingYaw;
+    this.marker.show(this.valid);
     this.arc.visible = true;
   }
 
@@ -477,6 +436,6 @@ export class ClubTeleportSystem extends createSystem({}) {
     this.aimingHand = null;
     this.valid = false;
     this.arc.visible = false;
-    this.marker.visible = false;
+    this.marker.hide();
   }
 }

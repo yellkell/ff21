@@ -189,6 +189,14 @@ export const TELEPORT = {
   stepBack: [0.5, 0.34, 0.2],
 } as const;
 
+/** The arc + marker colours — GAMBLE FISH's, carried over with its marker
+ *  (club/teleportMarker.ts): a good landing glows sea-glass, a refused one
+ *  turns hazard red. (The old galvanised-steel puck went grey drawn as light.) */
+export const TELEPORT_COLOURS = {
+  ok: 0x5ee8d8,
+  refused: 0xe8352a,
+} as const;
+
 /** Where a teleport may land: floor rectangles + the height they stand at. */
 export interface FloorArea {
   minX: number;
