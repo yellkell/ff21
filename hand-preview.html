@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- DEV-ONLY harness: the machined hands and the iron fireballs under the
+<!-- DEV-ONLY harness: the machined hands and the fireballs (still, orbiting,
+     thrown across the alley and away from you) under the
      backstreet's light, for screenshots. Not part of the game; never ship
      or link this page.
        ?pose=rest|grab|catch|gun|bang|fist   hold one pose (default: cycle)
@@ -97,10 +98,11 @@
       // --- fireballs ---------------------------------------------------------
       const balls = [
         { v: createFireVisual(0), pos: new Vector3(-0.45, 1.42, -1.1), heat: 0.8, label: 'hover' },
-        { v: createFireVisual(0), pos: new Vector3(0.0, 1.5, -1.25), heat: 1.45, label: 'orbit' },
+        { v: createFireVisual(0), pos: new Vector3(0.0, 1.5, -1.25), heat: 1.45, label: 'orbit', orbit: true },
         { v: createFireVisual(1), pos: new Vector3(0.45, 1.42, -1.1), heat: 1.35, label: 'rival' },
         { v: createFireVisual(0), pos: new Vector3(0.9, 1.2, -1.6), heat: 0.18, label: 'dead' },
         { v: createFireVisual(0), pos: new Vector3(), heat: 1.25, label: 'flying', fly: true },
+        { v: createFireVisual(0), pos: new Vector3(), heat: 1.25, label: 'thrown', throwAway: true },
       ];
       for (const b of balls) {
         b.v.group.position.copy(b.pos);
@@ -143,6 +145,20 @@
 
         camera.getWorldQuaternion(camQ);
         for (const b of balls) {
+          const T = frozen === null ? simT : frozen;
+          if (b.orbit) {
+            // Whirling round a fist, as the trigger-held orbit does.
+            const a = T * 11;
+            b.v.group.position.set(b.pos.x + Math.cos(a) * 0.14, b.pos.y + Math.sin(a) * 0.14, b.pos.z);
+          }
+          if (b.throwAway) {
+            // Held off the right hand, then THROWN down the alley at 7 m/s.
+            const u = T % 1.7;
+            const held = 0.7;
+            const fly = Math.max(0, u - held);
+            b.heat = u < held ? 0.8 : 1.25;
+            b.v.group.position.set(0.12 - fly * 0.6, 1.36 + fly * 0.5, -0.55 - fly * 7.0);
+          }
           if (b.fly) {
             // A throw across the alley, left to right, on a loop.
             const u = ((frozen === null ? simT : frozen) * 1.9) % 1; // ~6 m/s, a real throw
