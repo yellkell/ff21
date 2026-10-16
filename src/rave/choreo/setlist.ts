@@ -718,8 +718,17 @@ export function generateSetlist(
   let last: MoveKind | null = null;
   let park: Park = { x: 0, z: 0 }; // everyone spawns dead centre
   let index = 0;
+  // FREE PLAY rides the whole record, so `phrases` can be fractional: whole
+  // phrases plus a short last one that ends on the record's last bar
+  // (tracks.ts trackPhrases). The closer's wind-up is reserved off the
+  // set's end, not the phrase grid — a last phrase shorter than the wind-up
+  // takes the reservation out of the phrase before it. (On whole phrases
+  // all of this reads exactly as it always did.)
+  const phraseCount = Math.ceil(phrases);
+  const setEnd = phrases * phraseBeats;
+  const closerAt = setEnd - closerChargeBeats(doubleTime);
 
-  for (let phrase = 0; phrase < phrases; phrase++) {
+  for (let phrase = 0; phrase < phraseCount; phrase++) {
     // A phrase is a place on the record, not merely a quota. When an easy
     // phrase's two moves finished early, the old shared cursor stayed there;
     // the NEXT phrase then spent its quota in the same stretch of music.
@@ -731,17 +740,21 @@ export function generateSetlist(
     // shelf's SERVICE — its phrases hold half the seconds, so the standard
     // quota and rests would land a third more often than any shipped chart.
     const pace = doubleTime ? CHOREO.doubleTimePace : CHOREO;
-    const want = pace.movesPerPhrase[Math.min(act, pace.movesPerPhrase.length - 1)];
-    const phraseEnd = (phrase + 1) * phraseBeats;
+    const phraseEnd = Math.min((phrase + 1) * phraseBeats, setEnd);
+    // A short last phrase owes its share of the quota, not all of it.
+    const want = Math.ceil(
+      (pace.movesPerPhrase[Math.min(act, pace.movesPerPhrase.length - 1)] * (phraseEnd - phrase * phraseBeats)) /
+        phraseBeats,
+    );
     const rest = pace.restBeats[Math.min(act, pace.restBeats.length - 1)];
-    const finalPhrase = phrase === phrases - 1;
+    const finalPhrase = phrase === phraseCount - 1;
     // The last quota includes THE CLOSER below, whose four-beat wind-up owns
     // the final bar. No rest is kept in front of it: a clear bar before the
     // one move the whole set has been building to is the emptiest the floor
     // ever felt, and the finale reads better arriving on the heels of the
     // move before it.
     const restHere = finalPhrase ? 0 : rest;
-    const moveEnd = finalPhrase ? phraseEnd - closerChargeBeats(doubleTime) : phraseEnd;
+    const moveEnd = Math.min(phraseEnd, closerAt);
     const ordinaryMoves = finalPhrase ? Math.max(0, want - 1) : want;
     // THE DEAD AIR CEILING: the quota is a FLOOR. While this phrase still
     // holds more than `maxSilent` beats of unclaimed music the loop keeps
@@ -826,8 +839,8 @@ export function generateSetlist(
   // so the ending is guaranteed without overlapping another landing or
   // letting a long random cascade spill past the record.
   if (phrases > 0) {
-    const landBeat = phrases * phraseBeats;
-    const act = actOfPhrase(phrases - 1, phrases, difficulty);
+    const landBeat = setEnd;
+    const act = actOfPhrase(phraseCount - 1, phrases, difficulty);
     const closer = buildAimed(landBeat, act, banned, last, park, rng);
     if (closer) {
       moves.push({
