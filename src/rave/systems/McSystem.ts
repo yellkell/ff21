@@ -54,7 +54,7 @@ import { dressMc, type McSuit } from '../game/mcCostume.js';
 import { course } from '../course/state.js';
 import { PoseMotion } from '../game/poseMotion.js';
 import { match, type GestureCue, showBeat } from '../game/state.js';
-import { inRoom } from '../net/session.js';
+import { clubFloorOpen } from '../club/doors.js';
 
 /** The eat window (song beats, negative = count-in) — mirrors GoopliathSystem. */
 const EAT_START = -2.8;
@@ -333,7 +333,7 @@ export class McSystem extends createSystem({}) {
       // Only when the club is actually up (ClubSystem's own rule): not while
       // the host is held in the foyer, not while you're out through THE STEP —
       // otherwise he stands on an empty stage spot in the void.
-      const social = inRoom() && !match.holdFoyer && !course.active;
+      const social = clubFloorOpen() && !course.active;
       const spot = social ? DECK_SPOT : MENU_SPOT;
       rig.root.position.set(spot.x, spot.y, spot.z);
       this.faceCrowd(spot.x, spot.z);

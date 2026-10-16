@@ -49,6 +49,7 @@ import { CLUB_NET } from '../club/config.js';
 // both homes); the floor's own MUSIC switch stays here, because it belongs
 // to the club and not to the ring.
 import { clubMusicOn, socialBlocked, socialMuted, toggleClubMusic } from '../club/social.js';
+import { venueReady } from '../club/venue.js';
 import {
   clearVoiceSpeakers,
   isSpeaking,
@@ -305,7 +306,7 @@ export class ClubSocialSystem extends createSystem({}) {
     const liveSet = net.phase === 'live';
 
     this.syncRoster(inRoom || liveSet);
-    this.crowd.visible = inClub && inRoom;
+    this.crowd.visible = inClub && inRoom && venueReady();
 
     // ── voice: capture + listener, whether on the floor or mid-set ──────
     this.voiceRetry = Math.max(0, this.voiceRetry - delta);

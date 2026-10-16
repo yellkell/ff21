@@ -34,6 +34,7 @@ import { mesh } from '../net/mesh.js';
 import { raveBridge } from '../rave/bridge.js';
 import type { FightDeal } from '../rave/club/bell.js';
 import type { RaveExperience, RavePlace } from '../rave/experience.js';
+import { prefetchVenue, venueFetched, venueReady } from '../rave/club/venue.js';
 import { DesertSystem } from '../systems/DesertSystem.js';
 import { Curtain } from './Curtain.js';
 import { setTownNavigationHandlers } from './clubNavigation.js';
@@ -74,14 +75,20 @@ const FLOOR_LOOK_MS = 200;
  *  curtain fell, so this is insurance against a socket dropping in the
  *  gap, not the wait itself. */
 const FLOOR_SETTLE_TICKS = 25;
+/** …and how many the hall gets to be decoded and standing. Its bytes are
+ *  already down (the held door waited for them), so this is the parse —
+ *  seconds on a headset, never the network — and the cap is insurance. */
+const VENUE_SETTLE_TICKS = 100;
 
 type FloorNet = typeof import('../rave/net/session.js');
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 /** What the CLUB tab reads out while the door is held. */
-function floorStatus(ms: number): string {
+function floorStatus(ms: number, inRoom = false): string {
   const s = Math.floor(ms / 1000);
+  // The house answered; the hall itself is still coming down the wire.
+  if (inRoom) return s < 8 ? 'bringing the room up…' : `bringing the room up · ${s}s`;
   if (s < 2) return 'knocking on the door…';
   if (s < 8) return 'the house is waking up…';
   return `waking the house — a cold host takes up to a minute · ${s}s`;
@@ -339,8 +346,12 @@ export function installTownExperienceManager(
         return true;
       }
       // Home from THE BELL (still a member of the room), or already on a
-      // floor: nothing to wait for.
-      if (net.net.dealtAway || net.inRoom()) return true;
+      // floor with the hall down: nothing to wait for.
+      if (net.net.dealtAway) return true;
+      // THE HALL is the other half of the door: its bytes come down while
+      // the house wakes, so the black never lifts on the DJ in the void.
+      prefetchVenue();
+      if (net.inRoom() && venueFetched()) return true;
 
       // The rave's chunk downloads while the host wakes — two waits, overlapped.
       void import('../rave/experience.js').catch(() => {});
@@ -349,7 +360,7 @@ export function installTownExperienceManager(
       let wanted = true;
       net.openPublicFloor(() => wanted);
       for (;;) {
-        if (net.inRoom()) return true;
+        if (net.inRoom() && venueFetched()) return true;
         if (app.state !== 'menu' || (sessionAtStart && world.session !== sessionAtStart)) {
           // The player went elsewhere: stand down, and close whatever
           // socket was still knocking.
@@ -358,7 +369,7 @@ export function installTownExperienceManager(
           net.leaveRoom();
           return false;
         }
-        app.venueStatus = floorStatus(performance.now() - t0);
+        app.venueStatus = floorStatus(performance.now() - t0, net.inRoom());
         await sleep(FLOOR_LOOK_MS);
       }
     } finally {
@@ -366,14 +377,22 @@ export function installTownExperienceManager(
     }
   };
 
-  /** Under the black: give the floor a moment to be open before the lift. */
-  const settleFloor = async (): Promise<void> => {
+  /** Under the black: give the floor a moment to be open, and the hall
+   *  time to stand, before the lift — the club is shown only with both. */
+  const settleFloor = async (gone: () => boolean): Promise<void> => {
     const net = floorNet;
-    if (!net) return;
-    for (let i = 0; i < FLOOR_SETTLE_TICKS && !net.inRoom(); i++) {
+    for (let i = 0; i < FLOOR_SETTLE_TICKS && net && !net.inRoom() && !gone(); i++) {
       await frame();
       await sleep(FLOOR_LOOK_MS);
     }
+    for (let i = 0; i < VENUE_SETTLE_TICKS && !venueReady() && !gone(); i++) {
+      await frame();
+      await sleep(FLOOR_LOOK_MS);
+    }
+    // One more beat for ClubSystem to swap the hall in and the render to
+    // catch it, so the first frame through the black is the room.
+    await frame();
+    await frame();
   };
 
   /* ── the crossings ─────────────────────────────────────────────────── */
@@ -446,9 +465,10 @@ export function installTownExperienceManager(
       await frame();
       await frame();
       // And the floor itself: the club is shown only once you are in a
-      // room, so the black waits for that — briefly, the door was held for
-      // it already — rather than lifting on the foyer.
-      if (place === 'club') await settleFloor();
+      // room AND its hall has loaded, so the black waits for both — the
+      // door was held for the room and the hall's bytes already — rather
+      // than lifting on the foyer, or on the DJ standing in the void.
+      if (place === 'club') await settleFloor(sessionGone);
       townView.crossing = 'lifting';
       await curtain.to(0, LIFT, frame);
     } catch (error) {
