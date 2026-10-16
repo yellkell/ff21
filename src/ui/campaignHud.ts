@@ -81,6 +81,23 @@ function line(ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
   ctx.restore();
 }
 
+/** The centre beat's sub-line, kept inside `maxW`: it shrinks to fit, and a
+ *  long one ("title defense · your intercontinental belt on the line")
+ *  breaks at its " · " onto two lines rather than running off the edges. */
+function subLine(ctx: CanvasRenderingContext2D, sub: string, x: number, y: number, maxW: number): void {
+  const fit = (text: string, px: number): number => fitType(ctx, text, px, maxW, 6, 600);
+  const cut = sub.indexOf(' · ');
+  if (cut < 0 || fit(sub, 42) >= 34) {
+    line(ctx, sub, x, y, 600, fit(sub, 42), KIT.dim, 6);
+    return;
+  }
+  const top = sub.slice(0, cut);
+  const bottom = sub.slice(cut + 3);
+  const px = Math.min(fit(top, 38), fit(bottom, 38));
+  line(ctx, top, x, y - px * 0.55, 600, px, KIT.dim, 6);
+  line(ctx, bottom, x, y + px * 0.55, 600, px, KIT.dim, 6);
+}
+
 function makeText(scene: Scene, w: number, h: number, meters: number): TextPlane {
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -216,7 +233,7 @@ export function createCampaignHud(scene: Scene): CampaignHud {
         // GLITCH type: the beat in white, lit by its accent, on the split.
         const px = fitType(ctx, text, 120, w - 80, 10);
         glitchText(ctx, text, w / 2, h / 2 - (sub ? 30 : 0), px, accent, { track: 10 });
-        if (sub) line(ctx, sub, w / 2, h / 2 + 78, 600, 42, KIT.dim, 6);
+        if (sub) subLine(ctx, sub, w / 2, h / 2 + 78, w - 80);
       }
       centre.tex.needsUpdate = true;
     },
