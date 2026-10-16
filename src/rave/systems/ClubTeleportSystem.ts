@@ -61,6 +61,7 @@ import { DECOR, TELEPORT, TELEPORT_AREAS, crossesWall, floorYAt, type FloorArea 
 import { match } from '../game/state.js';
 import { course } from '../course/state.js';
 import { inRoom } from '../net/session.js';
+import { venueReady } from '../club/venue.js';
 
 const _origin = new Vector3();
 const _dir = new Vector3();
@@ -230,8 +231,9 @@ export class ClubTeleportSystem extends createSystem({}) {
     // belongs to whatever platform you're standing on, and an arc would be
     // an answer to a question that experience refuses to ask.
     const menuRoom = match.screen === 'lobby' || match.screen === 'tour';
+    // …and not before the hall has loaded: no arcs across the void.
     const inClub =
-      menuRoom && inRoom() && !course.active;
+      menuRoom && inRoom() && venueReady() && !course.active;
 
     // A recentre moved the reference-space origin under our feet. In the
     // club, re-plant the rig on the banked pose so you stay exactly where

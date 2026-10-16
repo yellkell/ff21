@@ -88,6 +88,8 @@ const sceneRead = () =>
     };
     return {
       club: byName('the-club'),
+      // The baked hall (neon_club.glb) — sixteen megabytes that stream in.
+      hall: byName('venue'),
       arena: byName('arena-root') ?? byName('desert') ?? byName('arena'),
       curtain: byName('town-curtain'),
       course: byName('the-course'),
@@ -107,6 +109,12 @@ await settle();
 const firstMs = Date.now() - t0first;
 let t = await town();
 check('the curtain lifts on the VENUE', t.place === 'venue' && !t.busy, `${JSON.stringify(t)} in ${firstMs} ms (first visit builds the rave)`);
+// THE ROOM, LOADED. The black used to lift as soon as the floor was open,
+// with the hall still streaming in: the DJ at his decks and the props
+// standing in the void. It waits for the hall now (rave/club/venue.ts), so
+// the first frame through the curtain is the room.
+const lifted = await sceneRead();
+check('the black lifts on the hall, already loaded — not the DJ in the void', lifted.hall === true && lifted.club === true, JSON.stringify(lifted));
 check('the XR session never ended', await inSession(), 'app-entered still set');
 const raveHook = await page.evaluate(() => !!window.__gdr);
 check('the rave dev hook is installed by the mount', raveHook);
