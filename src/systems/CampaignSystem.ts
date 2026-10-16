@@ -375,6 +375,9 @@ export class CampaignSystem extends createSystem({
     t: number;
     windup: number;
     blow: number;
+    /** Mid-chain (THE PISTON): the arm that just threw, pulling home while
+     *  the other one chambers. */
+    spent: 0 | 1 | null;
     home: Vector3[];
     from: Vector3[];
     at: Vector3[];
@@ -3392,6 +3395,7 @@ export class CampaignSystem extends createSystem({
       t: 0,
       windup: move.windup * this.diff.charge,
       blow: 0,
+      spent: null as 0 | 1 | null,
       home: [new Vector3(), new Vector3()],
       from: [new Vector3(), new Vector3()],
       at: [new Vector3(), new Vector3()],
@@ -3459,11 +3463,16 @@ export class CampaignSystem extends createSystem({
         this.meleeCocked(i, path, _v);
         m.at[i].copy(m.home[i]).lerp(_v, u);
         rig.reach[i].at.copy(m.at[i]);
-        rig.reach[i].w = Math.min(1, rig.reach[i].w + delta * 6);
+        rig.reach[i].w = Math.min(1, rig.reach[i].w + delta * (m.spent === null ? 6 : 12));
       }
+      // Mid-chain the spent fist rides home as the other one cocks.
+      if (m.spent !== null) rig.reach[m.spent].w = 1 - u;
       this.playerHead(_head);
-      this.meleeLungeTarget = 0.25 * this.planLunge(m.arms, _head);
-      this.meleeLungeRate = 3;
+      // An opening blow leans a quarter of the way into the lunge; a
+      // chained one steps the titan back to its pad to wind up, so every
+      // punch of the combo comes across the gap again.
+      this.meleeLungeTarget = m.blow ? 0 : 0.25 * this.planLunge(m.arms, _head);
+      this.meleeLungeRate = m.blow ? 8 : 3;
       if (glow && glowMat) {
         glow.position.copy(m.at[m.arms[0]]);
         glowMat.opacity = 0.15 + 0.75 * Math.min(1, m.t / m.windup);
@@ -3477,6 +3486,8 @@ export class CampaignSystem extends createSystem({
           m.from[i].copy(m.at[i]);
           m.was[i].copy(m.at[i]);
         }
+        if (m.spent !== null) rig.reach[m.spent].w = 0;
+        m.spent = null;
         m.stage = 'strike';
         m.t = 0;
         this.meleeLungeTarget = m.lunge;
@@ -3543,11 +3554,11 @@ export class CampaignSystem extends createSystem({
             this.invuln = 0.7;
             this.damagePlayer(CAMPAIGN.attackDamage);
           }
-          this.meleeRecover(m);
+          this.meleeFollowThrough(m);
           return;
         }
       }
-      if (u >= 1) this.meleeRecover(m); // a whiff: it overcommitted into air
+      if (u >= 1) this.meleeFollowThrough(m); // a whiff: it overcommitted into air
       return;
     }
 
@@ -3561,20 +3572,6 @@ export class CampaignSystem extends createSystem({
     for (const i of m.arms) rig.reach[i].w = 1 - smooth(u);
     if (glowMat) glowMat.opacity = 0.9 * (1 - u);
     if (u < 1) return;
-    const chain = m.move.combo ?? 1;
-    if (!m.blocked && m.blow + 1 < chain) {
-      // THE PISTON: the other arm, wound up on the beat, at wherever you
-      // are by then.
-      m.blow++;
-      const next: 0 | 1 = m.arms[0] === 0 ? 1 : 0;
-      m.arms = [next];
-      rig.fistWorld(next, m.home[next]);
-      m.stage = 'windup';
-      m.t = 0;
-      m.windup = (m.move.beat ?? 0.5) * this.diff.charge;
-      sfx.titanTell(this.def.style, 'melee', m.windup, this.def.scale);
-      return;
-    }
     this.endMelee();
     this.cooldown = this.attackCooldown() + (m.blocked ? CAMPAIGN.meleeStagger : 0);
   }
@@ -3594,6 +3591,31 @@ export class CampaignSystem extends createSystem({
     }
     const room = Math.max(0, -this.bossZ() - CAMPAIGN.meleeStandOff - CAMPAIGN.meleeStandOffPerScale * this.def.scale);
     return Math.min(CAMPAIGN.meleeLungeMax, room, Math.max(0, lunge));
+  }
+
+  /** A blow is spent, landed or whiffed. Mid-chain (THE PISTON) the other
+   *  arm chambers straight away — no recovery, the spent fist pulling home
+   *  as it cocks and the titan stepping back to wind up — for a short beat,
+   *  then fires at wherever you are by then. The last blow of a chain (or
+   *  a lone blow) recovers. A block never gets here: it breaks the chain. */
+  private meleeFollowThrough(m: NonNullable<CampaignSystem['melee']>): void {
+    const rig = this.rig;
+    if (m.blow + 1 >= (m.move.combo ?? 1) || !rig?.fistWorld) {
+      this.meleeRecover(m);
+      return;
+    }
+    m.blow++;
+    m.spent = m.arms[0];
+    const next: 0 | 1 = m.spent === 0 ? 1 : 0;
+    m.arms = [next];
+    rig.fistWorld(next, m.home[next]);
+    m.stage = 'windup';
+    m.t = 0;
+    // Never so short that the next fist could land inside the i-frames the
+    // last one left you: every punch of the combo can hurt.
+    const strike = m.move.strike * this.diff.charge;
+    m.windup = Math.max((m.move.beat ?? 0.5) * this.diff.charge, this.invuln - 0.5 * strike + 0.05);
+    sfx.titanTell(this.def.style, 'melee', m.windup, this.def.scale);
   }
 
   private meleeRecover(m: NonNullable<CampaignSystem['melee']>): void {
