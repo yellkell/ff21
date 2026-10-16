@@ -475,6 +475,9 @@ function handle(msg: Record<string, unknown>): void {
       // …and the fingers' squeeze rides after the turn: a frame from
       // before the hands closed leaves them at rest.
       const grip = (o: number): [number, number] | undefined => (d.length >= o + 2 ? [d[o], d[o + 1]] : undefined);
+      // …and each hand's touch + shots after that: a frame from before the
+      // finger guns reads as a finger on every trigger — never a gun.
+      const flags = (o: number): number | undefined => (d.length > o && Number.isFinite(d[o]) ? d[o] : undefined);
       clubPoses.set(idx, {
         hx: d[0], hy: d[1], hz: d[2], hyaw: d[3],
         lx: d[4], ly: d[5], lz: d[6],
@@ -486,6 +489,8 @@ function handle(msg: Record<string, unknown>): void {
         rq: quat(16),
         lg: grip(20),
         rg: grip(22),
+        lf: flags(24),
+        rf: flags(25),
         t: performance.now(),
       });
       break;

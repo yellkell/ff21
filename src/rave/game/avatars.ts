@@ -103,6 +103,14 @@ export interface DancerPose {
   lg?: number;
   rt?: number;
   rg?: number;
+  /** Hand TOUCH + SHOTS, packed per hand (avatar/handDriver.ts
+   *  packHandFlags): whether a finger is on the trigger and the thumb on
+   *  the buttons, and how many BANGs the hand has fired. With the grip it
+   *  makes a finger gun — grip held, trigger untouched — that cocks and
+   *  fires. Absent, every finger is on its trigger: never a gun. Never
+   *  eased (it is bits, not a position). */
+  lf?: number;
+  rf?: number;
   /** 0 dancing … 1 melted on the deck (eliminated). */
   slump: number;
 }

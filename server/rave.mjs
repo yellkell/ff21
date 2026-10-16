@@ -797,9 +797,10 @@ wss.on('connection', (ws) => {
         if (!info) break;
         // Remembered for THE CHANNEL's peep (clubSnapshot): the head, the
         // hands, (since the hands learned to turn) their quaternions and
-        // (since the fingers closed) each hand's trigger and grip —
-        // twenty-four numbers at most, nothing the relay reads itself.
-        if (Array.isArray(msg.d) && msg.d.length >= 4 && msg.d.length <= 24 && msg.d.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+        // (since the fingers closed) each hand's trigger and grip and
+        // (since the finger guns) each hand's packed touch + shots —
+        // twenty-six numbers at most, nothing the relay reads itself.
+        if (Array.isArray(msg.d) && msg.d.length >= 4 && msg.d.length <= 26 && msg.d.every((n) => typeof n === 'number' && Number.isFinite(n))) {
           info.pose = msg.d;
           info.poseAt = Date.now();
         }

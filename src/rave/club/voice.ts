@@ -187,12 +187,44 @@ const SPEAKING_MS = 350; // recent-frame window for the "is talking" swell
 
 interface Speaker {
   panner: PannerNode;
+  /** THE STILL ROOM's wall, when it stands between you: a lowpass that is
+   *  wide open until then. */
+  wall: BiquadFilterNode;
   gain: GainNode;
+  walled: boolean;
   nextTime: number; // scheduling cursor in ctx time
   lastFrame: number; // performance.now() of the last frame
 }
 
 const speakers = new Map<string, Speaker>();
+
+/** Voices sit just above the music bed. */
+const VOICE_GAIN = 1.5;
+/** Through THE STILL ROOM's wall a voice is a murmur: a fifth of its
+ *  level, and nothing above the vowels — you can tell somebody is talking
+ *  out there, not what they're saying. */
+const WALL_GAIN = 0.2;
+const WALL_HZ = 500;
+const WALL_OPEN_HZ = 20000;
+
+/**
+ * Put THE STILL ROOM's wall between you and a speaker, or take it away —
+ * true when exactly one of you is inside. A conversation INSIDE the room
+ * is untouched; it's the hall's talk that stays out (and the room's that
+ * stays in). Eased, so walking through the door opens the room up rather
+ * than switching it.
+ */
+export function setVoiceSpeakerWalled(id: string, walled: boolean): void {
+  const speaker = speakers.get(id);
+  const ctx = audioContext();
+  if (!speaker || !ctx || speaker.walled === walled) return;
+  speaker.walled = walled;
+  const now = ctx.currentTime;
+  speaker.gain.gain.cancelScheduledValues(now);
+  speaker.gain.gain.setTargetAtTime(walled ? VOICE_GAIN * WALL_GAIN : VOICE_GAIN, now, 0.2);
+  speaker.wall.frequency.cancelScheduledValues(now);
+  speaker.wall.frequency.setTargetAtTime(walled ? WALL_HZ : WALL_OPEN_HZ, now, 0.2);
+}
 
 function ensureSpeaker(id: string): Speaker | null {
   const ctx = audioContext();
@@ -206,11 +238,15 @@ function ensureSpeaker(id: string): Speaker | null {
   panner.refDistance = 1.2;
   panner.maxDistance = 24;
   panner.rolloffFactor = 1.1;
+  const wall = ctx.createBiquadFilter();
+  wall.type = 'lowpass';
+  wall.frequency.value = WALL_OPEN_HZ;
+  wall.Q.value = 0.5;
   const gain = ctx.createGain();
-  gain.gain.value = 1.5; // voices sit just above the music bed
-  panner.connect(gain).connect(ctx.destination);
+  gain.gain.value = VOICE_GAIN;
+  panner.connect(wall).connect(gain).connect(ctx.destination);
 
-  const speaker: Speaker = { panner, gain, nextTime: 0, lastFrame: 0 };
+  const speaker: Speaker = { panner, wall, gain, walled: false, nextTime: 0, lastFrame: 0 };
   speakers.set(id, speaker);
   return speaker;
 }
@@ -318,6 +354,7 @@ export function removeVoiceSpeaker(id: string): void {
   const speaker = speakers.get(id);
   if (!speaker) return;
   speaker.panner.disconnect();
+  speaker.wall.disconnect();
   speaker.gain.disconnect();
   speakers.delete(id);
 }

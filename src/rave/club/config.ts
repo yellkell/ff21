@@ -86,7 +86,9 @@ export const CLUB = LAYOUT as unknown as {
   /** The way in: a landing at the hall's south edge, stairs up to the alley. */
   /** The way out: a closed pair of doors in a lit portal on the south wall. */
   entrance: { halfW: number; h: number; depth: number; leafH: number; landingZ: number };
-  /** THE STILL ROOM — the music ducks to a murmur inside; voices stay. */
+  /** THE STILL ROOM — the music ducks to a thud inside, the bar goes
+   *  unheard, and talk on the far side of its wall is a murmur; voices in
+   *  the room stay clear. */
   quiet: ClubRoom & {
     table: { x: number; z: number; half: number; y: number };
     window: { z0: number; z1: number; sill: number; top: number };
@@ -334,6 +336,13 @@ export const TELEPORT_AREAS: FloorArea[] = [
 ];
 
 /** Floor height under a point, for arcs and rigs (0 if outside any area). */
+/** Inside THE STILL ROOM's four walls (club world x/z) — where the hall's
+ *  music, its bar and its talk only arrive through the wall. */
+export function inStillRoom(x: number, z: number): boolean {
+  const Q = CLUB.quiet;
+  return x >= Q.minX && x <= Q.maxX && z >= Q.minZ && z <= Q.maxZ;
+}
+
 export function floorYAt(x: number, z: number): number {
   for (const a of TELEPORT_AREAS) {
     if (x >= a.minX && x <= a.maxX && z >= a.minZ && z <= a.maxZ) return a.y;

@@ -48,7 +48,7 @@
 import { createSystem, InputComponent } from '@iwsdk/core';
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import * as sfx from '../audio/sfx.js';
-import { CLUB, DECOR, floorYAt } from '../club/config.js';
+import { CLUB, DECOR, floorYAt, inStillRoom } from '../club/config.js';
 import {
   buildCoupe,
   coupeBottomOffset,
@@ -412,6 +412,13 @@ export class ClubPropsSystem extends createSystem({}) {
 
   /* ── the dumbwaiter (event-driven: 'serve' raises, a grab sinks) ──────── */
 
+  /** The bar's own noises — the plate's servo, its clank, the glass it
+   *  sets down — play where the bar can be heard: on the floor, and not
+   *  through THE STILL ROOM's wall. */
+  private barHeard(): boolean {
+    return this.group.visible && !inStillRoom(match.headX, match.headZ);
+  }
+
   private stepWaiter(delta: number): void {
     const topY = WAITER.top + 0.012;
     const downY = WAITER.top - WAITER.drop;
@@ -422,7 +429,7 @@ export class ClubPropsSystem extends createSystem({}) {
     this.plate.position.y = next;
     if (this.waiterPhase === 'rising' && Math.abs(target - next) < 0.004) {
       this.waiterPhase = 'up';
-      if (this.group.visible) sfx.glassTap(false);
+      if (this.barHeard()) sfx.glassTap(false);
     } else if (this.waiterPhase === 'sinking' && Math.abs(target - next) < 0.004) {
       this.waiterPhase = 'down';
     }
@@ -1103,7 +1110,7 @@ export class ClubPropsSystem extends createSystem({}) {
     glass.netAt = 0;
     this.served = glass;
     this.waiterPhase = 'rising';
-    if (this.group.visible) sfx.dumbwaiter(true);
+    if (this.barHeard()) sfx.dumbwaiter(true);
   }
 
   /** The relay's word on who holds a glass — grant, echo, or correction. */
@@ -1112,7 +1119,7 @@ export class ClubPropsSystem extends createSystem({}) {
     if (glass === this.served) {
       this.served = null;
       this.waiterPhase = 'sinking';
-      if (this.group.visible) sfx.dumbwaiter(false);
+      if (this.barHeard()) sfx.dumbwaiter(false);
     }
     if (idx === net.myIdx) return; // my own grant — it's already in hand
     // Someone else's hand (their claim landed first, or plain theirs).

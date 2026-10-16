@@ -72,6 +72,7 @@ export class PoseMotion {
     pose.yaw = sane(tgt.yaw, pose.yaw);
     for (const keys of QUAT_KEYS) for (const k of keys) pose[k] = tgt[k];
     for (const k of GRIP_KEYS) pose[k] = tgt[k] === undefined ? undefined : sane(tgt[k], 0);
+    for (const k of FLAG_KEYS) pose[k] = tgt[k];
     for (let i = 0; i < HAND_KEYS.length; i++) {
       pose[HAND_KEYS[i]] = sane(tgt[HAND_KEYS[i]], pose[HAND_KEYS[i]]);
       this.vel[i] = 0;
@@ -179,6 +180,8 @@ export class PoseMotion {
       if (cur === undefined || !Number.isFinite(cur)) cur = GRIP_REST[i];
       pose[key] = cur + (sane(want, cur) - cur) * kq;
     }
+    // The hands' touch and shots: bits, so they land as they are.
+    for (const k of FLAG_KEYS) pose[k] = tgt[k];
   }
 }
 
@@ -190,6 +193,8 @@ const QUAT_KEYS = [
 
 /** The hands' grip keys: trigger and grip, left then right. */
 const GRIP_KEYS = ['lt', 'lg', 'rt', 'rg'] as const;
+/** The hands' packed touch + shots, left then right — copied, never eased. */
+const FLAG_KEYS = ['lf', 'rf'] as const;
 /** Where a hand at rest starts chasing from, per GRIP_KEYS: the rest
  *  pose's index curl stands in for the trigger, its other fingers' for
  *  the grip (avatar/hands.ts HAND_REST_CURL). */

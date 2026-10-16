@@ -34,7 +34,7 @@
  * meniscus across the ring and 46 more slosh sims would buy nothing.
  */
 
-import { createSystem, InputComponent, Vector3 } from '@iwsdk/core';
+import { createSystem, Vector3 } from '@iwsdk/core';
 import {
   BackSide,
   CapsuleGeometry,
@@ -52,7 +52,9 @@ import { danceHue } from '../game/profile.js';
 import { match, me, showBeat } from '../game/state.js';
 import { setGloveLit } from '../../avatar/boxer.js';
 import { applyGear } from '../../avatar/gear.js';
-import { buildHand, HAND_ADDUCTION, setHandGrip, setHandPose } from '../../avatar/hands.js';
+import { HAND_FLAGS_UNKNOWN, packHandFlags, readHand, SprungHand, type HandInput } from '../../avatar/handDriver.js';
+import { buildHand, HAND_ADDUCTION, setHandPose } from '../../avatar/hands.js';
+import { myHandFlags } from '../club/fingerGun.js';
 import { applyLook, myLook, paintState } from '../../avatar/paint.js';
 import { applyAvatarSkin } from '../../avatar/skins.js';
 import { customization, myAvatarSkin, myGear, myTone } from '../../menu/customization.js';
@@ -72,6 +74,7 @@ const _ws = new Vector3();
 const _q = new Quaternion();
 const _gripQ = new Quaternion();
 const _rayQ = new Quaternion();
+const UP = new Vector3(0, 1, 0);
 const _c = new Color();
 const _white = new Color(0xffffff);
 
@@ -278,6 +281,12 @@ export class PlayerSystem extends createSystem({}) {
   private clock = 0;
   /** Your steel hands — the quick match's, see updateHands. */
   private hands: Partial<Record<'left' | 'right', Group>> = {};
+  /** …and what drives their fingers off the hook: the sprung hand. */
+  private sprung = { left: new SprungHand(), right: new SprungHand() };
+  private reads: Record<'left' | 'right', HandInput> = {
+    left: { trig: 0, sq: 0, trigTouch: true, thumbDown: true },
+    right: { trig: 0, sq: 0, trigTouch: true, thumbDown: true },
+  };
 
   init(): void {
     this.sticks = { left: this.buildStick(), right: this.buildStick() };
@@ -604,8 +613,12 @@ export class PlayerSystem extends createSystem({}) {
    *
    *   OPEN     on the club floor, in the foyer, at the board: locked to each
    *            grip, aimed down the pointing ray like a fighter's fists (so
-   *            a menu laser leaves from the knuckles), closing as you
-   *            squeeze and blooming while you do.
+   *            a menu laser leaves from the knuckles), and SPRUNG — the
+   *            arena's own hand (avatar/handDriver.ts): a squeeze rolls
+   *            shut as a grab, and grip-without-trigger is a FINGER GUN,
+   *            thumb up to cock, thumb down for the BANG. What they do is
+   *            published (club/fingerGun.ts) for the floor's pose stream,
+   *            so every room-mate sees the same grab and the same gun.
    *   HOLDING  from the count-in to the podium: closed round the glowstick
    *            (rave/game/stickGrip.ts). The stick leads — the hand is
    *            fitted to its pose after the shake has moved it, so the fist
@@ -618,7 +631,11 @@ export class PlayerSystem extends createSystem({}) {
    */
   private updateHands(delta: number, holding: boolean): void {
     const dress = `${customization.version}|${paintState.version}`;
+    const dt = Math.min(delta, 0.05);
     for (const [i, hand] of (['left', 'right'] as const).entries()) {
+      // Unknown — never a gun on anyone's headset — until a steel hand is
+      // out on a controller and has read it this frame.
+      myHandFlags[i] = HAND_FLAGS_UNKNOWN;
       const grip = this.world.playerSpaceEntities?.gripSpaces?.[hand]?.object3D;
       if (!grip) continue;
       let glove = this.hands[hand];
@@ -639,23 +656,27 @@ export class PlayerSystem extends createSystem({}) {
       glove.visible = show;
       if (!show) continue;
 
-      const gp = this.input.xr.gamepads[hand];
-      const trig = gp?.getButtonValue(InputComponent.Trigger) ?? 0;
-      const sq = gp?.getButtonValue(InputComponent.Squeeze) ?? 0;
+      const input = readHand(this.input.xr.gamepads[hand], this.reads[hand]);
+      const { trig, sq } = input;
       const squeezing = trig > 0.5 || sq > 0.5;
       const stick = this.sticks[hand];
+      const sprung = this.sprung[hand];
 
       if (holding && stick.attachedTo) {
         if (glove.parent !== stick.attachedTo) stick.attachedTo.add(glove);
         gripStick(glove, stick.group, i as 0 | 1, STICK_MID);
         setHandPose(glove, GRIP_POSE);
         setGloveLit(glove, squeezing || stick.pulse > 0.15, delta);
+        // Off the stick, the hand comes back from rest, not mid-gesture.
+        sprung.rest();
         continue;
       }
 
       if (glove.parent !== grip) grip.add(glove);
       glove.position.set(0, 0, 0);
-      setHandGrip(glove, trig, sq);
+      sprung.step(input, dt);
+      setHandPose(glove, sprung.pose);
+      myHandFlags[i] = packHandFlags(input.trigTouch, input.thumbDown, sprung.shots);
       setGloveLit(glove, squeezing, delta);
       // Knuckles down the pointing ray: cancel the grip's tilt, take the
       // ray's (PlayerGloveSystem does the same for a fight).
@@ -664,6 +685,10 @@ export class PlayerSystem extends createSystem({}) {
         grip.getWorldQuaternion(_gripQ);
         ray.getWorldQuaternion(_rayQ);
         glove.quaternion.copy(_gripQ).invert().multiply(_rayQ).multiply(HAND_ADDUCTION[i]);
+        // The gun's kick lifts the muzzle, exactly as in a bout.
+        if (Math.abs(sprung.kick) > 1e-4) {
+          glove.quaternion.multiply(_q.setFromAxisAngle(UP, (hand === 'left' ? -1 : 1) * sprung.kick * 0.06));
+        }
       }
     }
   }

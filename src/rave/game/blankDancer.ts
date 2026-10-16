@@ -34,7 +34,8 @@ import {
   Vector3,
 } from 'three';
 import { buildBoxer, setAvatarAccent, solveTorso } from '../../avatar/boxer.js';
-import { HAND_ADDUCTION, HAND_REST_CURL, setHandCurl, setHandGrip } from '../../avatar/hands.js';
+import { SprungHand, unpackHandFlags, type HandInput } from '../../avatar/handDriver.js';
+import { HAND_ADDUCTION, HAND_REST_CURL, setHandCurl, setHandPose } from '../../avatar/hands.js';
 import { toneSkinId, type BlankTone } from '../../avatar/mannequin.js';
 import { applyGear } from '../../avatar/gear.js';
 import { applyLook, type Look } from '../../avatar/paint.js';
@@ -78,6 +79,7 @@ const _hint = new Vector3();
 const _shoulder = new Vector3();
 const _tintC = new Color();
 const _whiteC = new Color(0xffffff);
+const _kickQ = new Quaternion();
 
 let stickGeo: CapsuleGeometry | null = null;
 function stick(): CapsuleGeometry {
@@ -184,7 +186,24 @@ export function buildDancer(hue: number, dress: BlankDress = {}): DancerRig {
 
   const clamp = (v: number, lim: number): number => Math.max(-lim, Math.min(lim, v || 0));
 
+  // THE SPRUNG HANDS (avatar/handDriver.ts) — the hand YOU run, driven off
+  // the reads a room-mate's headset streams, so their grab rolls shut and
+  // their finger gun cocks and fires. Built on the first pose that carries
+  // a grip: the ring's groupies and the MC never pay for one.
+  const sprung: (SprungHand | null)[] = [null, null];
+  const reads: HandInput[] = [
+    { trig: 0, sq: 0, trigTouch: true, thumbDown: true },
+    { trig: 0, sq: 0, trigTouch: true, thumbDown: true },
+  ];
+  /** Shots last counted per hand — null until a frame carries a count, so
+   *  the first sighting of somebody never fires their whole history. */
+  const shotsSeen: (number | null)[] = [null, null];
+  let lastPoseAt = 0;
+
   const pose = (p: DancerPose): void => {
+    const now = performance.now();
+    const dt = lastPoseAt ? Math.min(0.05, (now - lastPoseAt) / 1000) : 0;
+    lastPoseAt = now;
     const melt = p.slump;
     // MELT: the whole figure squashes toward the deck and the head hangs.
     figure.scale.y = 1 - melt * 0.72;
@@ -236,16 +255,46 @@ export function buildDancer(hue: number, dress: BlankDress = {}): DancerRig {
         );
         glove.quaternion.copy(_handQ.multiply(HAND_ADDUCTION[side < 0 ? 0 : 1]));
       }
-      // THE FINGERS, when the pose carries the grip: the same curl your
-      // own hand makes of the same squeeze (setHandGrip), so a fist made
-      // on the floor is a fist in the glass and on every other headset.
-      // A pose that never learned it (the ring's, the MC's) leaves the
-      // hand in the blank's half-relaxed rest — set every frame, because
-      // the same rig can go from a floor pose to a ring pose.
+      // THE FINGERS, when the pose carries the grip: your own sprung hand
+      // run off their trigger, grip and touch, so a grab made on the floor
+      // is a grab in the glass and on every other headset — and grip held
+      // with the trigger untouched is a finger gun, whose hammer falls and
+      // whose hand kicks when their shot count moves. A pose that never
+      // learned the grip (the ring's, the MC's) leaves the hand in the
+      // blank's half-relaxed rest — set every frame, because the same rig
+      // can go from a floor pose to a ring pose.
+      const h = side < 0 ? 0 : 1;
       const trig = side < 0 ? p.lt : p.rt;
       const grip = side < 0 ? p.lg : p.rg;
-      if (trig !== undefined || grip !== undefined) setHandGrip(glove, trig ?? 0, grip ?? 0);
-      else setHandCurl(glove, ...HAND_REST_CURL);
+      if (trig !== undefined || grip !== undefined) {
+        const hand = (sprung[h] ??= new SprungHand());
+        const flags = side < 0 ? p.lf : p.rf;
+        const input = reads[h];
+        input.trig = trig ?? 0;
+        input.sq = grip ?? 0;
+        if (flags !== undefined) {
+          const f = unpackHandFlags(flags);
+          input.trigTouch = f.trigTouch;
+          input.thumbDown = f.thumbDown;
+          input.fire = shotsSeen[h] !== null && f.shots !== shotsSeen[h];
+          shotsSeen[h] = f.shots;
+        } else {
+          // A frame from before the guns: a finger on every trigger.
+          input.trigTouch = input.thumbDown = true;
+          input.fire = false;
+          shotsSeen[h] = null;
+        }
+        hand.step(input, dt);
+        setHandPose(glove, hand.pose);
+        // The kick lifts the muzzle, thumb side up, exactly as in a bout.
+        if (Math.abs(hand.kick) > 1e-4) glove.quaternion.multiply(_kickQ.setFromAxisAngle(UP, side * hand.kick * 0.06));
+      } else {
+        setHandCurl(glove, ...HAND_REST_CURL);
+        if (sprung[h]) {
+          sprung[h] = null;
+          shotsSeen[h] = null;
+        }
+      }
     }
     if (crown) {
       crown.position.set(p.hx, p.hy + CROWN_RISE, p.hz);

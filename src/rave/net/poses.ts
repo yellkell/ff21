@@ -30,6 +30,11 @@ export interface RemotePose {
    *  frame carried it (club poses do since the fingers moved). */
   lg?: [number, number];
   rg?: [number, number];
+  /** Each hand's touch and shots fired, packed (avatar/handDriver.ts
+   *  packHandFlags), when the frame carried them (club poses do since the
+   *  finger guns) — what turns a squeeze into a grab or a gun. */
+  lf?: number;
+  rf?: number;
   /** Wall-clock ms of arrival (stale poses freeze rather than glide). */
   t: number;
 }
