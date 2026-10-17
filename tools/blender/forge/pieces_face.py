@@ -373,8 +373,11 @@ def panther_cranium(F, ctx):
 
 PANTHER = Head("panther", (-0.19, -0.15, -0.2), (0.19, 0.2, 0.2), panther_form, panther_parts, panther_cranium,
                h_low=0.0022, sharp=40.0, lows=panther_lows, registry=PIECES)
-PIECES["panther"] = dict(slot="face", build=PANTHER.build, tex=1024, uv_angle=66,
-                         fit=dict(s=(0.818, 0.723, 0.947), y=-0.0047, z=0.0245), view=dict(target=(0, 0.01, -0.02), dist=1.0))
+# PANTHER is dropped for now (the user, 2026-10-17: "panther which is awful
+# … just drop the panther for now"); the build stays here to start from,
+# out of the catalogue, its assets removed.
+# PIECES["panther"] = dict(slot="face", build=PANTHER.build, tex=1024, uv_angle=66,
+#                          fit=dict(s=(0.818, 0.723, 0.947), y=-0.0047, z=0.0245), view=dict(target=(0, 0.01, -0.02), dist=1.0))
 
 
 # ===========================================================================

@@ -119,7 +119,7 @@ function tiles(locker: boolean): Tile[] {
   const picked: Array<{ kind: 'platform' | 'gear'; def: PlatformSkin | GearDef; index: number }> = [];
   if (b === 'gear') {
     GEAR_CATALOGUE.forEach((g, i) => {
-      if (g.slot === customization.gearSlot && gearOwned(g.id) === locker) picked.push({ kind: 'gear', def: g, index: i });
+      if (!g.hidden && g.slot === customization.gearSlot && gearOwned(g.id) === locker) picked.push({ kind: 'gear', def: g, index: i });
     });
   } else if (b === 'platforms') {
     PLATFORM_SKINS.forEach((s, i) => {

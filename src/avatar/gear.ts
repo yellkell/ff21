@@ -68,6 +68,10 @@ export interface GearDef {
   price: number;
   /** One line for the tile. */
   blurb: string;
+  /** Pulled from the shelves for now: not sold, not shown in the locker,
+   *  and never worn (cleanGear drops it, so it rides no wire) — but still
+   *  KNOWN, so whoever owns it keeps it for when it comes back. */
+  hidden?: boolean;
 }
 
 /** The catalogue — ids are wire-stable, never renamed. */
@@ -109,7 +113,8 @@ export const GEAR: GearDef[] = [
   // Each replaces the bare skull; ids are the FF1 animals, never the old
   // skin ids (cobalt, crimson…), so nothing from the retired roster aliases.
   { id: 'bear', name: 'BEAR', slot: 'face', price: 400, blurb: 'a domed skull, a short deep muzzle' },
-  { id: 'panther', name: 'PANTHER', slot: 'face', price: 400, blurb: 'all cheek, a slanted stare, whiskers' },
+  // PANTHER is off the shelves until its Forge head is right (2026-10-17).
+  { id: 'panther', name: 'PANTHER', slot: 'face', price: 400, blurb: 'all cheek, a slanted stare, whiskers', hidden: true },
   { id: 'eagle', name: 'EAGLE', slot: 'face', price: 450, blurb: 'a hooked beak under a scowling brow' },
   { id: 'knight', name: 'KNIGHT', slot: 'face', price: 350, blurb: 'a great helm, a cross at the sight' },
   { id: 'stallion', name: 'STALLION', slot: 'face', price: 450, blurb: 'a long face, a swept mane' },
@@ -149,7 +154,7 @@ export function cleanGear(ids: readonly string[] | string | undefined | null): s
   for (const raw of list) {
     if (typeof raw !== 'string') continue;
     const def = gearDef(raw.trim());
-    if (!def || bySlot.has(def.slot)) continue;
+    if (!def || def.hidden || bySlot.has(def.slot)) continue;
     bySlot.set(def.slot, def.id);
   }
   return GEAR_SLOTS.map((s) => bySlot.get(s)).filter((v): v is string => !!v);
