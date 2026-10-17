@@ -34,6 +34,7 @@
     "check:tv": "node tools/tv-check.mjs",
     "check:promo": "node tools/promo-check.mjs",
     "check:bank": "node tools/bank-check.mjs",
+    "check:forge": "node tools/forge-check.mjs",
     "gear:gallery": "node tools/gear-gallery.mjs",
     "bot:check": "node bot/check.mjs && node bot/sim/smoke.mjs",
     "bot:train": "node bot/train/ppo.mjs",

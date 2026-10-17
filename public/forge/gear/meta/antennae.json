@@ -1,0 +1,1 @@
+{"slot":"head","tris":4760,"tex":512,"finishes":["shell","glow","trim","shell","shell","trim","trim","glow","glow"],"flops":{"ant_l":{"pivot":[0.11878,0.11243,-0.03568],"dir":[0.24009,0.79432,0.55804],"len":0.2413,"stiff":70.0,"damp":3.0,"swing":0.8},"ant_r":{"pivot":[-0.11878,0.11243,-0.03568],"dir":[-0.24009,0.79432,0.55804],"len":0.2413,"stiff":70.0,"damp":3.0,"swing":0.8}}}

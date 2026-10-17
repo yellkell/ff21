@@ -204,6 +204,8 @@ export type MenuAction =
   | `shop-pf-${number}`
   /** Tap a GEAR tile (wear / take off if owned; try on in the STORE). */
   | `shop-gr-${number}`
+  /** THE FORGE: pick a body shape on the locker's BODY board. */
+  | `frame-${string}`
   /** The BUY button on a previewed (tried-on) STORE tile. */
   | `shop-buy-av-${number}`
   | `shop-buy-pf-${number}`

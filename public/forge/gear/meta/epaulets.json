@@ -1,0 +1,1 @@
+{"slot":"shoulders","tris":8180,"tex":1024,"finishes":["shell","trim","trim","trim","glow"],"flops":{"fringe_l":{"pivot":[0.25382,0.42089,0.0],"dir":[0.25,-0.97,0.0],"len":0.085,"stiff":90.0,"damp":3.2,"swing":0.55},"fringe_r":{"pivot":[-0.25382,0.42089,0.0],"dir":[-0.25,-0.97,0.0],"len":0.085,"stiff":90.0,"damp":3.2,"swing":0.55}}}

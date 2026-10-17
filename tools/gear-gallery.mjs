@@ -51,6 +51,7 @@ const sheet = await page.evaluate(async ([only, accent]) => {
   const B = await import('/src/avatar/boxer.ts');
   const G = await import('/src/avatar/gear.ts');
   const S = await import('/src/avatar/skins.ts');
+  const F = await import('/src/avatar/forge.ts');
   const CELL = 300;
   const ids = only ?? G.GEAR.map((g) => g.id);
   const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -72,6 +73,10 @@ const sheet = await page.evaluate(async ([only, accent]) => {
   canvas.height = rows * CELL;
   const g2 = canvas.getContext('2d');
   let n = 0;
+  // THE FORGE: every piece remade in Blender loads its kit (and the body
+  // its frame) before the shot, or the sheet shows bare blanks.
+  await F.framesReady();
+  await Promise.all(ids.map((id) => F.loadForgeGear(id)));
   for (const id of ids) {
     const def = G.gearDef(id);
     const rig = B.buildBoxer(0);
@@ -86,6 +91,19 @@ const sheet = await page.evaluate(async ([only, accent]) => {
     S.applyAvatarSkin(fig, S.resolveAvatarSkin('blank', 0));
     B.setAvatarAccent(fig, accent);
     G.applyGear(fig, [id], 'white');
+    // The frame's kit is fetched on first use: wait for the body to wear it.
+    for (let t = 0; t < 50 && !fig.getObjectByProperty('name', 'opponent-body')?.children.some((c) => c.children.some((m) => m.userData?.frameWorn)); t++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    // …and the hands their machined kit (avatar/hands.ts), so hand gear is
+    // shot on the hands it is worn on, not the stand-in boxes.
+    for (let t = 0; t < 60 && !fig.getObjectByName('HAND_FRAME'); t++) await new Promise((r) => setTimeout(r, 50));
+    // …and the piece itself, if it is forged: its kit may land a beat later.
+    if (F.forgeGearState(id) !== 'none') {
+      const on = () => { let n = 0; fig.traverse((o) => { if (o.userData?.forged) n++; }); return n; };
+      for (let t = 0; t < 80 && !on(); t++) await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 150));
+    }
     scene.add(fig);
     // Frame the slot: head pieces close on the head, hand pieces on the hands.
     // [x, y, z] to orbit, distance, the two yaws (0 = from the front).

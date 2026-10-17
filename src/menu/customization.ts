@@ -16,6 +16,7 @@ import {
 } from '../avatar/skins.js';
 import { cleanGear, gearDef, type GearSlot, packGear } from '../avatar/gear.js';
 import type { BlankTone } from '../avatar/mannequin.js';
+import { paintFrame } from '../avatar/paint.js';
 
 function load(key: string, fallback: string): string {
   try {
@@ -149,9 +150,10 @@ function loadOwnedGear(): Set<string> {
 
 const ownedGear = loadOwnedGear();
 
-/** Has the player bought this piece of gear? */
+/** Has the player bought this piece of gear? (A FRAME — a body shape,
+ *  avatar/forge.ts — is never sold: everyone owns every one.) */
 export function gearOwned(id: string): boolean {
-  return ownedGear.has(id);
+  return ownedGear.has(id) || gearDef(id)?.slot === 'frame';
 }
 
 function saveOwnedGear(): void {
@@ -212,7 +214,7 @@ export function adoptOwned(owned: { platforms: string[]; gear: string[]; avatars
 /** The worn set ('ff-gear', the packed wire form) — anything not owned any
  *  more (or unknown) simply falls off. */
 function loadGear(): string[] {
-  return cleanGear(load('ff-gear', '')).filter((id) => ownedGear.has(id));
+  return cleanGear(load('ff-gear', '')).filter((id) => gearOwned(id));
 }
 
 /** The saved equipped avatar, or the panther if the saved one isn't owned. */
@@ -255,6 +257,7 @@ export const customization = {
    *  (avatar/gear.ts). Rides every cosmetics channel packed. */
   gear: loadGear(),
 };
+paintFrame.mine = myFrame();
 
 /** Try an unowned skin on: the mirror models an avatar, your own pad a platform. */
 export function setShopPreview(kind: 'avatar' | 'platform' | 'gear', id: string): void {
@@ -333,13 +336,24 @@ export function gearWith(id: string): string[] {
 /** Wear a piece you own in its slot (replacing whatever's there); '' bares
  *  the slot. Bumps the version so every rig that's YOURS redresses. */
 export function setGear(slot: GearSlot, id: string): void {
-  if (id && (!gearDef(id) || gearDef(id)!.slot !== slot || !ownedGear.has(id))) return;
+  if (id && (!gearDef(id) || gearDef(id)!.slot !== slot || !gearOwned(id))) return;
   const rest = customization.gear.filter((g) => gearDef(g)?.slot !== slot);
   const next = cleanGear(id ? [id, ...rest] : rest);
   if (next.join(',') === customization.gear.join(',')) return;
   customization.gear = next;
+  paintFrame.mine = myFrame();
   save('ff-gear', packGear(next));
   customization.version += 1;
+}
+
+/** The body shape worn (avatar/forge.ts) — STANDARD is the empty slot. */
+export function myFrame(): string {
+  return gearInSlot('frame') || 'standard';
+}
+
+/** Pick a body shape. STANDARD bares the slot. */
+export function setFrame(id: string): void {
+  setGear('frame', id === 'standard' ? '' : id);
 }
 
 /** A locker tap: wear it, or take it off if it's already on. */

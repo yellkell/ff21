@@ -35,13 +35,15 @@
 
 import { KIT, type PanelButton } from '../ui/kit/panel.js';
 import { font } from '../ui/kit/fonts.js';
-import { customization, platformOwned, gearOwned } from './customization.js';
+import { customization, gearOwned, myFrame, platformOwned } from './customization.js';
 import { canAfford, coins } from './wallet.js';
 import { DECK_SHELVES, PLATFORM_SKINS, PLATFORMS_OPEN, type PlatformSkin, platformShelf } from '../avatar/skins.js';
 import { GEAR as GEAR_CATALOGUE, type GearDef, type GearSlot } from '../avatar/gear.js';
 import { drawGearIcon, drawPlatformIcon } from './skinIcons.js';
 import { bankBoard } from './bankBoard.js';
 import { HUB_TITLE, hubTabs } from './paintbay.js';
+import { FRAMES, preloadFrame } from '../avatar/forge.js';
+import { drawIcon, forgeIcon } from './forgeIcons.js';
 
 export const LOCKER_W = 1024;
 export const LOCKER_H = 1024;
@@ -117,7 +119,7 @@ function tiles(locker: boolean): Tile[] {
   const picked: Array<{ kind: 'platform' | 'gear'; def: PlatformSkin | GearDef; index: number }> = [];
   if (b === 'gear') {
     GEAR_CATALOGUE.forEach((g, i) => {
-      if (g.slot === customization.gearSlot && gearOwned(g.id) === locker) picked.push({ kind: 'gear', def: g, index: i });
+      if (!g.hidden && g.slot === customization.gearSlot && gearOwned(g.id) === locker) picked.push({ kind: 'gear', def: g, index: i });
     });
   } else if (b === 'platforms') {
     PLATFORM_SKINS.forEach((s, i) => {
@@ -168,7 +170,7 @@ export function lockerFace(locker: boolean): LockerFace {
     ? [
         ['platforms', 'PLATFORMS', 'tab-platforms'],
         ['gear', 'GEAR', 'tab-gear'],
-        ['colour', 'COLOUR', 'tab-colour'],
+        ['colour', 'BODY', 'tab-colour'],
       ]
     : [
         ['platforms', 'PLATFORMS', 'tab-platforms'],
@@ -303,7 +305,11 @@ function drawTile(g: CanvasRenderingContext2D, t: Tile, locker: boolean, hover: 
   const cx = t.x + t.w / 2;
   const iconR = t.h * 0.24;
   const iconY = t.y + t.h * (tryOn ? 0.27 : 0.34);
-  if (gear) drawGearIcon(g, t.def as GearDef, cx, iconY, iconR, tint);
+  // THE FORGE's render of the piece (menu/forgeIcons.ts) when it has one;
+  // the drawn glyph until it lands, or for a piece not yet forged.
+  const art = gear ? forgeIcon(t.def.id) : null;
+  if (art) drawIcon(g, art, cx, t.y + t.h * (tryOn ? 0.29 : 0.36), t.w - 24, t.h * (tryOn ? 0.5 : 0.62));
+  else if (gear) drawGearIcon(g, t.def as GearDef, cx, iconY, iconR, tint);
   else drawPlatformIcon(g, t.def as PlatformSkin, cx, iconY, iconR);
 
   g.textAlign = 'center';
@@ -335,26 +341,74 @@ function drawTile(g: CanvasRenderingContext2D, t: Tile, locker: boolean, hover: 
   }
 }
 
-/* ── COLOUR: the base tone ────────────────────────────────────────────── */
+/* ── BODY: the base tone and THE FRAME ────────────────────────────────── */
+//
+// The board the locker calls BODY (its id is still 'tab-colour', for the
+// probes) carries the two things about the blank itself that are yours to
+// pick and cost nothing: the base TONE, and the FRAME — the body's shape
+// (avatar/forge.ts), four Blender builds that share one hitbox. Each frame
+// tile is a studio render of the frame itself.
+
+const FRAME_Y = BASE_Y + BASE_H + 74;
+const FRAME_GAP = 18;
+const FRAME_W = (INNER - (FRAMES.length - 1) * FRAME_GAP) / FRAMES.length;
+const FRAME_H = FOOT_Y - 30 - FRAME_Y;
 
 function colourButtons(): PanelButton[] {
   const onyx = customization.avatar === 'onyx';
   const half = (INNER - 24) / 2;
-  return [
+  const out: PanelButton[] = [
     { id: 'base-white', label: 'ALL WHITE', sub: onyx ? 'you, bare' : 'worn', x: M, y: BASE_Y, w: half, h: BASE_H, selected: !onyx },
     { id: 'base-black', label: 'ALL BLACK', sub: onyx ? 'worn' : 'you, in onyx', x: M + half + 24, y: BASE_Y, w: half, h: BASE_H, selected: onyx },
   ];
+  FRAMES.forEach((f, i) => {
+    preloadFrame(f.id); // the mirror changes the moment a tile is tapped
+    out.push({ id: `frame-${f.id}`, label: '', ghost: true, x: M + i * (FRAME_W + FRAME_GAP), y: FRAME_Y, w: FRAME_W, h: FRAME_H });
+  });
+  return out;
 }
 
-function colourBody(g: CanvasRenderingContext2D): void {
+function colourBody(g: CanvasRenderingContext2D, hover: string | null): void {
   g.textAlign = 'left';
   g.textBaseline = 'middle';
   g.font = font(700, 22);
   g.letterSpacing = '3px';
   g.fillStyle = KIT.faint;
-  g.fillText('THE BASE', M, BASE_Y - 26);
+  g.fillText('THE TONE', M, BASE_Y - 26);
+  g.fillText('THE FRAME', M, FRAME_Y - 26);
   g.letterSpacing = '0px';
-  g.font = font(500, 22);
+  g.textAlign = 'right';
+  g.font = font(500, 20);
   g.fillStyle = KIT.dim;
-  g.fillText('everything past the base tone is PAINT — the PAINT tab, up top', M, BASE_Y + BASE_H + 26);
+  g.fillText('one hitbox for every frame — paint follows you between them', M + INNER, FRAME_Y - 26);
+  const worn = myFrame();
+  FRAMES.forEach((f, i) => {
+    const x = M + i * (FRAME_W + FRAME_GAP);
+    const id = `frame-${f.id}`;
+    const on = worn === f.id;
+    const hot = hover === id;
+    g.beginPath();
+    g.roundRect(x, FRAME_Y, FRAME_W, FRAME_H, 18);
+    g.fillStyle = on ? KIT.accentFaint : hot ? KIT.plateHover : KIT.plate;
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = on ? KIT.accent : hot ? KIT.lineHover : KIT.line;
+    g.stroke();
+    if (on) {
+      g.fillStyle = KIT.accent;
+      g.beginPath();
+      g.roundRect(x + 8, FRAME_Y + 14, 5, FRAME_H - 28, 2.5);
+      g.fill();
+    }
+    const cx = x + FRAME_W / 2;
+    const img = forgeIcon(`frame-${f.id}`);
+    if (img) drawIcon(g, img, cx, FRAME_Y + (FRAME_H - 96) / 2 + 8, FRAME_W - 16, FRAME_H - 104);
+    g.textAlign = 'center';
+    g.font = font(700, 26);
+    g.fillStyle = on || hot ? KIT.textHi : KIT.text;
+    g.fillText(f.name, cx, FRAME_Y + FRAME_H - 62, FRAME_W - 20);
+    g.font = font(on ? 600 : 500, 18);
+    g.fillStyle = on ? KIT.accent : KIT.dim;
+    g.fillText(on ? 'WORN' : hot ? f.blurb : 'tap to wear', cx, FRAME_Y + FRAME_H - 28, FRAME_W - 16);
+  });
 }

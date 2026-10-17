@@ -395,3 +395,32 @@ export function mergePiece(root: Group): void {
   });
   for (const e of empty) e.removeFromParent();
 }
+
+/**
+ * THE FORGE's pieces come with their atlas already laid (Blender unwraps
+ * every piece into one UV sheet, islands sized by real area — docs/forge.md),
+ * so there is nothing to pack: each paintable mesh is one island in its own
+ * UVs, and the map is rasterized straight from them. Same map, same
+ * decals, same memo; `key` must not collide with a procedural piece's.
+ */
+export function mapFromUv(root: Group, meshes: Mesh[], key: string, size: number): GearMap {
+  const cached = maps.get(key);
+  if (cached && cached.W === size) return cached;
+  root.updateMatrixWorld(true);
+  const islands: Island[] = [];
+  for (const mesh of meshes) {
+    const geo = mesh.geometry;
+    const pos = geo.getAttribute('position');
+    if (!geo.getAttribute('uv')) continue;
+    const index = geo.getIndex();
+    const tris: number[] = [];
+    const count = index ? index.count : pos.count;
+    for (let k = 0; k < count; k++) tris.push(index ? index.getX(k) : k);
+    const verts = Array.from({ length: pos.count }, (_, i) => i);
+    islands.push(islandFrom(mesh, tris, verts));
+  }
+  const map = rasterMap(islands, key, size, size);
+  map.rects = [[0, 0, 1, 1]];
+  maps.set(key, map);
+  return map;
+}

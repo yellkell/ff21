@@ -104,6 +104,39 @@ export const isGearPart = (part: PaintPart): boolean =>
   part === 'gearHead' || part === 'gearBody' || part === 'gearHands' || part === 'gearHandsR' || part === 'gearFace' || part === 'gearShoulders';
 /** `variant` bit: a gear unit placed before the atlas (see LOOK_VERSION). */
 const LEGACY_GEAR = 0x80;
+/**
+ * `variant` bit: a gear unit placed on a FORGE piece (avatar/forge.ts),
+ * whose (u, v) is that piece's Blender atlas. A gear unit without it was
+ * placed on the old procedural shape's atlas; on a forged piece it is
+ * carried across by where it sat in 3D (setGearRemap), so nobody's paint
+ * is lost when their pauldrons are remade.
+ */
+const FORGE_ATLAS = 0x20;
+
+type GearRemap = (map: GearMap, u: number, v: number) => [number, number] | null;
+let gearRemap: GearRemap | null = null;
+/** avatar/gear.ts hands THE PAINT its way from an old atlas to a Forge one. */
+export function setGearRemap(fn: GearRemap): void {
+  gearRemap = fn;
+}
+const remapped = new Map<string, [number, number] | null>();
+/** The gear surfaces last baked on a Forge piece: a mark placed there with
+ *  no map to hand (a dev hook, a probe) is a Forge mark all the same. */
+const forgedParts = new Set<PaintPart>();
+
+/** A gear unit as it lands on `map`: itself, carried onto a Forge atlas,
+ *  or null (a pre-atlas stamp has no place on a forged shape). */
+function onMap(p: PlacedPaint, map: GearMap): PlacedPaint | null {
+  if (!map.key.startsWith('forge:') || p.variant & FORGE_ATLAS) return p;
+  if (p.variant & LEGACY_GEAR) return null;
+  const key = `${map.key}|${p.u.toFixed(4)}|${p.v.toFixed(4)}`;
+  let uv = remapped.get(key);
+  if (uv === undefined) {
+    uv = gearRemap?.(map, p.u, p.v) ?? null;
+    remapped.set(key, uv);
+  }
+  return uv ? { ...p, u: uv[0], v: uv[1], variant: p.variant | FORGE_ATLAS } : null;
+}
 const markLegacy = (p: PlacedPaint): PlacedPaint => (isGearPart(p.part) ? { ...p, variant: p.variant | LEGACY_GEAR } : p);
 
 /**
@@ -511,14 +544,16 @@ export function handReturn(): void {
 }
 
 /** Commit the held unit onto the body at the hovered spot. */
-export function handPlace(part: PaintPart, u: number, v: number): boolean {
+export function handPlace(part: PaintPart, u: number, v: number, map?: GearMap): boolean {
   if (!bay.held) return false;
   const look = myLook();
   if (look.paint.length >= PAINT.maxUnits) return false;
   const { kind, angle, len, wid } = bay.held;
   lastPose[kind] = { angle, len, wid };
   // A mark placed now is a fresh decal, whatever it was lifted as.
-  setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant: TRUE_SIZE }] });
+  const forged = map ? map.key.startsWith('forge:') : forgedParts.has(part);
+  const variant = TRUE_SIZE | (forged ? FORGE_ATLAS : 0);
+  setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant }] });
   bay.held = null;
   bay.version += 1;
   return true;
@@ -533,7 +568,7 @@ export function handPlace(part: PaintPart, u: number, v: number): boolean {
 export function unitAt(part: PaintPart, u: number, v: number, map?: GearMap): number {
   const look = myLook();
   if (isGearPart(part)) return map ? gearUnitAt(look, part, u, v, map) : -1;
-  const chart = chartOf(part);
+  const chart = chartOf(part, paintFrame.mine);
   const slack = 0.035 * chart.S;
   let best = -1;
   let bestD = slack;
@@ -692,7 +727,15 @@ function headChart(): Chart {
 }
 
 const charts = new Map<PaintPart, Chart>();
-function chartOf(part: PaintPart): Chart {
+/** THE FRAMES' charts (avatar/forge.ts): each body shape's own rings,
+ *  measured off its Blender grid. A body on a frame paints by its chart;
+ *  the loft (before the frame's kit lands) by the old one. */
+const frameCharts = new Map<string, Chart>();
+function chartOf(part: PaintPart, frame?: string): Chart {
+  if (part === 'body' && frame) {
+    const f = frameCharts.get(frame);
+    if (f) return f;
+  }
   let c = charts.get(part);
   if (!c) {
     c = part === 'body' ? bodyChart() : part === 'head' ? headChart() : flatChart();
@@ -700,6 +743,34 @@ function chartOf(part: PaintPart): Chart {
   }
   return c;
 }
+
+/**
+ * A frame's chart from its rows (forge.ts ChartRow: s, y, half-width,
+ * half-depth, z-centre; s = the unwrap's v, rows top → tip). Resampled
+ * onto the chart's even v rows.
+ */
+export function registerFrameChart(id: string, rows: ReadonlyArray<readonly number[]>): void {
+  if (!rows.length) return;
+  const c = newChart(BODY_S, CHART_ROWS);
+  const asc = [...rows].sort((a, b) => a[0] - b[0]);
+  for (let k = 0; k <= c.n; k++) {
+    const v = k / c.n;
+    let i = 0;
+    while (i < asc.length - 2 && asc[i + 1][0] < v) i++;
+    const a = asc[i];
+    const b = asc[Math.min(i + 1, asc.length - 1)];
+    const t = Math.max(0, Math.min(1, (v - a[0]) / (b[0] - a[0] || 1)));
+    c.h[k] = a[1] + (b[1] - a[1]) * t;
+    c.w[k] = a[2] + (b[2] - a[2]) * t;
+    c.d[k] = a[3] + (b[3] - a[3]) * t;
+    c.z[k] = a[4] + (b[4] - a[4]) * t;
+  }
+  frameCharts.set(id, c);
+  for (const key of [...grids.keys()]) if (key.startsWith(`body|${id}|`)) grids.delete(key);
+}
+
+/** The frame YOUR body wears — what the bay measures your marks by. */
+export const paintFrame = { mine: '' };
 
 /** The ring at any v: [w, d, h, z]. */
 function ringAt(c: Chart, v: number): [number, number, number, number] {
@@ -860,11 +931,12 @@ interface Grid {
 }
 
 const grids = new Map<string, Grid>();
-function gridOf(part: PaintPart, W: number, H: number): Grid {
-  const key = `${part}|${W}x${H}`;
+function gridOf(part: PaintPart, W: number, H: number, frame = ''): Grid {
+  const fk = part === 'body' && frameCharts.has(frame) ? frame : '';
+  const key = `${part}|${fk}|${W}x${H}`;
   let g = grids.get(key);
   if (g) return g;
-  const chart = chartOf(part);
+  const chart = chartOf(part, fk);
   const x = new Float32Array(W * H);
   const y = new Float32Array(W * H);
   const c = new Float32Array(H);
@@ -1031,13 +1103,13 @@ function rasterUnit(data: Uint8ClampedArray, g: Grid, S: number, p: PlacedPaint,
 const TONE_FILL: Record<string, string> = { white: '#f4f2ee', onyx: '#17171a' };
 
 /** Bake one part of a look into a fresh RGBA buffer, W × H. */
-function bakePart(look: Look, part: PaintPart, fill: string, W: number, H: number): ImageData {
-  const g = gridOf(part, W, H);
+function bakePart(look: Look, part: PaintPart, fill: string, W: number, H: number, frame = ''): ImageData {
+  const g = gridOf(part, W, H, frame);
   const img = new ImageData(W, H);
   const [r, gg, b] = rgbOf(parseInt(fill.replace('#', ''), 16) || 0);
   // One word per texel (RGBA bytes, little-endian) — a fill, not a loop.
   new Uint32Array(img.data.buffer).fill(((255 << 24) | (b << 16) | (gg << 8) | r) >>> 0);
-  const S = chartOf(part).S;
+  const S = chartOf(part, frame).S;
   for (const p of look.paint) if (p.part === part) rasterUnit(img.data, g, unitS(p, S), p);
   return img;
 }
@@ -1175,7 +1247,11 @@ function bakeGear(look: Look, part: PaintPart, fill: string, map: GearMap): Imag
   const img = new ImageData(map.W, map.H);
   const [r, g, b] = rgbOf(parseInt(fill.replace('#', ''), 16) || 0);
   new Uint32Array(img.data.buffer).fill(((255 << 24) | (b << 16) | (g << 8) | r) >>> 0);
-  for (const p of look.paint) if (p.part === part) rasterGearUnit(img.data, map, p);
+  for (const p of look.paint) {
+    if (p.part !== part) continue;
+    const at = onMap(p, map);
+    if (at) rasterGearUnit(img.data, map, at);
+  }
   return img;
 }
 
@@ -1189,8 +1265,9 @@ function gearUnitAt(look: Look, part: PaintPart, u: number, v: number, map: Gear
   let best = -1;
   let bestD = 0.006;
   for (let i = look.paint.length - 1; i >= 0; i--) {
-    const p = look.paint[i];
-    if (p.part !== part) continue;
+    if (look.paint[i].part !== part) continue;
+    const p = onMap(look.paint[i], map);
+    if (!p) continue;
     let d = Infinity;
     if (p.variant & LEGACY_GEAR) {
       for (const [rx, ry, rw, rh] of map.rects) {
@@ -1266,44 +1343,58 @@ function storeFor(mesh: Mesh, part: PaintPart): PaintStore {
 export function applyLook(root: Object3D, look: Look): void {
   const memo = new Map<string, ImageData>();
   root.traverse((o) => {
-    const part = o.userData?.paintPart as PaintPart | undefined;
-    if (!part) return;
-    const mesh = o as Mesh;
-    if (Array.isArray(mesh.material)) return;
-    const mat = mesh.material as MeshStandardMaterial;
-    const store = storeFor(mesh, part);
-    const size = store.canvas.width;
-    const tone = (mesh.userData.paintTone as string) ?? 'white';
-    const fill = (mat.userData?.paintFill as string) ?? TONE_FILL[tone] ?? TONE_FILL.white;
-    const map = mesh.userData.paintMap as GearMap | undefined;
-    const key = `${part}|${fill}|${size}|${map?.key ?? ''}`;
-    let img = memo.get(key);
-    if (!img) {
-      img = map ? bakeGear(look, part, fill, map) : bakePart(look, part, fill, size, size);
-      memo.set(key, img);
-    }
-    store.base = img;
-    store.ghost = false;
-    store.canvas.getContext('2d')!.putImageData(img, 0, 0);
-    const painted = look.paint.some((p) => p.part === part);
-    // PAINT ON METAL. A near-mirror surface has almost no diffuse, so a
-    // stripe laid on a hand's steel would read as a faint tint of a
-    // reflection and nothing more. Where paint actually lands, the finish
-    // steps toward one that can carry it — never past the surface's own
-    // metalness, so a matte primer body is untouched — and steps back the
-    // moment the last unit is lifted.
-    const metal0 = (mesh.userData.paintMetal0 as number | undefined) ?? mat.metalness;
-    mesh.userData.paintMetal0 = metal0;
-    mat.metalness = painted ? Math.min(metal0, PAINT.metalness) : metal0;
-    store.tex.needsUpdate = true;
-    // The map carries ALL the colour now (base tone included), so the
-    // material tint steps aside — sheen/roughness stay the tone's own.
-    if (mat.map !== store.tex) {
-      mat.map = store.tex;
-      mat.color.set(0xffffff);
-      mat.needsUpdate = true;
-    }
+    if (!o.userData?.paintPart) return;
+    bakeMesh(o as Mesh, look, memo);
   });
+}
+
+/** Bake the look this surface last wore again — its frame (and so its
+ *  chart) changed under it (avatar/forge.ts). */
+export function rebakeMesh(mesh: Mesh): void {
+  const look = mesh.userData.paintLook as Look | undefined;
+  if (look && mesh.userData.paintStore) bakeMesh(mesh, look, new Map());
+}
+
+function bakeMesh(mesh: Mesh, look: Look, memo: Map<string, ImageData>): void {
+  const part = mesh.userData.paintPart as PaintPart;
+  if (Array.isArray(mesh.material)) return;
+  const mat = mesh.material as MeshStandardMaterial;
+  const store = storeFor(mesh, part);
+  mesh.userData.paintLook = look;
+  const size = store.canvas.width;
+  const tone = (mesh.userData.paintTone as string) ?? 'white';
+  const fill = (mat.userData?.paintFill as string) ?? TONE_FILL[tone] ?? TONE_FILL.white;
+  const map = mesh.userData.paintMap as GearMap | undefined;
+  const frame = (mesh.userData.paintFrame as string | undefined) ?? '';
+  if (map?.key.startsWith('forge:')) forgedParts.add(part);
+  else if (map) forgedParts.delete(part);
+  const key = `${part}|${fill}|${size}|${map?.key ?? ''}|${frame}`;
+  let img = memo.get(key);
+  if (!img) {
+    img = map ? bakeGear(look, part, fill, map) : bakePart(look, part, fill, size, size, frame);
+    memo.set(key, img);
+  }
+  store.base = img;
+  store.ghost = false;
+  store.canvas.getContext('2d')!.putImageData(img, 0, 0);
+  const painted = look.paint.some((p) => p.part === part);
+  // PAINT ON METAL. A near-mirror surface has almost no diffuse, so a
+  // stripe laid on a hand's steel would read as a faint tint of a
+  // reflection and nothing more. Where paint actually lands, the finish
+  // steps toward one that can carry it — never past the surface's own
+  // metalness, so a matte primer body is untouched — and steps back the
+  // moment the last unit is lifted.
+  const metal0 = (mesh.userData.paintMetal0 as number | undefined) ?? mat.metalness;
+  mesh.userData.paintMetal0 = metal0;
+  mat.metalness = painted ? Math.min(metal0, PAINT.metalness) : metal0;
+  store.tex.needsUpdate = true;
+  // The map carries ALL the colour now (base tone included), so the
+  // material tint steps aside — sheen/roughness stay the tone's own.
+  if (mat.map !== store.tex) {
+    mat.map = store.tex;
+    mat.color.set(0xffffff);
+    mat.needsUpdate = true;
+  }
 }
 
 /** How solid the held unit reads before it is placed. */
@@ -1331,7 +1422,10 @@ export function applyGhost(root: Object3D, unit: PlacedPaint | null): void {
       store.scratch.data.set(store.base.data);
       const map = o.userData.paintMap as GearMap | undefined;
       if (map) rasterGearUnit(store.scratch.data, map, unit, GHOST_ALPHA);
-      else rasterUnit(store.scratch.data, gridOf(part, W, H), unitS(unit, chartOf(part).S), unit, GHOST_ALPHA);
+      else {
+        const frame = (o.userData.paintFrame as string | undefined) ?? '';
+        rasterUnit(store.scratch.data, gridOf(part, W, H, frame), unitS(unit, chartOf(part, frame).S), unit, GHOST_ALPHA);
+      }
       g2d.putImageData(store.scratch, 0, 0);
       store.ghost = true;
       store.tex.needsUpdate = true;

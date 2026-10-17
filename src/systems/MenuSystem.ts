@@ -77,7 +77,7 @@ import { currentVoiceContext, VOICE_RULES, voiceAllowed, hearAllowed } from '../
 import { applyGhost, applyLook, bay, handLift, handPlace, handReturn, installPaintDevHook, myLook, paintState, togglePaintHiddenAll, undoLast, unitAt, type PaintPart } from '../avatar/paint.js';
 import { pulseHand } from '../input/haptics.js';
 import type { GearMap } from '../avatar/gearAtlas.js';
-import { applyGear, cleanGear, GEAR, gearDef, type GearSlot, wornGear } from '../avatar/gear.js';
+import { applyGear, cleanGear, forgeDress, GEAR, gearDef, type GearSlot, wornGear } from '../avatar/gear.js';
 import { installGrammarDevHook } from '../campaign/grammar.js';
 import { BeltCeremony } from '../campaign/beltCeremony.js';
 import { beltOf, heldBelts } from '../campaign/belts.js';
@@ -96,7 +96,8 @@ import {
   setAvatarColor,
   setAvatarSkin,
   setPlatformSkin,
-  setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setGear, toggleGear } from '../menu/customization.js';
+  setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setFrame, setGear, toggleGear } from '../menu/customization.js';
+import { frameDef, frameOf, framesReady, loadForgeGear } from '../avatar/forge.js';
 import { canAfford, coins, spendCoins } from '../menu/wallet.js';
 import { playCash, preloadCash } from '../audio/cash.js';
 import { setMenuMusicActive, toggleMusicMuted } from '../audio/menuMusic.js';
@@ -1613,6 +1614,13 @@ export class MenuSystem extends createSystem({}) {
         // hitTest only returns unlocked tiers, so no re-check is needed.
         // shelf-<material>: the PLATFORMS board's shelf.
         // badge-belt-<id>: a belt on THE BELT RACK — hold it up.
+        // frame-<id>: THE FORGE's body shapes (avatar/forge.ts) — free, so a
+        // tap wears it at once.
+        if (action.startsWith('frame-')) {
+          const id = action.slice('frame-'.length);
+          if (frameDef(id)) setFrame(id);
+          break;
+        }
         if (action.startsWith('badge-belt-')) {
           this.showBelt(action.slice('badge-belt-'.length));
           break;
@@ -1968,6 +1976,33 @@ export class MenuSystem extends createSystem({}) {
         pack: () => myPackedGear(),
         clean: (s: string) => cleanGear(s),
       };
+      // THE FORGE (avatar/forge.ts): which frame the mirror stands on and
+      // whether its pieces are the forged ones, and a wait for every kit
+      // the mirror is wearing to land.
+      (hook as unknown as { forge?: unknown }).forge = {
+        frame: () => (this.mirror ? frameOf(this.mirror.group) : ''),
+        frameWorn: () => {
+          let id = '';
+          this.mirror?.group.traverse((o) => {
+            if (!id && o.userData?.paintPart === 'body' && o.visible !== false) id = (o.userData.frameWorn as string) ?? '';
+          });
+          return id;
+        },
+        forged: () => {
+          const out: string[] = [];
+          this.mirror?.group.traverse((o) => {
+            if (!o.userData?.forged) return;
+            for (let p = o.parent; p; p = p.parent) {
+              if (typeof p.userData.gear === 'string') {
+                out.push(p.userData.gear);
+                break;
+              }
+            }
+          });
+          return [...new Set(out)];
+        },
+        ready: () => Promise.all([framesReady(), ...myGear().map((id) => loadForgeGear(id))]).then(() => true),
+      };
     }
     this.skinVersion = -1; // dress the new rig on the next applyOwnSkins
   }
@@ -2006,7 +2041,14 @@ export class MenuSystem extends createSystem({}) {
    * your torso, both gloves and your platform. Visual only — PlayerBodyPart
    * hitboxes never move.
    */
+  private forgeDressSeen = 0;
+
   private applyOwnSkins(): void {
+    // A Forge piece that landed late is a new paint surface for the bay.
+    if (forgeDress.version !== this.forgeDressSeen) {
+      this.forgeDressSeen = forgeDress.version;
+      if (app.paintBayOpen) this.collectBayMeshes();
+    }
     const skinChanged = customization.version !== this.skinVersion;
     const accentChanged = app.accentHue !== this.accentHue || app.accentLight !== this.accentLight;
     const paintChanged = paintState.version !== this.paintVersionSeen;
@@ -2614,7 +2656,7 @@ export class MenuSystem extends createSystem({}) {
     }
     const session = this.world.session as Parameters<typeof pulseHand>[0];
     if (bay.held) {
-      if (handPlace(at.part, at.u, at.v)) {
+      if (handPlace(at.part, at.u, at.v, at.map)) {
         // setLook → the real bake replaces the ghost
         this.bayGhostOn = false;
         this.bayGhostKey = '';
