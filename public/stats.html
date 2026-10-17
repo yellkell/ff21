@@ -3390,7 +3390,7 @@
       // other difficulties stay in Firestore; nothing reads them.
       const RR_DIFF = '3';
       const GRADE_COLOUR = { S: 'var(--g-s)', A: 'var(--g-a)', B: 'var(--g-b)', C: 'var(--g-c)', F: 'var(--g-f)' };
-      const rr = { track: [...RR_TRACKS].sort((a, b) => a[1].localeCompare(b[1]))[0][0], diff: RR_DIFF, cache: new Map() };
+      const rr = { track: [...RR_TRACKS].sort((a, b) => a[1].localeCompare(b[1]))[0][0], diff: RR_DIFF, cache: new Map(), pending: new Map() };
 
       /** A rave chart's board id — mirrors src/net/boards.ts raveBoard(). */
       const raveBoard = (track, diff) =>
@@ -3423,6 +3423,39 @@
         );
       }
 
+      /** One chart's world board, read and cached. In-flight reads are shared,
+       *  so the shelf's sweep and a click on the same record ask once. */
+      function fetchRrBoard(board) {
+        if (rr.pending.has(board)) return rr.pending.get(board);
+        const p = runQuery('rows', { parent: `boards/${board}`, orderBy: 'value', dir: 'DESCENDING', limit: 100 })
+          .then((docs) => {
+            const rows = docs.map((d) => ({
+              uid: d.id,
+              name: d.data.name || '???',
+              value: Number(d.data.value) || 0,
+              grade: (d.data.meta && d.data.meta.grade) || '',
+              at: Number(d.data.at) || 0,
+            }));
+            rr.cache.set(board, rows);
+            return rows;
+          })
+          .finally(() => rr.pending.delete(board));
+        rr.pending.set(board, p);
+        return p;
+      }
+
+      /** The shelf shows every record's RUNS and BEST up front: read the
+       *  boards nobody has opened yet, a few at a time, redrawing as each lands. */
+      async function sweepRr() {
+        const todo = RR_TRACKS.map(([id]) => raveBoard(id, rr.diff)).filter((b) => !rr.cache.has(b));
+        const lane = async () => {
+          for (let b; (b = todo.shift()); ) {
+            try { await fetchRrBoard(b); drawRrSongs(); } catch {}
+          }
+        };
+        await Promise.all(Array.from({ length: 4 }, lane));
+      }
+
       async function loadRr(force) {
         const status = document.getElementById('rr-status');
         const rowsEl = document.getElementById('rr-rows');
@@ -3434,16 +3467,8 @@
         showStatus(status, 'READING THE BOARD', '', false);
         setStatus('READING THE BOARD', 'warn');
         try {
-          const docs = await runQuery('rows', { parent: `boards/${board}`, orderBy: 'value', dir: 'DESCENDING', limit: 100 });
-          const rows = docs.map((d) => ({
-            uid: d.id,
-            name: d.data.name || '???',
-            value: Number(d.data.value) || 0,
-            grade: (d.data.meta && d.data.meta.grade) || '',
-            at: Number(d.data.at) || 0,
-          }));
-          rr.cache.set(board, rows);
-          paintRr(rows);
+          const rows = await fetchRrBoard(board);
+          if (board === raveBoard(rr.track, rr.diff)) paintRr(rows); // unless another record was picked meanwhile
           drawRrSongs();
           setStatus('BOARD IS LIVE', 'live');
         } catch {
@@ -4649,7 +4674,7 @@
         moveMarker(document.getElementById('face-rail'), document.getElementById('face-marker'));
         try { history.replaceState(null, '', FACES[id].hash); } catch {}
         if (id === 'ff') { syncFfFace(); if (!profile.open) void loadFf(false); }
-        else if (id === 'rr') { drawRrSongs(); void loadRr(false); }
+        else if (id === 'rr') { drawRrSongs(); void loadRr(false); void sweepRr(); }
         else { tvOpen(); tvGuide(); tvBar(); }
       }
 
@@ -4678,7 +4703,7 @@
       });
       document.getElementById('refresh').addEventListener('click', () => {
         if (face === 'ff') { ff.cache.clear(); lab.loaded = false; void loadFf(true); }
-        else if (face === 'rr') { rr.cache.clear(); void loadRr(true); }
+        else if (face === 'rr') { rr.cache.clear(); void loadRr(true); void sweepRr(); }
         else { tvClose(); tvOpen(); }
       });
 
