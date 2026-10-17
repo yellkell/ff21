@@ -1874,8 +1874,6 @@ def frog_parts(F, ctx):
         out.append(gk.fin(cylinder_mesh(f"collar{side}", base + ax * 0.009, ax, Rl + 0.005, 0.0045, segs=28), "trim"))
         out.append(gk.fin(torus_mesh(f"iris{side}", lc + ax * 0.002, ax, Rl - 0.004, 0.0026, segs=28, sides=5), "trim"))
         out.append(gk.fin(ellipsoid_mesh(f"lens{side}", lc, (Rl, Rl, Rl), R=frame_look(ax), segs=16, rings=8), "glow"))
-        for k, (pp, axp) in enumerate(_frog_lid_pins(lc, ax, Rl + 0.009, side=side)):
-            out.append(gk.fin(cylinder_mesh(f"pin{side}{k}", pp, axp, 0.0045, 0.0035, segs=12), "trim"))
     for i, (p, n) in enumerate(ctx["nos"]):
         # a thin steel line inlay, flush in its slit
         out.append(slot_insert(f"nos{i}", p - n * 0.0008, basis(x=(1, 0, 0), y=n), (0.0012, 0.0012, 0.0074), "trim"))
