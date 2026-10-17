@@ -1650,10 +1650,10 @@ def _frog_turret(side):
     """Turret: base centre, axis (out of the shell), lens radius."""
     ax = unit((side * 0.42, 0.85, -0.32))
     base = A(side * 0.074, 0.058, -0.052)
-    return base, ax, 0.034
+    return base, ax, 0.0365
 
 
-def _frog_lid_fn(c, ax, R, thick, open_=0.1, side=1):
+def _frog_lid_fn(c, ax, R, thick, open_=0.42, side=1):
     """A SHUTTER: a spherical shell segment over the lens, its lower
     edge a crisp plane tilted down toward the nose."""
     look = unit(ax + A(0, 0, -0.6))
@@ -1669,7 +1669,7 @@ def _frog_lid_fn(c, ax, R, thick, open_=0.1, side=1):
     return Prim(fn, c - ext, c + ext)
 
 
-def _frog_lid_mesh(name, c, ax, R, thick, open_=0.1, side=1, segs=24, rings=5):
+def _frog_lid_mesh(name, c, ax, R, thick, open_=0.42, side=1, segs=24, rings=5):
     """The shutter as a clean mesh: a spherical cap round its edge
     plane's normal, outer and inner skins and the rim between them."""
     look = unit(ax + A(0, 0, -0.6))
@@ -1751,7 +1751,7 @@ def _frog_jaw_clips():
             ((0.8, -0.6, 0), (0.12, -0.08, 0)), ((-0.8, -0.6, 0), (-0.12, -0.08, 0))]
 
 
-def _frog_lid_pins(c, ax, R, open_=0.1, side=1):
+def _frog_lid_pins(c, ax, R, open_=0.42, side=1):
     look = unit(ax + A(0, 0, -0.6))
     en = unit(A(0, 1, 0) + A(side * 0.25, 0, 0.0) - look * 0.15)
     e1 = unit(np.cross(en, (0, 0, 1)))
