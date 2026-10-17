@@ -131,6 +131,41 @@ function drawMark(ctx: CanvasRenderingContext2D, w: number, h: number, logo: HTM
   ctx.shadowBlur = 0;
 }
 
+function makeShade(): Mesh {
+  const shade = new Mesh(
+    // Oversized to cover the whole per-eye frustum (see LoadingOverlay).
+    // transparent:true (at full opacity) is LOAD-BEARING: it moves the shade
+    // into the transparent render pass, which three.js draws AFTER all opaque
+    // geometry. An opaque shade gets painted over by every transparent object
+    // in the live lobby behind it (glows, panels, fx) — the curtain must be
+    // the last transparent draw (renderOrder 10k) to actually black out a
+    // scene we intentionally never hide.
+    new PlaneGeometry(20, 20),
+    new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 1, depthTest: false, depthWrite: false }),
+  );
+  shade.position.z = -1.7;
+  shade.renderOrder = 10_000;
+  return shade;
+}
+
+/** The shade, raised early by raiseCurtain and handed to runBootIntro. */
+let curtain: Mesh | null = null;
+
+/**
+ * Black the view out BEFORE the session is requested. The headset starts
+ * presenting the moment the session opens, but main.ts only learns of it on
+ * a timer poll — and Quest throttles timers — so a curtain raised on that
+ * poll left the menu and the alley on screen for the first frames, THEN the
+ * intro. Raised here, the very first XR frame is already black (and the
+ * shade's program is compiled by the flat frames still drawing behind the
+ * landing). runBootIntro takes it over.
+ */
+export function raiseCurtain(camera: PerspectiveCamera): void {
+  if (curtain) return;
+  curtain = makeShade();
+  camera.add(curtain);
+}
+
 /**
  * Play the boot sequence on the given camera. Fires `onMusicCue` exactly once,
  * MUSIC_LEAD_SECONDS before the shade drops (and guaranteed no later than
@@ -145,20 +180,10 @@ function drawMark(ctx: CanvasRenderingContext2D, w: number, h: number, logo: HTM
  */
 export function runBootIntro(camera: PerspectiveCamera, scene: Scene, onMusicCue: () => void): void {
   setBootIntroActive(true); // park the menu's pointers behind the curtain
-  const shade = new Mesh(
-    // Oversized to cover the whole per-eye frustum (see LoadingOverlay).
-    // transparent:true (at full opacity) is LOAD-BEARING: it moves the shade
-    // into the transparent render pass, which three.js draws AFTER all opaque
-    // geometry. An opaque shade gets painted over by every transparent object
-    // in the live lobby behind it (glows, panels, fx) — the curtain must be
-    // the last transparent draw (renderOrder 10k) to actually black out a
-    // scene we intentionally never hide.
-    new PlaneGeometry(20, 20),
-    new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 1, depthTest: false, depthWrite: false }),
-  );
-  shade.position.z = -1.7;
-  shade.renderOrder = 10_000;
-  camera.add(shade);
+  // The curtain raised before the session (raiseCurtain), else a fresh one.
+  const shade = curtain ?? makeShade();
+  curtain = null;
+  if (shade.parent !== camera) camera.add(shade);
 
   const pub = makeCard(drawPublisher);
   const logo = makeCard((ctx, w, h) => drawMark(ctx, w, h, null));
