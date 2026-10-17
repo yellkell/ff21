@@ -1,6 +1,11 @@
 """
 THE HEADS II — Forge pieces for the `face` slot (heads.ts, DESIGN.md §5.2):
-STALLION, WOLF, FROG and BUNNY, remade from the procedural lofts.
+STALLION (the sculpted horse) and the WOLF, FROG and BUNNY as clean
+cyberpunk HELMETS in THE BLANK's vocabulary (head.py: ceramic shell, dark
+visor glass with lit slits or lenses, machined pods with lit rings, steel
+vent slots, crisp seams). The helmets' shells are clean parts built as
+meshes (Head(lows=…)); their high is the same parts as one field, filleted
+and seamed. What follows describes the field pipeline both share.
 
 Face space is the head group's (game space, +y up, front −z): a worn head
 REPLACES the bare skull (a sphere r 0.13 scaled x 0.94 · z 0.97, centre
@@ -459,6 +464,19 @@ def relax(ob, F, iters=6, w=0.5):
     return ob
 
 
+def mark_sharp(ob, deg):
+    """Hard-surface plates: edges creased past `deg` shade sharp (the
+    weighted-normal pass keeps them), the broad faces stay smooth."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    lim = math.radians(deg)
+    for e in bm.edges:
+        if len(e.link_faces) == 2 and e.calc_face_angle() > lim:
+            e.smooth = False
+    bm.to_mesh(ob.data)
+    bm.free()
+
+
 def folds(ob, deg=70):
     bm = bmesh.new()
     bm.from_mesh(ob.data)
@@ -475,8 +493,9 @@ def tris_of(ob):
 # Meshes for trim and glow (small, clean)
 # ---------------------------------------------------------------------------
 
-def ellipsoid_mesh(name, c, r, R=None, segs=16, rings=10):
-    """A UV ellipsoid (game space)."""
+def ellipsoid_mesh(name, c, r, R=None, segs=16, rings=10, clips=()):
+    """A UV ellipsoid (game space); `clips` [(normal, point)] flatten it
+    onto those planes (a facet cut on a dome)."""
     c, r = A(c), A(r)
     R = np.eye(3) if R is None else A(R)
     P = [A(0, -1, 0)]
@@ -488,6 +507,10 @@ def ellipsoid_mesh(name, c, r, R=None, segs=16, rings=10):
     P.append(A(0, 1, 0))
     P = np.array(P) * r[None, :]
     P = P @ R.T + c
+    for n, p0 in clips:
+        n, p0 = unit(n), A(p0)
+        d = (P - p0) @ n
+        P = P - np.outer(np.maximum(d, 0), n)
     faces = []
     for s in range(segs):
         faces.append((0, 1 + (s + 1) % segs, 1 + s))
@@ -809,10 +832,13 @@ class Head:
     """Builds a head from its `form(F, ctx)` (the field recipe) and its
     `parts(F, ctx)` (trim and glow laid on the shell's field)."""
 
-    def __init__(self, pid, lo, hi, form, parts, cranium, shell_tris=6000, blur=1, keep=0.85):
+    def __init__(self, pid, lo, hi, form, parts, cranium, shell_tris=6000, blur=1, keep=0.85, h_low=H_LOW,
+                 relax_iters=6, sharp=0.0, lows=None):
         self.pid, self.lo, self.hi = pid, lo, hi
         self.form, self.parts, self.cranium = form, parts, cranium
         self.shell_tris, self.blur_n, self.keep = shell_tris, blur, keep
+        self.h_low, self.relax_iters, self.sharp = h_low, relax_iters, sharp
+        self.lows = lows
 
     def build(self, ref):
         # A worn head REPLACES the skull: the reference stays out of the
@@ -821,9 +847,33 @@ class Head:
             ref.hide_render = True
         ctx = {}
         objs = []
-        low = Field(self.lo, self.hi, H_LOW, detail=False)
+        low = Field(self.lo, self.hi, self.h_low, detail=False)
         self.form(low, ctx)
         low.blur(self.blur_n)
+        if self.lows:
+            # A hard-surface helmet: the shell is its clean parts, built as
+            # meshes from the same definitions the field was (the field
+            # makes the high and places everything).
+            parts = self.lows(low, ctx)
+            for o in parts:
+                if self.sharp:
+                    mark_sharp(o, self.sharp)
+                objs.append(gk.fin(o, "shell"))
+            print(f"{self.pid}: shell parts {sum(tris_of(o) for o in parts)} tris", flush=True)
+            objs += self.parts(low, ctx)
+            if not NOBAKE:
+                high = Field(self.lo, self.hi, H_HIGH, detail=True)
+                self.form(high, ctx)
+                high.blur(self.blur_n)
+                hob = high.mesh("high")
+                print(f"{self.pid}: high field {tuple(high.n)} -> {tris_of(hob)} tris", flush=True)
+                objs.append(gk.fin(hob, "high"))
+            cf = Field(self.lo, self.hi, H_LOW, detail=False)
+            centre = self.cranium(cf, ctx)
+            cran = cf.mesh("cranium")
+            PIECES[self.pid]["fit"] = measure_fit(cran, centre)
+            gk.delete(cran)
+            return objs
         shell = low.mesh("shell")
         print(f"{self.pid}: low field {tuple(low.n)} -> {tris_of(shell)} tris", flush=True)
         # How much of the hitbox sphere the head covers.
@@ -833,8 +883,10 @@ class Head:
         print(f"{self.pid}: covers {inside * 100:.0f}% of the hitbox sphere's surface", flush=True)
         decimate(shell, self.shell_tris, low, keep=self.keep)
         f0 = folds(shell)
-        relax(shell, low)
+        relax(shell, low, iters=self.relax_iters)
         print(f"{self.pid}: shell folds {f0} -> {folds(shell)} after relax", flush=True)
+        if self.sharp:
+            mark_sharp(shell, self.sharp)
         objs.append(gk.fin(shell, "shell"))
         objs += self.parts(low, ctx)
         if not NOBAKE:
@@ -883,150 +935,6 @@ def drape_ring(F, ys, angles, axis_z, r_out=0.4):
         Dn.append(-d)
     P = F.march(O, Dn, tmax=r_out)
     return P
-
-
-# ===========================================================================
-# FROG — a tree frog, round and pleased with itself
-# ===========================================================================
-
-FROG_U = 0.13 * 1.296 * 1.12
-FROG_DY = -0.018
-FROG_W = 0.93  # a touch narrower than FF1's: carried bigger, kept to ~0.31 m
-FROG_ST = [
-    # FF1's stations reworked: a fuller, squarer face (the jaw carried
-    # forward under the mouth, so the grin sits mid-face and the chin
-    # shows below it), a domed snout instead of the pointed tip ring.
-    dict(top=(0.36, 0.56), bot=(-0.40, 0.58), w=0.62, n=2.2),  # back
-    dict(top=(0.50, 0.26), bot=(-0.60, 0.32), w=0.82, n=2.4),  # crown
-    dict(top=(0.46, -0.06), bot=(-0.66, 0.0), w=0.86, n=2.6),  # cheeks (widest)
-    dict(top=(0.36, -0.40), bot=(-0.64, -0.34), w=0.8, n=2.6),  # eye line
-    dict(top=(0.20, -0.68), bot=(-0.60, -0.66), w=0.7, n=2.25),  # snout
-    dict(top=(0.04, -0.86), bot=(-0.52, -0.86), w=0.56, n=2.05),  # lip
-]
-FROG_CAPS = (0.35, 0.32)
-for _s in FROG_ST:
-    _s["w"] *= FROG_W
-
-
-def _frog_eye(side):
-    u = FROG_U
-    c = A(side * 0.42 * u, 0.42 * u + FROG_DY, -0.3 * u)
-    look = unit((side * 0.38, 0.12, -1))
-    lens_c = c + look * 0.1 * u
-    return c, look, lens_c, 0.32 * u, 0.255 * u
-
-
-def frog_form(F, ctx):
-    u, dy = FROG_U, FROG_DY
-    F.add(mesh_prim(*loft(FROG_ST, u, dy, caps=FROG_CAPS)))
-    for side in (-1, 1):
-        c, look, lc, Rt, Rl = _frog_eye(side)
-        F.add(ellipsoid(c, (Rt, Rt * 0.96, Rt)), k=0.035)
-    if "smile" not in ctx:
-        # THE SMILE: one line corner to corner, swept from inside the head
-        # round the snout and landed on the skin (heads.ts' drape), the
-        # corners lifting into a grin under the eardrums.
-        sw = 1.85
-        th = np.linspace(-sw, sw, 91)
-        a = np.abs(th / sw)
-        ys = -0.24 * u + dy + 0.22 * u * a ** 2.2 + 0.07 * u * smoothstep(0.8, 1.0, a)
-        P = drape_ring(F, ys, th, -0.1 * u)
-        ctx["smile"] = surface_path(F, P, 3)
-        # Eardrums and nostrils, found on the skin.
-        ctx["drum"] = [land(F, (side * 0.4, 0.06 * u + dy, 0.14 * u), (-side, 0, 0)) for side in (-1, 1)]
-        ctx["nos"] = [land(F, (side * 0.11 * u, 0.3 * u + dy, -1.3 * u), unit((0, -0.35, 1))) for side in (-1, 1)]
-        # The canthal ridges: eye to nostril, framing the snout's top.
-        ridge = []
-        for side in (-1, 1):
-            q = []
-            for t in np.linspace(0, 1, 9):
-                q.append(land(F, (side * (0.36 - 0.22 * t) * u, 0.5, (-0.48 - 0.42 * t) * u), (0, -1, 0))[0])
-            ridge.append(surface_path(F, A(q), 2))
-        ctx["ridge"] = ridge
-    for side in (-1, 1):
-        c, look, lc, Rt, Rl = _frog_eye(side)
-        # The socket the lens sits in: a ring of shadow round the glass.
-        # (front half only: behind the glass the turret stays shut)
-        def sock_fn(X, Y, Z, detail, lc=lc, look=look, Rl=Rl):
-            px, py, pz = X - lc[0], Y - lc[1], Z - lc[2]
-            sph = np.sqrt(px * px + py * py + pz * pz) - (Rl + 0.0022)
-            ahead = px * look[0] + py * look[1] + pz * look[2]
-            return smax(sph, -(ahead + 0.004), 0.002)
-        F.cut(Prim(sock_fn, lc - Rl - 0.01, lc + Rl + 0.01), k=0.002)
-        # The lower lid: a soft roll round the bottom of the glass.
-        e1 = unit(np.cross(look, (0, 1, 0)))
-        e2 = np.cross(e1, look)
-        arc = [lc + look * 0.002 + (e1 * math.cos(a) + e2 * math.sin(a)) * (Rl + 0.0045)
-               for a in np.linspace(math.radians(-200), math.radians(20), 14)]
-        F.add(sweep(arc, [0.0025] + [0.0042] * 12 + [0.0025]), k=0.005)
-        # The LID: a thick cap over the top of the glass, its margin
-        # rolled, drawn half down — the look that makes it a character.
-        Rl_lid = Rl + 0.0045
-        R = basis(x=(1, 0, 0), y=rot((1, 0, 0), -0.32) @ A(0, 1, 0))
-        R = rot(A(0, 0, 1), side * -0.12) @ R
-
-        def lid_fn(X, Y, Z, detail, lc=lc, R=R, Rl_lid=Rl_lid, Rl=Rl):
-            q0, q1, q2 = _local(X, Y, Z, lc, R)
-            sph = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2)
-            shell = np.abs(sph - Rl_lid) - 0.0042
-            plane = -(q1 - Rl * 0.05)
-            d = smax(shell, plane, 0.006)
-            if detail:
-                # A soft crease along the lid, above its margin.
-                cr = np.abs(q1 - Rl * 0.32)
-                d = d + 0.0006 * np.exp(-(cr / 0.0018) ** 2) * (q2 < 0)
-            return d
-        ext = Rl_lid + 0.01
-        F.add(Prim(lid_fn, lc - ext, lc + ext), k=0.004)
-    # The lower lip: a full roll under the smile, so the chin faces
-    # forward and catches the light, and the line reads as a mouth.
-    P, N = ctx["smile"]
-    up = A(0, 1, 0)
-    n = len(P)
-    rr = [0.003 + 0.006 * math.sin(math.pi * i / (n - 1)) ** 0.6 for i in range(n)]
-    F.add(sweep(P - N * 0.009 - up * 0.008, rr), k=0.012)
-    # The eardrums: discs in the shell's own colour (dark ones gave it four
-    # eyes), standing a little proud, a fine rim round each in the sculpt.
-    for dc, n in ctx["drum"]:
-        R = basis(x=(0, 1, 0), y=n)
-        F.add(ellipsoid(dc - n * 0.004, (0.165 * u, 0.006, 0.165 * u), R), k=0.003)
-        if F.detail:
-            def rim(X, Y, Z, detail, dc=dc, R=R):
-                q0, q1, q2 = _local(X, Y, Z, dc, R)
-                rr = np.sqrt(q0 * q0 + q2 * q2)
-                return np.sqrt((rr - 0.165 * u + 0.002) ** 2 + (q1 - 0.0015) ** 2) - 0.0014
-            F.cut(Prim(rim, dc - 0.25 * u, dc + 0.25 * u), k=0.001)
-    # Nostrils: two pin pits high on the snout.
-    for P, N in ctx["nos"]:
-        F.cut(ellipsoid(P + N * 0.0008, (0.0042, 0.0034, 0.0042), basis(y=N)), k=0.002)
-    # The smile's groove.
-    P, N = ctx["smile"]
-    groove_cut(F, P, 0.0028, k=0.0015)
-
-
-def frog_parts(F, ctx):
-    out = []
-    P, N = ctx["smile"]
-    out.append(groove_trim("smile", P, N, 0.002, 0.0012, step=0.008))
-    for side in (-1, 1):
-        c, look, lc, Rt, Rl = _frog_eye(side)
-        out.append(gk.fin(ellipsoid_mesh(f"lens{side}", lc, (Rl,) * 3, R=basis(y=look), segs=18, rings=10), "glow"))
-        # The socket's dark backing, and a machined bezel round the
-        # opening (found on a sphere just outside the socket's cut).
-        out.append(gk.fin(ellipsoid_mesh(f"sock{side}", lc - look * 0.006, (Rl + 0.0024,) * 3, R=frame_look(look), segs=16, rings=8), "trim"))
-        Pr, Nr, cl = lens_rim(F, lc, frame_look(look), (Rl + 0.003,) * 3, n=40, lift=0.0)
-        out.append(loop_tube(f"bezel{side}", Pr, 0.0022, sides=5, closed=cl))
-    for i, (P, N) in enumerate(ctx["nos"]):
-        out.append(gk.fin(ellipsoid_mesh(f"nos{i}", P - N * 0.0028, (0.0032,) * 3, segs=8, rings=5), "trim"))
-    return out
-
-
-def frog_cranium(F, ctx):
-    F.add(mesh_prim(*loft(FROG_ST, FROG_U, FROG_DY, caps=FROG_CAPS)))
-    return (0, 0.1 * FROG_U + FROG_DY, 0.1 * FROG_U)
-
-
-FROG = Head("frog", (-0.21, -0.17, -0.24), (0.21, 0.16, 0.18), frog_form, frog_parts, frog_cranium, shell_tris=6300, keep=0.35)
 
 
 # ===========================================================================
@@ -1205,149 +1113,6 @@ def with_k(p, k):
     return p
 
 
-# ===========================================================================
-# BUNNY — a rabbit, not a ball
-# ===========================================================================
-
-BUNNY_U = 0.13 * 1.232 * 1.15
-BUNNY_DY = 0.008
-BUNNY_ST = [
-    dict(top=(0.46, 0.62), bot=(-0.42, 0.55), w=0.44, n=2.0),  # back
-    dict(top=(0.76, 0.28), bot=(-0.6, 0.36), w=0.58, n=2.05),  # crown
-    dict(top=(0.7, -0.12), bot=(-0.7, 0.04), w=0.64, n=2.1),  # cheeks (widest)
-    dict(top=(0.46, -0.48), bot=(-0.66, -0.3), w=0.58, n=2.05),  # lower face
-    dict(top=(0.14, -0.72), bot=(-0.54, -0.58), w=0.4, n=2.0),  # muzzle
-    dict(top=(-0.02, -0.82), bot=(-0.42, -0.76), w=0.22, n=1.9),  # nose end
-]
-BUNNY_CAPS = (0.45, 0.35)
-
-
-def _bunny_ears():
-    u, dy = BUNNY_U, BUNNY_DY
-    ears = []
-    for side in (-1, 1):
-        R = euler(0.14, side * -0.2, side * -0.16)
-        o = A(side * 0.22 * u, 0.62 * u + dy, 0.14 * u)
-        fold_p = (0.52 * u, 0.2 * u, 2.0) if side == 1 else None
-        ears.append(Ear(o, R, (0.34 * u, 1.2 * u, 0.13 * u, 0.55, 0.12 * u), (0.19 * u, 0.94 * u, 0.05 * u, 0.55, 0.09 * u),
-                        0.58 * u, lift=0.55 * u, fold=fold_p, k=0.022, hollow=0.0055))
-    return ears
-
-
-def _bunny_eye(side):
-    u, dy = BUNNY_U, BUNNY_DY
-    R = rot((0, 1, 0), side * -0.42)
-    c = A(side * 0.275 * u, 0.17 * u + dy, -0.59 * u)
-    r = 0.178 * u * A(0.85, 1.12, 0.5)
-    look = R @ A(0, 0, -1)
-    return c, R, r, look
-
-
-def bunny_form(F, ctx):
-    u, dy = BUNNY_U, BUNNY_DY
-    F.add(mesh_prim(*loft(BUNNY_ST, u, dy, caps=BUNNY_CAPS)))
-    # Whisker pads — the two soft mounds the mouth hangs between.
-    for side in (-1, 1):
-        F.add(ellipsoid((side * 0.12 * u, -0.28 * u + dy, -0.76 * u), 0.17 * u * A(1.0, 0.82, 0.8)), k=0.012)
-    # Chubby cheeks, and a fluffy ruff of three big soft tufts a side
-    # sweeping back off the back of each cheek.
-    fl = dict(n=6, amp=0.0012, twist=2.0, start=0.12)
-    for side in (-1, 1):
-        F.add(ellipsoid((side * 0.4 * u, -0.26 * u + dy, -0.4 * u), (0.26 * u, 0.22 * u, 0.26 * u)), k=0.03)
-        for i in range(5):
-            t = i / 4
-            ang = math.radians(25 - 75 * t)  # fanned from back-up to down
-            root = A(side * 0.5 * u, (-0.06 - 0.38 * t) * u + dy, (-0.24 + 0.1 * math.sin(t * math.pi)) * u)
-            d = unit((side * 0.8, math.sin(ang) * 0.8, math.cos(ang) * 0.6))
-            L = (0.24 + 0.08 * math.sin(t * math.pi)) * u
-            F.add(tuft(root, d, L, 0.12 * u, bend=A(side * 0.02, -0.03, 0.04) * u, tip=0.42, flute=dict(fl, phase=i)), k=0.022)
-    for e in _bunny_ears():
-        e.add(F)
-    if "mouth" not in ctx:
-        # The Y: down from under the nose between the pads, then out and up
-        # either side — landed on the pads from the front.
-        def fr(x, y):
-            return land(F, (x * u, y * u + dy, -1.6 * u), (0, 0, 1))
-        stem = [fr(0, y) for y in np.linspace(-0.2, -0.36, 5)]
-        mouth = [(A([p for p, n in stem]), A([n for p, n in stem]))]
-        for side in (-1, 1):
-            arm = [fr(side * x, y) for x, y in ((0.0, -0.36), (0.05, -0.395), (0.1, -0.405), (0.15, -0.385), (0.19, -0.35))]
-            mouth.append((A([p for p, n in arm]), A([n for p, n in arm])))
-        ctx["mouth"] = mouth
-        ctx["nose"] = fr(0, -0.13)
-        # The brows over the eyes, on the skin.
-        brows = []
-        for side in (-1, 1):
-            c, R, r, look = _bunny_eye(side)
-            pts = []
-            for a in np.linspace(math.radians(25), math.radians(155), 9):
-                q = c + R @ A(math.cos(a) * r[0] * 1.2, math.sin(a) * r[1] * 1.15, 0)
-                pts.append(land(F, q - look * 0.1, look)[0])
-            brows.append(surface_path(F, A(pts), 1))
-        ctx["brows"] = brows
-    if "eyerim" not in ctx:
-        ctx["eyerim"] = [lens_rim(F, *_bunny_eye(side)[:3]) for side in (-1, 1)]
-    for P, N in ctx["brows"]:
-        n = len(P)
-        rr = [0.0025 + 0.0035 * math.sin(math.pi * i / (n - 1)) for i in range(n)]
-        F.add(sweep(P - N * 0.0015, rr), k=0.006)
-    # Buck teeth under the Y.
-    for side in (-1, 1):
-        F.add(rounded_box((side * 0.04 * u, -0.45 * u + dy, -0.86 * u), (0.02 * u, 0.055 * u, 0.012 * u), 0.0025,
-                          rot((1, 0, 0), 0.12)), k=0.001)
-    # The nose's bed and the Y's groove.
-    nP, nN = ctx["nose"]
-    F.cut(ellipsoid(nP + nN * 0.004, (0.085 * u, 0.055 * u, 0.04 * u)), k=0.003)
-    for P, N in ctx["mouth"]:
-        F.cut(sweep(P, 0.0026), k=0.0015)
-    # Soft fur combed back over the crown and out over the cheeks.
-    def flow(p):
-        x, y, z = p
-        return (0.6 * np.sign(x) * min(1, abs(x) / (0.2 * u)), -0.2 if y < 0.1 * u + dy else 0.15, 1.0)
-    seeds = scatter_seeds(((0, 0.7 * u + dy, -0.1 * u), (0.32 * u, 0.05, 0.4 * u), (0, -1, 0)), 120, rng=11)
-    for side in (-1, 1):
-        seeds += scatter_seeds(((side * 0.5 * u, -0.2 * u + dy, -0.35 * u), (0.05, 0.18 * u, 0.2 * u), (-side, 0, 0)), 50, rng=12 + side)
-    fur_strokes(F, seeds, flow, length=0.018, width=0.0016, depth=0.0006)
-    # Whisker dots on the pads (the sculpt only).
-    if F.detail:
-        for side in (-1, 1):
-            for row in range(3):
-                for col in range(3):
-                    q = A(side * (0.07 + 0.045 * col) * u, (-0.22 - 0.05 * row) * u + dy, -1.2 * u)
-                    p, n = land(F, q, (0, 0, 1))
-                    F.cut(ellipsoid(p, (0.0012,) * 3), k=0.0008)
-
-
-def bunny_parts(F, ctx):
-    u, dy = BUNNY_U, BUNNY_DY
-    out = []
-    for i, e in enumerate(_bunny_ears()):
-        out.append(e.insert(f"inner{i}"))
-    for i, (P, N) in enumerate(ctx["mouth"]):
-        out.append(groove_trim(f"mouth{i}", P, N, 0.0019, 0.001, step=0.004))
-    nP, nN = ctx["nose"]
-    nose = [with_k(ellipsoid(nP - nN * 0.002 + A(0, 0.006, 0), (0.07 * u, 0.04 * u, 0.04 * u)), 0.0),
-            with_k(ellipsoid(nP - nN * 0.001 - A(0, 0.006, 0), (0.03 * u, 0.03 * u, 0.034 * u)), 0.012)]
-    out.append(sdf_part("nose", nose, "trim", tris=220))
-    for side in (-1, 1):
-        c, R, r, look = _bunny_eye(side)
-        out.append(gk.fin(ellipsoid_mesh(f"eye{side}", c, r, R=R, segs=18, rings=10), "glow"))
-        P, N, cl = ctx["eyerim"][(side + 1) // 2]
-        out.append(loop_tube(f"bezel{side}", P, 0.0022, closed=cl))
-        pr = 0.125 * u * A(0.85, 1.05, 0.4)
-        pc = c + look * (r[2] * 0.66) + R @ A(-side * 0.008 * u, -0.004 * u, 0)
-        out.append(gk.fin(ellipsoid_mesh(f"pupil{side}", pc, pr, R=R, segs=12, rings=8), "trim"))
-    return out
-
-
-def bunny_cranium(F, ctx):
-    F.add(mesh_prim(*loft(BUNNY_ST, BUNNY_U, BUNNY_DY, caps=BUNNY_CAPS)))
-    return (0, 0.15 * BUNNY_U + BUNNY_DY, 0.1 * BUNNY_U)
-
-
-BUNNY = Head("bunny", (-0.22, -0.16, -0.23), (0.22, 0.48, 0.22), bunny_form, bunny_parts, bunny_cranium, shell_tris=5700)
-
-
 def lock_path(F, root, direction, length, r0, steps=8, lift=0.55, hang=0.0, tip=0.25, free_after=1.0):
     """A LOCK lying on the skin: from `root` it runs along the surface
     (its direction kept tangent), lifted by part of its own girth so it
@@ -1385,227 +1150,962 @@ def lock_path(F, root, direction, length, r0, steps=8, lift=0.55, hang=0.0, tip=
     return A(pts), rad
 
 
-# ===========================================================================
-# Fur strokes (the sculpt only): short grooves combed along the fur's flow
-# ===========================================================================
 
-def fur_strokes(F, seeds, flow, length=0.024, width=0.0018, depth=0.0007, rng=7):
-    """Comb the skin: at each seed (a point outside the head and the
-    direction to land along), a short curved groove laid along
-    `flow(point) -> direction`. Only in the high (F.detail)."""
-    if not F.detail:
+# ===========================================================================
+# Hard surface: profiled lofts, blades along paths, plates, cylinders
+# ===========================================================================
+#
+# WOLF, FROG and BUNNY are clean cyberpunk HELMETS (the stallion stays the
+# sculpted horse): the animal reads through the silhouette and a few
+# strong designed planes — ceramic shell panels with crisp bevelled edges
+# and cut seams, machined trim at the seams and mounts, lit visors and
+# lenses. The same field pipeline makes them: boxy profiled lofts and
+# rounded plates joined with SMALL blends (a 2–6 mm bevel, never a lump),
+# seams cut as grooves along the surface (the major ones in the shell, the
+# fine ones in the high only).
+
+def profile_poly(pts, corner=6):
+    """A closed section profile (unit square, centred, star-shaped) as
+    a(angle) -> (u, v), corners rounded by a moving average."""
+    f = gk.polygon_outline(pts, corner=corner)
+
+    def g(a):
+        x, y = f(a)
+        return x, y
+    return g
+
+
+def chamfer_profile(top=0.55, side_top=0.45, side_bot=-0.6, bot=0.7, corner=6):
+    """A chamfered rectangle: flat top `top` wide, chamfers down to the
+    sides, sides to `side_bot`, a smaller chamfer into the bottom."""
+    pts = [(top, 1.0), (1.0, side_top), (1.0, side_bot), (bot, -1.0), (-bot, -1.0), (-1.0, side_bot), (-1.0, side_top), (-top, 1.0)]
+    return profile_poly(pts, corner)
+
+
+def loft_profile(stations, profile, dy=0.0, seg=96, sub=12, caps=(0.2, 0.2), cap_rings=10):
+    """loft() with a designed section: each station a ring of profile(a)
+    stretched between its topline and underline points, `w` half-wide
+    (metres, u = 1). Ends domed shallow (caps)."""
+    S = [A(*s["top"], *s["bot"], s["w"]) for s in stations]
+    n = len(S)
+    m = (n - 1) * sub + 1
+    prof = [profile(2 * math.pi * j / seg) for j in range(seg)]
+    rings = []
+    for i in range(m):
+        ty, tz, by, bz, w = _cr(S, i / sub)
+        midY, midZ = (ty + by) / 2, (tz + bz) / 2
+        hy, hz = (ty - by) / 2, (tz - bz) / 2
+        rings.append(A([(w * uu, midY + hy * vv + dy, midZ + hz * vv) for (uu, vv) in prof]))
+    return _close_rings(rings, caps, cap_rings)
+
+
+def _close_rings(rings, caps, cap_rings):
+    def dome(end_ring, next_ring, depth):
+        c = end_ring.mean(0)
+        axis = unit(c - next_ring.mean(0))
+        size = np.linalg.norm(end_ring - c, axis=1).mean()
+        out = []
+        for k in range(1, cap_rings):
+            ph = (math.pi / 2) * k / cap_rings
+            out.append(c + (end_ring - c) * math.cos(ph) + axis * depth * size * math.sin(ph))
+        return out, c + axis * depth * size
+    seg = len(rings[0])
+    back, btip = dome(rings[0], rings[1], caps[0])
+    front, ftip = dome(rings[-1], rings[-2], caps[1])
+    allr = list(reversed(back)) + rings + front
+    V = [p for r in allr for p in r]
+    m = len(allr)
+    quads = []
+    for i in range(m - 1):
+        for j in range(seg):
+            a = i * seg + j
+            b = i * seg + (j + 1) % seg
+            quads.append((a, b, b + seg, a + seg))
+    tris = []
+    for end, row, tip in ((0, 0, btip), (1, m - 1, ftip)):
+        c = len(V)
+        V.append(tuple(tip))
+        for j in range(seg):
+            a = row * seg + j
+            b = row * seg + (j + 1) % seg
+            tris.append((c, b, a) if end == 0 else (c, a, b))
+    return A(V), np.array(quads), np.array(tris)
+
+
+def path_loft(path, wid, thk, side, profile=None, seg=48, sub=6, caps=(0.3, 0.6), cap_rings=6, twist=None):
+    """A BLADE / FIN along a path (game points, Catmull-Rom'd): sections
+    perpendicular to the path, `wid` half-width along `side` (a game
+    vector, or a function of t), `thk` half-thickness across it; both
+    numbers or lists per path point. Returns (verts, quads, tris)."""
+    P = [A(p) for p in path]
+    n = len(P)
+    m = (n - 1) * sub + 1
+    W = list(wid) if hasattr(wid, "__len__") else [wid] * n
+    Tk = list(thk) if hasattr(thk, "__len__") else [thk] * n
+    C = [_cr(P, i / sub) for i in range(m)]
+    Wm = [float(_cr([A([w]) for w in W], i / sub)[0]) for i in range(m)]
+    Tm = [float(_cr([A([t]) for t in Tk], i / sub)[0]) for i in range(m)]
+    profile = profile or (lambda a: (math.cos(a), math.sin(a)))
+    prof = [profile(2 * math.pi * j / seg) for j in range(seg)]
+    rings = []
+    for i in range(m):
+        t = unit(C[min(i + 1, m - 1)] - C[max(i - 1, 0)])
+        sd = A(side(i / (m - 1))) if callable(side) else A(side)
+        sd = unit(sd - t * sd.dot(t))
+        up = np.cross(t, sd)
+        rings.append(A([C[i] + sd * (Wm[i] * uu) + up * (Tm[i] * vv) for (uu, vv) in prof]))
+    return _close_rings(rings, caps, cap_rings)
+
+
+def lens_profile():
+    """A blade section: a flat lozenge with chamfered edges."""
+    return profile_poly([(1.0, 0.0), (0.7, 0.8), (0.0, 1.0), (-0.7, 0.8), (-1.0, 0.0), (-0.7, -0.8), (0.0, -1.0), (0.7, -0.8)], corner=4)
+
+
+def cylinder(c, axis, r, h, rr=0.0):
+    """A capped cylinder (half-height h along axis), edges rounded rr."""
+    c, ax = A(c), unit(axis)
+    ext = np.abs(ax) * h + np.sqrt(np.maximum(1 - ax ** 2, 0)) * r + rr
+
+    def fn(X, Y, Z, detail):
+        px, py, pz = X - c[0], Y - c[1], Z - c[2]
+        a = px * ax[0] + py * ax[1] + pz * ax[2]
+        rx, ry, rz = px - ax[0] * a, py - ax[1] * a, pz - ax[2] * a
+        rad = np.sqrt(rx * rx + ry * ry + rz * rz)
+        dx = rad - (r - rr)
+        dy = np.abs(a) - (h - rr)
+        return np.minimum(np.maximum(dx, dy), 0) + np.sqrt(np.maximum(dx, 0) ** 2 + np.maximum(dy, 0) ** 2) - rr
+    return Prim(fn, c - ext - 0.002, c + ext + 0.002)
+
+
+def halfspace(n, p0, lo, hi):
+    """Everything behind the plane (n · (p − p0) < 0) inside a box: for
+    clipping one part with smax before it joins (see Field.clip)."""
+    n, p0 = unit(n), A(p0)
+
+    def fn(X, Y, Z, detail):
+        return (X - p0[0]) * n[0] + (Y - p0[1]) * n[1] + (Z - p0[2]) * n[2]
+    return Prim(fn, lo, hi)
+
+
+def clip(F, n, p0, k=0.0, lo=None, hi=None):
+    """Plane-cut the field (keep n · (p − p0) < 0), within a box."""
+    lo = F.lo if lo is None else A(lo)
+    hi = F.lo + F.h * (F.n - 1) if hi is None else A(hi)
+    sl, i0, i1 = F._block(lo, hi)
+    X, Y, Z = F._coords(i0, i1)
+    n, p0 = unit(n), A(p0)
+    d = ((X - p0[0]) * n[0] + (Y - p0[1]) * n[1] + (Z - p0[2]) * n[2]).astype(np.float32)
+    F.D[sl] = smax(F.D[sl], d, k)
+
+
+def cylinder_mesh(name, c, axis, r, h, segs=24):
+    """A capped cylinder mesh (half-height h along axis), a small chamfer
+    ring at each end."""
+    c, ax = A(c), unit(axis)
+    e1 = unit(np.cross(ax, (0, 1, 0)) if abs(ax[1]) < 0.9 else np.cross(ax, (1, 0, 0)))
+    e2 = np.cross(ax, e1)
+    prof = [(0.0, -h), (r * 0.85, -h), (r, -h * 0.7), (r, h * 0.7), (r * 0.85, h), (0.0, h)]
+    P, faces = [], []
+    for (rr, hh) in prof:
+        for s_ in range(segs):
+            a = 2 * math.pi * s_ / segs
+            P.append(c + ax * hh + (e1 * math.cos(a) + e2 * math.sin(a)) * rr)
+    for i in range(len(prof) - 1):
+        for s_ in range(segs):
+            s1 = (s_ + 1) % segs
+            faces.append((i * segs + s_, i * segs + s1, (i + 1) * segs + s1, (i + 1) * segs + s_))
+    return poly_mesh(name, A(P), faces)
+
+
+def slab(c, R, hx, hz, rad, thick, edge=0.0008):
+    """A rounded-rectangle slab (a lens, a plate): hx × hz in the frame's
+    x/z with corner radius `rad`, `thick` half-thick along its y."""
+    c, R = A(c), A(R)
+    ext = np.abs(R) @ A(hx, thick, hz) + 0.002
+
+    def fn(X, Y, Z, detail):
+        q0, q1, q2 = _local(X, Y, Z, c, R)
+        ax, az = np.abs(q0) - (hx - rad), np.abs(q2) - (hz - rad)
+        d2 = np.sqrt(np.maximum(ax, 0) ** 2 + np.maximum(az, 0) ** 2) + np.minimum(np.maximum(ax, az), 0) - rad
+        dy = np.abs(q1) - (thick - edge)
+        return np.minimum(np.maximum(d2 + edge, dy), 0) + np.sqrt(np.maximum(d2 + edge, 0) ** 2 + np.maximum(dy, 0) ** 2) - edge
+    return Prim(fn, c - ext, c + ext)
+
+
+def mesh_part(name, V, Q, T, finish):
+    return gk.fin(np_mesh(name, V, Q, T), finish)
+
+
+def seam_path(F, pts, n=48, smooth=2):
+    """A seam laid on the skin through guide points (each landed along
+    the field's gradient), densified."""
+    P = A(pts)
+    dense = []
+    for i in range(len(P) - 1):
+        for t in np.linspace(0, 1, max(2, n // (len(P) - 1)), endpoint=False):
+            dense.append(P[i] + (P[i + 1] - P[i]) * t)
+    dense.append(P[-1])
+    return surface_path(F, A(dense), smooth)
+
+
+def seam(F, path, w=0.0011, depth=0.0009, high_only=False):
+    """Cut a crisp panel seam along a surface path."""
+    if high_only and not F.detail:
         return
-    g = np.random.default_rng(rng)
-    for o, d in seeds:
-        p, n = land(F, o, d)
-        if F.sample([p])[0] > 0.002:
-            continue
-        L = length * (0.7 + 0.6 * g.random())
-        pts = [p]
-        q = p.copy()
-        for _ in range(4):
-            fdir = A(flow(q))
-            fdir = fdir - n * fdir.dot(n)
-            if np.linalg.norm(fdir) < 1e-6:
-                break
-            q = q + unit(fdir) * L / 4
-            q, nn = F.project([q], iters=3)
-            q, n = q[0], nn[0]
-            pts.append(q)
-        if len(pts) < 3:
-            continue
-        P = A(pts)
-        N = F.grad(P)
-        P = P + N * (width - depth)
-        rr = [width * 0.4] + [width] * (len(P) - 2) + [width * 0.4]
-        F.cut(sweep(P, rr), k=0.0006)
+    P, N = path
+    F.cut(sweep(P - N * (w - depth), w), k=0.0003)
 
 
-def scatter_seeds(region, n, rng=3):
-    """Seeds over a box of directions: region = (centre, (ax, ay, az) half
-    sizes, landing direction). Points start 0.25 m out along −direction."""
-    c, half, d = A(region[0]), A(region[1]), unit(region[2])
-    g = np.random.default_rng(rng)
-    out = []
-    for _ in range(n):
-        p = c + (g.random(3) * 2 - 1) * half
-        out.append((p - d * 0.25, d))
-    return out
+def slot_insert(name, c, R, half, finish, r=0.0015):
+    """A small machined part (a vent bar, a lens bar) as a rounded box mesh."""
+    return sdf_part(name, [with_k(rounded_box(c, half, r, R), 0.0)], finish, tris=64, h=0.0008)
 
 
 # ===========================================================================
-# WOLF — a timber wolf, alert rather than snarling
+# WOLF — a hunter's helmet: hard V brow over a lit visor, a long faceted
+# muzzle, swept armour blades for the ruff
 # ===========================================================================
+#
+# THE BLANK's vocabulary (head.py): a smooth ceramic shell, dark visor
+# glass with lit slits behind it, machined ear pods with a lit ring, steel
+# vent slots, crisp seams — on a wolf. The cranium is one dome; the muzzle
+# a chamfered loft (flat bridge, angled cheeks) over its own jaw plate, the
+# jaw seam lined in steel, a steel vent trio behind it and a machined nose
+# cap at the tip. The menace is the BROW: a hard ridge swept back from a V
+# over the visor band. Tall faceted fins stand on lit pods; the ruff is
+# three bold blades a side off the jaw hinge and two off the nape, each
+# bolted on.
 
-WOLF_U = 0.13 * 1.2508 * 1.12
-WOLF_DY = -0.03
-WOLF_SKULL = [
-    dict(top=(0.45, 0.6), bot=(-0.32, 0.58), w=0.4, n=2.0),  # occiput
-    dict(top=(0.72, 0.3), bot=(-0.46, 0.4), w=0.52, n=2.05),  # crown
-    dict(top=(0.66, -0.02), bot=(-0.5, 0.14), w=0.57, n=2.1),  # cheeks (widest)
-    dict(top=(0.54, -0.3), bot=(-0.46, -0.12), w=0.5, n=2.1),  # brow
-    dict(top=(0.28, -0.5), bot=(-0.4, -0.36), w=0.33, n=2.1),  # THE STOP
-    dict(top=(0.2, -0.72), bot=(-0.3, -0.6), w=0.26, n=2.2),  # muzzle root
-    dict(top=(0.15, -0.98), bot=(-0.26, -0.9), w=0.215, n=2.35),  # mid muzzle
-    dict(top=(0.1, -1.2), bot=(-0.22, -1.14), w=0.18, n=2.5),  # square end
+WOLF_DOME = ((0, 0.012, 0.03), (0.104, 0.112, 0.118))
+WOLF_BROW_CLIP = ((0, 0.5, -0.86), (0, 0.078, -0.068))
+
+
+def _wolf_nosecap(seg=64, sub=6):
+    """A faceted machined cap sleeved over the muzzle tip (the muzzle's
+    own chamfered section, 2.5 mm proud, a flat front face)."""
+    st = [
+        dict(top=(-0.002, -0.208), bot=(-0.04, -0.21), w=0.037),
+        dict(top=(-0.008, -0.228), bot=(-0.042, -0.229), w=0.034),
+        dict(top=(-0.012, -0.241), bot=(-0.043, -0.241), w=0.031),
+    ]
+    return loft_profile(st, chamfer_profile(top=0.5, side_top=0.35, side_bot=-0.55, bot=0.75, corner=3), seg=seg, sub=sub,
+                        caps=(0.05, 0.08), cap_rings=3)
+
+
+def _wolf_muzzle(seg=96, sub=12):
+    st = [
+        dict(top=(0.062, -0.04), bot=(-0.09, -0.025), w=0.064),
+        dict(top=(0.04, -0.092), bot=(-0.08, -0.085), w=0.056),
+        dict(top=(0.012, -0.155), bot=(-0.066, -0.15), w=0.045),
+        dict(top=(-0.004, -0.206), bot=(-0.06, -0.203), w=0.036),
+        dict(top=(-0.01, -0.232), bot=(-0.058, -0.23), w=0.031),
+    ]
+    return loft_profile(st, chamfer_profile(top=0.5, side_top=0.35, side_bot=-0.55, bot=0.75), seg=seg, sub=sub,
+                        caps=(0.1, 0.14), cap_rings=max(3, sub))
+
+
+def _wolf_jaw(seg=96, sub=12):
+    st = [
+        dict(top=(-0.058, -0.02), bot=(-0.106, -0.005), w=0.062),
+        dict(top=(-0.062, -0.09), bot=(-0.1, -0.085), w=0.05),
+        dict(top=(-0.061, -0.17), bot=(-0.088, -0.166), w=0.034),
+        dict(top=(-0.06, -0.212), bot=(-0.078, -0.21), w=0.026),
+    ]
+    return loft_profile(st, chamfer_profile(top=0.8, side_top=0.6, side_bot=-0.3, bot=0.5), seg=seg, sub=sub,
+                        caps=(0.1, 0.25), cap_rings=max(3, sub))
+
+
+def _wolf_brow(side, ctx, seg=40, sub=8):
+    """The brow ridge: from the V over the bridge, swept up and back to
+    the temple along the skin — a hard shelf over the visor."""
+    path = ctx["brow"][(side + 1) // 2]
+    return path_loft(path, [0.009, 0.012, 0.011, 0.009, 0.004], [0.0075, 0.0085, 0.008, 0.006, 0.003], (0, 1, 0.45),
+                     profile=profile_poly([(1.0, 1.0), (1.0, -0.2), (0.2, -1.0), (-1.0, -1.0), (-1.0, 1.0)], corner=3),
+                     seg=seg, sub=sub, caps=(0.3, 0.6), cap_rings=max(3, sub // 2))
+
+
+def _wolf_ear_path(side):
+    return [(side * 0.06, 0.07, 0.032), (side * 0.071, 0.13, 0.042), (side * 0.083, 0.19, 0.056), (side * 0.089, 0.224, 0.065)]
+
+
+def _wolf_ear(side, seg=48, sub=8):
+    return path_loft(_wolf_ear_path(side), [0.034, 0.03, 0.017, 0.004], [0.013, 0.01, 0.007, 0.0025], (1, 0, 0.25),
+                     profile=lens_profile(), seg=seg, sub=sub, caps=(0.2, 0.4), cap_rings=max(3, sub // 2))
+
+
+# The ruff: two swept armour plates a side, laid round the head from the
+# cheek past the jaw hinge to the nape, the upper shingled over the lower.
+WOLF_PLATES = [  # (height at the front, rise to the back, angle from, angle to, half-width, stand-off)
+    (-0.01, 0.03, 1.08, 2.9, 0.027, 0.0075),
+    (-0.056, 0.022, 0.98, 2.8, 0.025, 0.0042),
 ]
-WOLF_JAW = [
-    dict(top=(-0.2, -0.3), bot=(-0.48, -0.1), w=0.3, n=2.0),
-    dict(top=(-0.24, -0.66), bot=(-0.44, -0.56), w=0.21, n=2.1),
-    dict(top=(-0.24, -1.0), bot=(-0.37, -0.96), w=0.15, n=2.2),
-    dict(top=(-0.23, -1.1), bot=(-0.31, -1.09), w=0.1, n=2.0),
-]
 
 
-def _wolf_ears():
-    u, dy = WOLF_U, WOLF_DY
-    ears = []
-    for side in (-1, 1):
-        R = euler(0.12, side * -0.25, side * -0.22)
-        o = A(side * 0.3 * u, 0.6 * u + dy, 0.12 * u)
-        ears.append(Ear(o, R, (0.38 * u, 0.72 * u, 0.16 * u, 0.9, 0.06 * u), (0.21 * u, 0.5 * u, 0.06 * u, 0.9, 0.05 * u),
-                        0.27 * u, lift=0.3 * u, k=0.02, hollow=0.006))
-    return ears
-
-
-def _wolf_eye(side):
-    u, dy = WOLF_U, WOLF_DY
-    R = euler(0, side * -0.45, side * 0.3)
-    c = A(side * 0.27 * u, 0.3 * u + dy, -0.54 * u)
-    return c, R
-
-
-def _wolf_ruff():
-    """THE RUFF: cheek tufts fanning back and down off the jaw line, a
-    longer rank behind them, a collar round the nape — (root, dir, length,
-    radius) in head units."""
+def _wolf_plate_paths(F):
     out = []
     for side in (-1, 1):
-        for i in range(5):
-            t = i / 4
-            root = A(side * (0.5 - t * 0.06), 0.14 - t * 0.52, -0.08 + t * 0.08)
-            d = A(side * (0.75 - t * 0.2), -0.22 - t * 0.55, 0.62)
-            out.append((root, d, 0.5 + math.sin(t * math.pi) * 0.14, 0.13))
-        for i in range(4):
-            t = i / 3
-            root = A(side * (0.46 - t * 0.1), 0.36 - t * 0.6, 0.2 + t * 0.06)
-            d = A(side * 0.55, -0.08 - t * 0.5, 0.9)
-            out.append((root, d, 0.52, 0.14))
-    for i in range(5):
-        a = math.radians(-50 + i * 25)
-        root = A(math.sin(a) * 0.3, -0.18, 0.4 + math.cos(a) * 0.08)
-        d = A(math.sin(a) * 0.5, -0.55, 0.75)
-        out.append((root, d, 0.5, 0.15))
-    # The back of the skull: two shingled rows of locks combed down the
-    # occiput into the collar (the cap was a bald disc in the ruff).
-    for row, (y, z, n, spread) in enumerate(((0.42, 0.42, 4, 0.3), (0.12, 0.56, 5, 0.36))):
-        for i in range(n):
-            t = (i / (n - 1)) * 2 - 1
-            root = A(t * spread, y, z)
-            d = A(t * 0.35, -0.75, 0.6)
-            out.append((root, d, 0.42, 0.13))
+        for (y, rise, a0, a1, w, off) in WOLF_PLATES:
+            t = np.linspace(0, 1, 25)
+            th = (a0 + (a1 - a0) * t) * side
+            P = drape_ring(F, y + rise * t ** 1.4, th, 0.02, r_out=0.35)
+            P, N = surface_path(F, P, 3)
+            out.append((P + N * off, w, side, N))
     return out
+
+
+def _wolf_plate(path, w, N, seg=40, sub=4):
+    n = len(path)
+    # a chevron's point at the cheek, full through the hinge, swept to a
+    # point at the nape; the lower edge flared out like a ruff
+    wid = [w * (0.25 + 0.75 * smoothstep(0.0, 0.28, i / (n - 1))) * (1 - 0.8 * smoothstep(0.6, 1.0, i / (n - 1))) for i in range(n)]
+    Nn = A(N)
+
+    def side(t):
+        k = min(int(round(t * (len(Nn) - 1))), len(Nn) - 1)
+        return A(0, 1, 0) - Nn[k] * 0.45
+    return path_loft(path, wid, [0.0042] * n, side,
+                     profile=chamfer_profile(top=0.8, side_top=0.5, side_bot=-0.5, bot=0.8, corner=3),
+                     seg=seg, sub=sub, caps=(0.12, 0.12), cap_rings=3)
+
+
+def _wolf_pod(side):
+    """The ear pod: where the fin is mounted, on the side of the dome."""
+    p = A(side * 0.074, 0.062, 0.03)
+    return p, unit((side, 0.55, 0.1))
 
 
 def wolf_form(F, ctx):
-    u, dy = WOLF_U, WOLF_DY
-    F.add(mesh_prim(*loft(WOLF_SKULL, u, dy, caps=(0.45, 0.25))))
-    F.add(mesh_prim(*loft(WOLF_JAW, u, dy, caps=(0.3, 0.4))), k=0.006)
-    # The cheeks fill out behind the jaw hinge; the brow over each eye.
+    c, r = WOLF_DOME
+    F.add(ellipsoid(c, r))
+    clip(F, *WOLF_BROW_CLIP, k=0.008, hi=(0.2, 0.3, 0.0))
+    F.add(mesh_prim(*_wolf_muzzle()), k=0.012)
+    F.add(mesh_prim(*_wolf_jaw()), k=0.0)
+    if "brow" not in ctx:
+        # The brow's line on the skin: a V over the bridge, up and back.
+        brows = []
+        for side in (-1, 1):
+            pts = []
+            for x, y in ((0.004, 0.06), (0.03, 0.071), (0.058, 0.084), (0.08, 0.094), (0.094, 0.1)):
+                p, n = land(F, (side * x, y, -0.4), (0, 0, 1)) if x < 0.07 else land(F, (side * (x + 0.3), y, -0.3), unit((-side, 0, 1)))
+                pts.append(p + n * 0.006)
+            brows.append(smooth_path(A(pts), 1))
+        ctx["brow"] = brows
     for side in (-1, 1):
-        F.add(ellipsoid((side * 0.36 * u, 0.0 * u + dy, -0.22 * u), (0.2 * u, 0.24 * u, 0.26 * u)), k=0.03)
-        F.add(ellipsoid((side * 0.23 * u, 0.44 * u + dy, -0.47 * u), (0.18 * u, 0.06 * u, 0.09 * u),
-                        euler(0.2, side * -0.3, side * 0.36)), k=0.018)
-    # THE RUFF, every tuft a rounded lock fluted in the sculpt.
-    fl = dict(n=5, amp=0.0013, twist=1.2, start=0.18)
-    for i, (root, d, L, r0) in enumerate(_wolf_ruff()):
-        bend = A(0, -0.05, 0.04) * u
-        F.add(tuft(root * u + A(0, dy, 0), unit(d), L * u * 1.18, r0 * u * 1.1, bend=bend * 1.6, tip=0.36, flute=dict(fl, phase=i * 0.7)), k=0.02)
-    for e in _wolf_ears():
-        e.add(F)
-    if "mouth" not in ctx:
-        # The mouth: where jaw meets muzzle, corner to corner.
-        right = []
-        for x, y, z in ((0.26, -0.18, -0.4), (0.22, -0.23, -0.62), (0.18, -0.25, -0.86), (0.13, -0.25, -1.04), (0.06, -0.245, -1.14), (0.0, -0.245, -1.16)):
-            right.append(A(x * u, y * u + dy, z * u))
-        pts = [mirror(p) for p in right] + right[::-1][1:]
-        P = A(pts)
-        # land each sideways-in onto the skin
-        Q = []
-        za = -0.9 * u
-        for p in P:
-            d = -unit((p[0], 0, (p[2] - za) if p[2] < za else 0.0))
-            Q.append(land(F, p - d * 0.05, d)[0])
-        Q = smooth_path(A(Q), 1)
-        # densify
-        dense = []
-        for i in range(len(Q) - 1):
-            for t in np.linspace(0, 1, 6, endpoint=False):
-                dense.append(Q[i] + (Q[i + 1] - Q[i]) * t)
-        dense.append(Q[-1])
-        ctx["mouth"] = surface_path(F, A(dense), 2)
-        ctx["nose"] = land(F, (0, 0.06 * u + dy, -1.6 * u), (0, 0, 1))
-        ctx["eyes"] = []
-    for P, N in [ctx["mouth"]]:
-        F.cut(sweep(P, 0.0028), k=0.002)
-    # Fangs just showing under the lip.
+        F.add(mesh_prim(*_wolf_brow(side, ctx)), k=0.004)
+        F.add(mesh_prim(*_wolf_ear(side)), k=0.006)
+    if "plates" not in ctx:
+        ctx["plates"] = _wolf_plate_paths(F)
+    for path, w, side, N in ctx["plates"]:
+        F.add(mesh_prim(*_wolf_plate(path, w, N)), k=0.0015)
+    if "visor" not in ctx:
+        # The visor band: a V across the face under the brow, landed on
+        # the skin round the face, temple to temple.
+        th = np.linspace(-1.2, 1.2, 31)
+        ys = 0.04 + 0.04 * np.abs(th / 1.2) ** 1.3
+        P = drape_ring(F, ys, th, 0.0, r_out=0.35)
+        ctx["visor"] = surface_path(F, P, 2)
+        ys = np.full(41, -0.06)
+        th = np.linspace(-1.35, 1.35, 41)
+        ctx["jawseam"] = surface_path(F, drape_ring(F, ys, th, -0.12, r_out=0.3), 2)
+        ctx["crown"] = seam_path(F, [(0, 0.2, -0.04), (0, 0.2, 0.03), (0, 0.2, 0.09), (0, 0.1, 0.16), (0, 0.0, 0.17)], 40)
+        ctx["mask"] = [seam_path(F, [(s * 0.2, 0.09, -0.02), (s * 0.2, 0.04, -0.012), (s * 0.2, -0.01, -0.02), (s * 0.2, -0.055, -0.03)], 24)
+                       for s in (-1, 1)]
+        ctx["nose"] = land(F, (0, -0.032, -0.4), (0, 0, 1))
+        ctx["vents"] = [[land(F, (s * 0.25, -0.044 - 0.0085 * j, -0.07 - 0.003 * j), (-s, 0, 0)) for j in range(3)]
+                        for s in (-1, 1)]
+    # The visor's bed: a shallow channel the glass band sits in.
+    P, N = ctx["visor"]
+    F.cut(sweep((P + N * 0.002)[1:-1], 0.0135), k=0.002)
     for side in (-1, 1):
-        a = A(side * 0.1 * u, -0.2 * u + dy, -1.04 * u)
-        b = A(side * 0.098 * u, -0.36 * u + dy, -1.06 * u)
-        F.add(sweep([a, b], [0.026 * u, 0.0035]), k=0.002)
-    # The nose's bed: the pad sits in it.
-    nP, nN = ctx["nose"]
-    F.cut(ellipsoid(nP + nN * 0.006 - A(0, 0, 0.004), (0.12 * u, 0.07 * u, 0.06 * u), rot((1, 0, 0), 0.2)), k=0.004)
-    # Fur combed back over the crown and down the cheeks (sculpt only).
-    def flow(p):
-        x, y, z = p
-        return (0.35 * np.sign(x) * min(1, abs(x) / (0.15 * u)), -0.25 if y < 0.2 * u + dy else 0.1, 1.0)
-    seeds = scatter_seeds(((0, 0.75 * u + dy, -0.2 * u), (0.3 * u, 0.05, 0.35 * u), (0, -1, 0)), 160)
-    seeds += scatter_seeds(((0.42 * u, 0.15 * u + dy, -0.3 * u), (0.05, 0.25 * u, 0.3 * u), (-1, 0, 0)), 70, rng=5)
-    seeds += scatter_seeds(((-0.42 * u, 0.15 * u + dy, -0.3 * u), (0.05, 0.25 * u, 0.3 * u), (1, 0, 0)), 70, rng=6)
-    fur_strokes(F, seeds, flow)
+        for p, n in ctx["vents"][(side + 1) // 2]:
+            F.cut(rounded_box(p, (0.013, 0.004, 0.0021), 0.0011, basis(x=(0, 0, -1), y=n)), k=0.0008)
+    P, N = ctx["jawseam"]
+    F.cut(sweep(P, 0.0024), k=0.001)
+    seam(F, ctx["crown"])
+    for pth in ctx["mask"]:
+        seam(F, pth)
+
+
+def wolf_lows(F, ctx):
+    """The shell as clean parts (the same definitions as the field)."""
+    c, r = WOLF_DOME
+    out = [ellipsoid_mesh("dome", c, r, segs=28, rings=16, clips=[WOLF_BROW_CLIP])]
+    out.append(np_mesh("muzzle", *_wolf_muzzle(seg=24, sub=2)))
+    out.append(np_mesh("jaw", *_wolf_jaw(seg=16, sub=2)))
+    for side in (-1, 1):
+        out.append(np_mesh(f"brow{side}", *_wolf_brow(side, ctx, seg=10, sub=3)))
+        out.append(np_mesh(f"ear{side}", *_wolf_ear(side, seg=10, sub=3)))
+    for i, (path, w, side, N) in enumerate(ctx["plates"]):
+        out.append(np_mesh(f"plate{i}", *_wolf_plate(path[::3], w, N[::3], seg=10, sub=2)))
+    return out
 
 
 def wolf_parts(F, ctx):
-    u, dy = WOLF_U, WOLF_DY
     out = []
-    for i, e in enumerate(_wolf_ears()):
-        out.append(e.insert(f"inner{i}"))
-    P, N = ctx["mouth"]
-    out.append(groove_trim("mouth", P, N, 0.0021, 0.0012, step=0.006))
-    # The nose: a broad pad capping the square muzzle, nostrils cut in it.
-    nP, nN = ctx["nose"]
-    nc = nP - A(0, 0, 0.0) + nN * 0.002
-    Rn = rot((1, 0, 0), 0.2)
-    parts = [with_k(ellipsoid(nc, (0.13 * u, 0.075 * u, 0.085 * u), Rn), 0.0),
-             with_k(ellipsoid(nc + A(0, 0.02 * u, 0.03 * u), (0.11 * u, 0.06 * u, 0.08 * u), Rn), 0.01)]
+    # The visor: dark glass round the face, two lit slits angled up and
+    # out under the brow.
+    P, N = ctx["visor"]
+    V, Q, T = path_loft(P + N * 0.0012, 0.0125, 0.0032, lambda t: A(0, 1, 0), profile=lens_profile(), seg=8, sub=1,
+                        caps=(0.3, 0.3), cap_rings=2)
+    out.append(mesh_part("visor", V, Q, T, "trim"))
+    n = len(P)
     for side in (-1, 1):
-        parts.append(("cut", ellipsoid(nc + A(side * 0.055 * u, -0.012 * u, -0.08 * u), (0.03 * u, 0.02 * u, 0.03 * u),
-                                         rot((0, 0, 1), side * -0.5)), 0.003))
-    out.append(sdf_part("nose", parts, "trim", tris=320))
-    # Eyes: an almond of glass in a dark almond liner, a bezel where the
-    # liner meets the skin.
+        idx = [i for i in range(n) if 0.14 < side * (i - (n - 1) / 2) / ((n - 1) / 2) < 0.72]
+        if side < 0:
+            idx = idx[::-1]
+        Ps, Ns = P[idx], N[idx]
+        Vs, Qs, Ts = path_loft(Ps + Ns * 0.0042 + A(0, -0.001, 0), 0.003, 0.0016, (0, 1, 0), profile=lens_profile(),
+                               seg=6, sub=1, caps=(0.5, 0.5), cap_rings=2)
+        out.append(mesh_part(f"slit{side}", Vs, Qs, Ts, "glow"))
+    P, N = ctx["jawseam"]
+    out.append(groove_trim("jawline", P, N, 0.0018, 0.0012, step=0.009))
     for side in (-1, 1):
-        c, R = _wolf_eye(side)
-        r_l = A(0.155 * u, 0.075 * u, 0.07 * u)
-        r_g = A(0.11 * u, 0.048 * u, 0.06 * u)
-        look = R @ A(0, 0, -1)
-        # Seat it: on the skin along its own look, sunk to show ~40%.
-        ps, ns = land(F, c + look * 0.12, -look)
-        c = ps + look * (r_l[2] * 0.25)
-        out.append(gk.fin(ellipsoid_mesh(f"liner{side}", c, r_l, R=R, segs=16, rings=8), "trim"))
-        out.append(gk.fin(ellipsoid_mesh(f"eye{side}", c + look * 0.006, r_g, R=R, segs=16, rings=8), "glow"))
-        Pr, Nr, cl = lens_rim(F, c, R, r_l, n=36)
-        out.append(loop_tube(f"bezel{side}", Pr, 0.002, sides=5, closed=cl))
+        for j, (p, n) in enumerate(ctx["vents"][(side + 1) // 2]):
+            out.append(slot_insert(f"vent{side}{j}", p - n * 0.0026, basis(x=(0, 0, -1), y=n), (0.012, 0.0016, 0.0015), "trim"))
+        # Ear pod: a machined drum the fin stands on, a lit ring round it.
+        p, ax = _wolf_pod(side)
+        q, nq = land(F, p + ax * 0.1, -ax)
+        out.append(gk.fin(cylinder_mesh(f"pod{side}", q + nq * 0.004, nq, 0.017, 0.006, segs=24), "trim"))
+        out.append(gk.fin(torus_mesh(f"podring{side}", q + nq * 0.0102, nq, 0.0125, 0.0014, segs=24, sides=4), "glow"))
+        # Ear inner panel (steel).
+        path = _wolf_ear_path(side)
+        V, Q, T = path_loft([A(pp) + A(0, 0.004, -0.009) for pp in path[:3]], [0.022, 0.019, 0.008], [0.004, 0.0035, 0.002],
+                            (1, 0, 0.25), profile=lens_profile(), caps=(0.2, 0.4), seg=12, sub=3, cap_rings=3)
+        out.append(mesh_part(f"earpanel{side}", V, Q, T, "trim"))
+    # Mounts: a bolt at each end of every plate, and a steel hinge drum
+    # at the jaw hinge pinning both plates.
+    for i, (path, w, side, N) in enumerate(ctx["plates"]):
+        for j in (3, int(len(path) * 0.62)):
+            p = path[j]
+            n = F.grad([p])[0]
+            out.append(gk.fin(gk.rivet(f"bolt{i}{j}", tuple(p + n * 0.0034), tuple(n), r=0.0042, h=0.0028, segs=10), "trim"))
+    for side in (-1, 1):
+        th = side * 1.62
+        q = drape_ring(F, [-0.027], [th], 0.02, r_out=0.35)[0]
+        n = F.grad([q])[0]
+        out.append(gk.fin(cylinder_mesh(f"hinge{side}", q + n * 0.0075, n, 0.015, 0.004, segs=20), "trim"))
+    cap = [with_k(mesh_prim(*_wolf_nosecap()), 0.0)]
+    tip = A(0, -0.034, -0.246)
+    for side in (-1, 1):
+        cap.append(("cut", rounded_box(tip + A(side * 0.012, 0.006, 0.0), (0.0075, 0.0016, 0.008), 0.0008,
+                                       rot((0, 0, 1), side * 0.35)), 0.0004))
+    # a machined seam round the cap, and a ridge down its bridge
+    ring = [A(math.cos(t) * 0.036, -0.025 + math.sin(t) * 0.022, -0.222) for t in np.linspace(0, 2 * math.pi, 33)]
+    cap.append(("cut", sweep(ring, 0.0009), 0.0))
+    out.append(sdf_part("nosecap", cap, "trim", tris=420, h=0.0006, pad=0.006))
+
     return out
 
 
 def wolf_cranium(F, ctx):
-    F.add(mesh_prim(*loft(WOLF_SKULL[:5], WOLF_U, WOLF_DY, caps=(0.45, 0.4))))
-    return (0, 0.15 * WOLF_U + WOLF_DY, 0.1 * WOLF_U)
+    F.add(ellipsoid(*WOLF_DOME))
+    clip(F, *WOLF_BROW_CLIP, k=0.008, hi=(0.2, 0.3, 0.0))
+    return (0, 0.02, 0.03)
 
 
-WOLF = Head("wolf", (-0.24, -0.2, -0.27), (0.24, 0.3, 0.24), wolf_form, wolf_parts, wolf_cranium, shell_tris=6000)
+WOLF = Head("wolf", (-0.2, -0.17, -0.27), (0.2, 0.25, 0.23), wolf_form, wolf_parts, wolf_cranium,
+            h_low=0.0022, sharp=40.0, lows=wolf_lows)
+
+
+# ===========================================================================
+# FROG — a sleek split shell, lens turrets with shutter lids, a lit smile
+# ===========================================================================
+#
+# One wide low ceramic dome split along the jaw: the smile is that split,
+# lit — an LED line in a steel channel corner to corner, lifting at the
+# corners. The eyes are the frog: two machined turret collars on the crown,
+# a big domed LENS in each, and a shell SHUTTER drawn half down over it
+# (the cheeky look). Tympanum pods behind them in the shell's colour with a
+# steel rim (a dark disc reads as a second pair of eyes); two steel intake
+# slots for nostrils; crisp seams down the crown and round the turrets.
+
+FROG_TOP = ((0, -0.012, 0.0), (0.152, 0.09, 0.15))
+FROG_JAW = ((0, -0.034, 0.004), (0.144, 0.078, 0.14))
+FROG_SPLIT = -0.044
+# The top shell's facets: a flat deck between the turrets, a sloped snout
+# face (the nostrils sit on it), and the split plane under it.
+FROG_FACETS = [((0, 1, 0), (0, 0.066, 0)), ((0, 0.72, -0.69), (0, 0.004, -0.122)), ((0, -1, 0), (0, FROG_SPLIT, 0)),
+               ((0.94, 0.34, 0), (0.136, 0.0, 0)), ((-0.94, 0.34, 0), (-0.136, 0.0, 0)), ((0, 0.45, 0.89), (0, 0.025, 0.128))]
+
+
+def _frog_turret(side):
+    """Turret: base centre, axis (out of the shell), lens radius."""
+    ax = unit((side * 0.42, 0.85, -0.32))
+    base = A(side * 0.074, 0.058, -0.052)
+    return base, ax, 0.034
+
+
+def _frog_lid_fn(c, ax, R, thick, open_=0.1, side=1):
+    """A SHUTTER: a spherical shell segment over the lens, its lower
+    edge a crisp plane tilted down toward the nose."""
+    look = unit(ax + A(0, 0, -0.6))
+    edge_n = unit(A(0, 1, 0) + A(side * 0.25, 0, 0.0) - look * 0.15)
+
+    def fn(X, Y, Z, detail):
+        px, py, pz = X - c[0], Y - c[1], Z - c[2]
+        sph = np.sqrt(px * px + py * py + pz * pz)
+        shell = np.abs(sph - R) - thick / 2
+        plane = -(px * edge_n[0] + py * edge_n[1] + pz * edge_n[2] - open_ * R)
+        return smax(shell, plane, 0.0015)
+    ext = R + thick
+    return Prim(fn, c - ext, c + ext)
+
+
+def _frog_lid_mesh(name, c, ax, R, thick, open_=0.1, side=1, segs=24, rings=5):
+    """The shutter as a clean mesh: a spherical cap round its edge
+    plane's normal, outer and inner skins and the rim between them."""
+    look = unit(ax + A(0, 0, -0.6))
+    en = unit(A(0, 1, 0) + A(side * 0.25, 0, 0.0) - look * 0.15)
+    e1 = unit(np.cross(en, (0, 0, 1)))
+    e2 = np.cross(en, e1)
+    phi_max = math.acos(open_)
+    P, faces = [], []
+    radii = (R + thick / 2, R - thick / 2)
+    for k, rr in enumerate(radii):
+        P.append(c + en * rr)
+        for i in range(1, rings + 1):
+            ph = phi_max * i / rings
+            for j in range(segs):
+                t = 2 * math.pi * j / segs
+                P.append(c + (en * math.cos(ph) + (e1 * math.cos(t) + e2 * math.sin(t)) * math.sin(ph)) * rr)
+    per = 1 + rings * segs
+    for k in range(2):
+        o = k * per
+        for j in range(segs):
+            j1 = (j + 1) % segs
+            f = (o, o + 1 + j, o + 1 + j1)
+            faces.append(f if k == 0 else f[::-1])
+        for i in range(rings - 1):
+            a0 = o + 1 + i * segs
+            b0 = a0 + segs
+            for j in range(segs):
+                j1 = (j + 1) % segs
+                f = (a0 + j, b0 + j, b0 + j1, a0 + j1)
+                faces.append(f if k == 0 else f[::-1])
+    lo, li = 1 + (rings - 1) * segs, per + 1 + (rings - 1) * segs
+    for j in range(segs):
+        j1 = (j + 1) % segs
+        faces.append((lo + j, li + j, li + j1, lo + j1))
+    return poly_mesh(name, A(P), faces)
+
+
+def plate_poly(c, R, outline, thick, chamfer, n=48, corner=6):
+    """A machined PLATE: a closed outline (local x, z), `thick` half-thick
+    along local y, its top edge chamfered. Returns (verts, quads, tris)."""
+    f = gk.polygon_outline(outline, corner=corner)
+    pts = [f(2 * math.pi * i / n) for i in range(n)]
+    cx, cz = np.mean([p[0] for p in pts]), np.mean([p[1] for p in pts])
+    rings = []
+    for y, shrink in ((-thick, 0.0), (thick - chamfer, 0.0), (thick, chamfer)):
+        ring = []
+        for (x, z) in pts:
+            dx, dz = x - cx, z - cz
+            L = math.hypot(dx, dz) or 1.0
+            ring.append((x - dx / L * shrink, y, z - dz / L * shrink))
+        rings.append(A(ring) @ A(R).T + A(c))
+    V = [p for r_ in rings for p in r_]
+    Q = []
+    for i in range(2):
+        for j in range(n):
+            a, b = i * n + j, i * n + (j + 1) % n
+            Q.append((a, b, b + n, a + n))
+    T = []
+    for k, row in ((0, 0), (1, 2)):
+        ci = len(V)
+        V.append(A(cx, -thick if k == 0 else thick, cz) @ A(R).T + A(c))
+        for j in range(n):
+            a, b = row * n + j, row * n + (j + 1) % n
+            T.append((ci, b, a) if k == 0 else (ci, a, b))
+    return A(V), np.array(Q), np.array(T)
+
+
+FROG_BROW = [(-0.026, -0.03), (0.026, -0.03), (0.04, 0.0), (0.034, 0.03), (-0.034, 0.03), (-0.04, 0.0)]
+
+
+def _frog_brow():
+    R = basis(x=(1, 0, 0), y=(0, 1, 0))
+    return plate_poly(A(0, 0.068, -0.05), R, FROG_BROW, 0.0042, 0.0022)
+
+
+def _frog_jaw_clips():
+    return [((0, 1, 0), (0, FROG_SPLIT + 0.006, 0)), ((0, -1, 0), (0, -0.097, 0)),
+            ((0, -0.5, -0.87), (0, -0.075, -0.118)), ((0, 0.5, -0.86), (0, -0.05, -0.137)),
+            ((0.8, -0.6, 0), (0.12, -0.08, 0)), ((-0.8, -0.6, 0), (-0.12, -0.08, 0))]
+
+
+def _frog_lid_pins(c, ax, R, open_=0.1, side=1):
+    look = unit(ax + A(0, 0, -0.6))
+    en = unit(A(0, 1, 0) + A(side * 0.25, 0, 0.0) - look * 0.15)
+    e1 = unit(np.cross(en, (0, 0, 1)))
+    rr = R * math.sqrt(1 - open_ * open_) + 0.0025
+    return [(c + en * (open_ * R) + e1 * rr * s, e1) for s in (-1, 1)]
+
+
+def _frog_ridge(P, N, seg=32, sub=6, cap_rings=3):
+    return path_loft(P + N * 0.002, [0.003, 0.006, 0.006, 0.006, 0.003], 0.0045, (1, 0, 0),
+                     profile=chamfer_profile(top=0.6, side_top=0.3, side_bot=-0.6, bot=1.0, corner=3),
+                     seg=seg, sub=sub, caps=(0.4, 0.4), cap_rings=cap_rings)
+
+
+def frog_form(F, ctx):
+    c, r = FROG_TOP
+    F.add(ellipsoid(c, r))
+    for n, p0 in FROG_FACETS:
+        clip(F, n, p0, k=0.004)
+    cj, rj = FROG_JAW
+    jaw = ellipsoid(cj, rj)
+    sl, d = F.eval(jaw, 0.01)
+    if sl is not None:
+        X, Y, Z = F._coords(*F._block(jaw.lo - 0.01, jaw.hi + 0.01)[1:])
+        for n, p0 in _frog_jaw_clips():
+            n, p0 = unit(n), A(p0)
+            d = smax(d, ((X - p0[0]) * n[0] + (Y - p0[1]) * n[1] + (Z - p0[2]) * n[2]).astype(np.float32), 0.002)
+        F.D[sl] = np.minimum(F.D[sl], d)
+    # The armoured brow plate on the deck between the turrets.
+    F.add(mesh_prim(*_frog_brow()), k=0.0015)
+    for side in (-1, 1):
+        base, ax, Rl = _frog_turret(side)
+        F.add(cylinder(base - ax * 0.008, ax, Rl + 0.014, 0.012, 0.004), k=0.008)
+        lc = base + ax * 0.014
+        F.add(_frog_lid_fn(lc, ax, Rl + 0.009, 0.005, side=side), k=0.0)
+    if "smile" not in ctx:
+        th = np.linspace(-1.75, 1.75, 41)
+        a = np.abs(th / 1.75)
+        ys = FROG_SPLIT + 0.022 * smoothstep(0.7, 1.0, a)
+        P = drape_ring(F, ys, th, 0.0, r_out=0.35)
+        ctx["smile"] = surface_path(F, P, 2)
+        ctx["drum"] = [land(F, (s * 0.4, -0.005, 0.055), (-s, 0, 0)) for s in (-1, 1)]
+        ctx["nos"] = [land(F, (s * 0.022, 0.25, -0.36), unit((0, -0.72, 0.69))) for s in (-1, 1)]
+        # The dorsal ridge down the back, and a vent cluster each side.
+        ridge = [land(F, (0, 0.3, z), (0, -1, 0))[0] for z in (0.0, 0.04, 0.08, 0.11)]
+        ridge.append(land(F, (0, 0.03, 0.4), (0, 0, -1))[0])
+        ctx["ridge"] = surface_path(F, A(ridge), 2)
+        ctx["vents"] = [[land(F, (s * 0.03, 0.035 - 0.009 * j, 0.4), (0, 0, -1)) for j in range(3)] for s in (-1, 1)]
+        # Cheek panels: a seam frame round each tympanum pod, and a seam
+        # from the turret down to the smile.
+        panels = []
+        for s in (-1, 1):
+            loop = []
+            for t in np.linspace(0, 2 * math.pi, 41):
+                y = -0.006 + 0.03 * math.sin(t)
+                z = 0.05 + 0.055 * math.cos(t)
+                loop.append(land(F, (s * 0.4, y, z), (-s, 0, 0))[0])
+            panels.append(surface_path(F, A(loop), 2))
+            panels.append(seam_path(F, [(s * 0.3, 0.035, -0.03), (s * 0.3, 0.0, -0.035), (s * 0.3, -0.03, -0.04)], 16))
+        ctx["panels"] = panels
+    P, N = ctx["smile"]
+    F.cut(sweep(P, 0.0042), k=0.0015)
+    rP, rN = ctx["ridge"]
+    F.add(mesh_prim(*_frog_ridge(rP, rN)), k=0.002)
+    for p, n in ctx["drum"]:
+        F.cut(cylinder(p, n, 0.03, 0.0016, 0.0005), k=0.0008)
+        F.add(cylinder(p - n * 0.002, n, 0.025, 0.003, 0.0012), k=0.0)
+    for p, n in ctx["nos"]:
+        F.cut(rounded_box(p, (0.0022, 0.004, 0.009), 0.0012, basis(x=(1, 0, 0), y=n)), k=0.0008)
+    for side in (-1, 1):
+        for p, n in ctx["vents"][(side + 1) // 2]:
+            F.cut(rounded_box(p, (0.012, 0.004, 0.0019), 0.001, basis(x=(1, 0, 0), y=n)), k=0.0006)
+    for pth in ctx["panels"]:
+        seam(F, pth)
+    if F.detail:
+        for side in (-1, 1):
+            base, ax, Rl = _frog_turret(side)
+            e1 = unit(np.cross(ax, (0, 0, 1)))
+            e2 = unit(np.cross(ax, e1))
+            ring = [base + (e1 * math.cos(t) + e2 * math.sin(t)) * (Rl + 0.022) for t in np.linspace(0, 2 * math.pi, 33)]
+            seam(F, surface_path(F, A(ring), 1))
+
+
+def frog_lows(F, ctx):
+    c, r = FROG_TOP
+    cj, rj = FROG_JAW
+    out = [ellipsoid_mesh("top", c, r, segs=32, rings=16, clips=FROG_FACETS),
+           ellipsoid_mesh("jaw", cj, rj, segs=28, rings=12, clips=_frog_jaw_clips()),
+           np_mesh("brow", *_frog_brow())]
+    rP, rN = ctx["ridge"]
+    out.append(np_mesh("ridge", *_frog_ridge(rP, rN, seg=10, sub=3, cap_rings=2)))
+    for side in (-1, 1):
+        base, ax, Rl = _frog_turret(side)
+        out.append(cylinder_mesh(f"boss{side}", base - ax * 0.008, ax, Rl + 0.014, 0.012, segs=28))
+        lc = base + ax * 0.014
+        out.append(_frog_lid_mesh(f"lid{side}", lc, ax, Rl + 0.009, 0.005, side=side))
+    for i, (p, n) in enumerate(ctx["drum"]):
+        out.append(cylinder_mesh(f"drum{i}", p - n * 0.002, n, 0.025, 0.003, segs=24))
+    return out
+
+
+def frog_parts(F, ctx):
+    out = []
+    P, N = ctx["smile"]
+    out.append(groove_trim("channel", P, N, 0.0036, 0.0022, sides=6, step=0.0095))
+    out.append(groove_trim("smile", P + N * 0.0005, N, 0.0019, 0.0, sides=5, step=0.008))
+    out[-1]["finish"] = "glow"
+    for side in (-1, 1):
+        base, ax, Rl = _frog_turret(side)
+        lc = base + ax * 0.014
+        # A stepped machined collar: a wide foot ring, a taller inner ring,
+        # an iris ring round the lens.
+        out.append(gk.fin(cylinder_mesh(f"foot{side}", base + ax * 0.003, ax, Rl + 0.011, 0.0035, segs=28), "trim"))
+        out.append(gk.fin(cylinder_mesh(f"collar{side}", base + ax * 0.009, ax, Rl + 0.005, 0.0045, segs=28), "trim"))
+        out.append(gk.fin(torus_mesh(f"iris{side}", lc + ax * 0.002, ax, Rl - 0.004, 0.0026, segs=28, sides=5), "trim"))
+        out.append(gk.fin(ellipsoid_mesh(f"lens{side}", lc, (Rl, Rl, Rl), R=frame_look(ax), segs=16, rings=8), "glow"))
+        for k, (pp, axp) in enumerate(_frog_lid_pins(lc, ax, Rl + 0.009, side=side)):
+            out.append(gk.fin(cylinder_mesh(f"pin{side}{k}", pp, axp, 0.0045, 0.0035, segs=12), "trim"))
+    for i, (p, n) in enumerate(ctx["drum"]):
+        out.append(gk.fin(torus_mesh(f"drumrim{i}", p + n * 0.0008, n, 0.0275, 0.0019, segs=24, sides=4), "trim"))
+    for i, (p, n) in enumerate(ctx["nos"]):
+        out.append(slot_insert(f"nos{i}", p - n * 0.0024, basis(x=(1, 0, 0), y=n), (0.0016, 0.0015, 0.0078), "trim"))
+    for side in (-1, 1):
+        for j, (p, n) in enumerate(ctx["vents"][(side + 1) // 2]):
+            out.append(slot_insert(f"vent{side}{j}", p - n * 0.0025, basis(x=(1, 0, 0), y=n), (0.011, 0.0016, 0.0013), "trim"))
+    return out
+
+
+def frog_cranium(F, ctx):
+    c, r = FROG_TOP
+    F.add(ellipsoid(c, r))
+    for n, p0 in FROG_FACETS:
+        clip(F, n, p0, k=0.004)
+    return (0, 0.0, 0.0)
+
+
+FROG = Head("frog", (-0.2, -0.15, -0.2), (0.2, 0.15, 0.2), frog_form, frog_parts, frog_cranium,
+            h_low=0.0022, sharp=40.0, lows=frog_lows)
+
+
+# ===========================================================================
+# BUNNY — a sleek egg, big lit lenses behind dark glass, engineered ears
+# ===========================================================================
+#
+# The cute is in the proportions and the eyes: a tall ceramic egg, a dark
+# goggle band across the face with two BIG rounded lit lenses, a small
+# muzzle pod under it — a machined nose cap, steel whisker vents either
+# side, a little machined teeth plate. The EARS are engineered fins, each
+# hinged on a lit pod, a steel panel down the front and an LED line along
+# the inner edge; the right one is ARTICULATED — three segments on steel
+# knuckles, folded forward over the brow.
+
+BUNNY_DOME = ((0, 0.014, 0.012), (0.104, 0.12, 0.114))
+BUNNY_FACE = []
+# The faceplate's outline (front view, x / y), right half from the top
+# centre round to the bottom centre, mirrored.
+_MASK_R = [(0.0, 0.047), (0.028, 0.061), (0.062, 0.058), (0.086, 0.036), (0.092, 0.0), (0.083, -0.034),
+           (0.062, -0.05), (0.036, -0.046), (0.016, -0.03), (0.0, -0.027)]
+MASK = _MASK_R + [(-x, y) for (x, y) in reversed(_MASK_R[1:-1])]
+MASK_C = (0.0, 0.012)
+BUNNY_EYE = [(s * 0.042, 0.022) for s in (-1, 1)]
+BUNNY_MUZZLE = ((0, -0.05, -0.098), (0.031, 0.031, 0.032))
+BUNNY_CHEEKS = [((s * 0.052, -0.05, -0.083), (0.032, 0.029, 0.03)) for s in (-1, 1)]
+EAR_PROF = [(1, 0.35), (0.86, 1), (-0.86, 1), (-1, 0.35), (-1, -0.35), (-0.86, -1), (0.86, -1), (1, -0.35)]
+
+
+def clipped_ellipsoid(c, r, clips, k=0.0015):
+    """An ellipsoid cut flat by planes [(normal, point)] — a machined pod."""
+    e = ellipsoid(c, r)
+    cl = [(unit(n), A(p0)) for n, p0 in clips]
+
+    def fn(X, Y, Z, detail):
+        d = e.fn(X, Y, Z, detail)
+        for n, p0 in cl:
+            d = smax(d, (X - p0[0]) * n[0] + (Y - p0[1]) * n[1] + (Z - p0[2]) * n[2], k)
+        return d
+    return Prim(fn, e.lo, e.hi)
+
+
+def _muzzle_clips():
+    c, r = BUNNY_MUZZLE
+    return [((0, 0.25, -1), (0, 0, c[2] - r[2] * 0.72)), ((0, -1, -0.5), (0, c[1] - r[1] * 0.7, c[2] - r[2] * 0.3))]
+
+
+def _cheek_clips(i):
+    c, r = BUNNY_CHEEKS[i]
+    s = -1 if i == 0 else 1
+    return [(unit((s * 0.8, 0, -0.6)), c + unit((s * 0.8, 0, -0.6)) * r[0] * 0.7)]
+
+
+def _dome_front(x, y, out=0.0):
+    """The dome's front surface over (x, y): point and normal."""
+    (cx, cy, cz), (rx, ry, rz) = BUNNY_DOME
+    u = 1 - ((x - cx) / rx) ** 2 - ((y - cy) / ry) ** 2
+    z = cz - rz * math.sqrt(max(u, 1e-4))
+    n = unit(((x - cx) / rx ** 2, (y - cy) / ry ** 2, (z - cz) / rz ** 2))
+    return A(x, y, z) + n * out, n
+
+
+def _mask(lift=0.0055, thick=0.006, chamfer=0.0018, n=72, rings=8):
+    """THE FACEPLATE: a raised panel over the eyes and cheeks, following
+    the dome, its edge chamfered crisp."""
+    f = gk.polygon_outline([(x - MASK_C[0], y - MASK_C[1]) for (x, y) in MASK], corner=4)
+    edge = [f(2 * math.pi * i / n) for i in range(n)]
+    V, Q, T = [], [], []
+
+    def ring(scale, out, inset=0.0):
+        pts = []
+        for (ex, ey) in edge:
+            L = math.hypot(ex, ey) or 1.0
+            s = scale * (1 - inset / L)
+            p, nn = _dome_front(MASK_C[0] + ex * s, MASK_C[1] + ey * s, out)
+            pts.append(p)
+        return pts
+    rows = []
+    for k in range(1, rings + 1):
+        rows.append(ring(k / rings * (1 - 0.02), lift))
+    rows.append(ring(1.0, lift, inset=chamfer))
+    rows.append(ring(1.0, lift - chamfer))
+    rows.append(ring(1.0, -thick))
+    c_top, _ = _dome_front(MASK_C[0], MASK_C[1], lift)
+    c_bot, _ = _dome_front(MASK_C[0], MASK_C[1], -thick)
+    V = [c_top] + [p for r_ in rows for p in r_] + [c_bot]
+    for j in range(n):
+        T.append((0, 1 + j, 1 + (j + 1) % n))
+    for i in range(len(rows) - 1):
+        a0, b0 = 1 + i * n, 1 + (i + 1) * n
+        for j in range(n):
+            j1 = (j + 1) % n
+            Q.append((a0 + j, b0 + j, b0 + j1, a0 + j1))
+    last = 1 + (len(rows) - 1) * n
+    cb = len(V) - 1
+    for j in range(n):
+        T.append((cb, last + (j + 1) % n, last + j))
+    return A(V), np.array(Q), np.array(T)
+
+
+def _bunny_ear_segments(side):
+    if side < 0:
+        return [([(side * 0.04, 0.11, 0.022), (side * 0.048, 0.19, 0.032), (side * 0.056, 0.27, 0.043), (side * 0.06, 0.312, 0.05)],
+                 [0.026, 0.034, 0.032, 0.014])]
+    return [([(0.04, 0.11, 0.022), (0.046, 0.16, 0.028), (0.05, 0.198, 0.032)], [0.026, 0.033, 0.033]),
+            ([(0.052, 0.214, 0.026), (0.055, 0.236, 0.0), (0.057, 0.243, -0.03)], [0.032, 0.032, 0.031]),
+            ([(0.058, 0.236, -0.05), (0.06, 0.212, -0.074), (0.061, 0.186, -0.086)], [0.03, 0.026, 0.012])]
+
+
+def _bunny_knuckles():
+    return [A(0.051, 0.206, 0.03), A(0.057, 0.242, -0.04)]
+
+
+def _bunny_ear(path, wid, seg=40, sub=8, thk=0.0088):
+    return path_loft(path, wid, [thk] * len(path), (1, 0, 0.2), profile=profile_poly(EAR_PROF, corner=8), seg=seg, sub=sub,
+                     caps=(0.4, 0.9), cap_rings=max(3, sub // 2))
+
+
+def _bunny_lens(side):
+    x, y = BUNNY_EYE[(side + 1) // 2]
+    p, n = _dome_front(x, y, 0.0055)
+    R = basis(x=unit(np.cross((0, 1, 0), n)), y=n)
+    return p, n, R
+
+
+def _bunny_teeth():
+    out = []
+    p, n = _dome_front(0, -0.086, 0.0)
+    for s in (-1, 1):
+        R = basis(x=(1, 0, 0), y=unit((0, -0.1, -1)))
+        c = A(s * 0.0072, -0.0735, -0.1135)
+        out.append((c, R))
+    return out
+
+
+def bunny_form(F, ctx):
+    c, r = BUNNY_DOME
+    F.add(ellipsoid(c, r))
+    F.add(mesh_prim(*_mask()), k=0.0)
+    F.add(clipped_ellipsoid(*BUNNY_MUZZLE, _muzzle_clips()), k=0.008)
+    for i, (cc, rr) in enumerate(BUNNY_CHEEKS):
+        F.add(clipped_ellipsoid(cc, rr, _cheek_clips(i)), k=0.008)
+    for cR in _bunny_teeth():
+        F.add(mesh_prim(*plate_poly(cR[0], cR[1], [(-0.0062, -0.009), (0.0062, -0.009), (0.0062, 0.009), (-0.0062, 0.009)],
+                                    0.0035, 0.0012, n=24, corner=3)), k=0.001)
+    for side in (-1, 1):
+        for path, wid in _bunny_ear_segments(side):
+            F.add(mesh_prim(*_bunny_ear(path, wid)), k=0.005)
+    if "nose" not in ctx:
+        ctx["nose"] = land(F, (0, -0.03, -0.4), (0, 0, 1))
+        vents = []
+        for s in (-1, 1):
+            cc, rr = BUNNY_CHEEKS[(s + 1) // 2]
+            d = unit((s * 0.75, 0, -0.66))
+            vents.append([land(F, cc + A(0, 0.008 - 0.008 * j, 0) + d * 0.2, -d) for j in range(3)])
+        ctx["vents"] = vents
+        th = np.linspace(-0.55, 0.55, 17)
+        ctx["mouth"] = surface_path(F, drape_ring(F, -0.079 + 0.004 * (th / 0.55) ** 2, th, -0.06, r_out=0.3), 1)
+        ctx["crown"] = seam_path(F, [(0, 0.3, -0.04), (0, 0.3, 0.02), (0, 0.3, 0.07), (0, 0.1, 0.16), (0, -0.02, 0.17)], 40)
+    # Lens wells in the faceplate.
+    for side in (-1, 1):
+        p, n, R = _bunny_lens(side)
+        F.cut(slab(p, R, 0.025, 0.023, 0.011, 0.0026), k=0.0008)
+    for side in (-1, 1):
+        for p, n in ctx["vents"][(side + 1) // 2]:
+            F.cut(rounded_box(p, (0.011, 0.004, 0.0018), 0.001, basis(x=unit(np.cross(n, (0, 1, 0))), y=n)), k=0.0006)
+    seam(F, ctx["crown"])
+
+
+def bunny_lows(F, ctx):
+    c, r = BUNNY_DOME
+    out = [ellipsoid_mesh("dome", c, r, segs=30, rings=18),
+           np_mesh("mask", *_mask(n=40, rings=4)),
+           ellipsoid_mesh("muzzle", *BUNNY_MUZZLE, segs=20, rings=12, clips=_muzzle_clips())]
+    for i, (cc, rr) in enumerate(BUNNY_CHEEKS):
+        out.append(ellipsoid_mesh(f"cheek{i}", cc, rr, segs=20, rings=12, clips=_cheek_clips(i)))
+    for i, cR in enumerate(_bunny_teeth()):
+        out.append(np_mesh(f"tooth{i}", *plate_poly(cR[0], cR[1], [(-0.0062, -0.009), (0.0062, -0.009), (0.0062, 0.009), (-0.0062, 0.009)],
+                                                     0.0035, 0.0012, n=16, corner=3)))
+    for side in (-1, 1):
+        for i, (path, wid) in enumerate(_bunny_ear_segments(side)):
+            out.append(np_mesh(f"ear{side}{i}", *_bunny_ear(path, wid, seg=14, sub=3)))
+    return out
+
+
+def bunny_parts(F, ctx):
+    out = []
+    # The lenses: dark glass set into the faceplate, the lit lens in it.
+    for side in (-1, 1):
+        p, n, R = _bunny_lens(side)
+        out.append(sdf_part(f"glass{side}", [with_k(slab(p - n * 0.0012, R, 0.024, 0.022, 0.0105, 0.0016), 0.0)],
+                            "trim", tris=160, h=0.0007))
+        out.append(sdf_part(f"lens{side}", [with_k(slab(p + n * 0.0006, R, 0.0185, 0.0165, 0.0075, 0.0011), 0.0)],
+                            "glow", tris=140, h=0.0006))
+    # The teeth's steel mount strip, across their roots under the muzzle.
+    out.append(sdf_part("toothbar", [with_k(rounded_box(A(0, -0.0662, -0.1135), (0.0145, 0.0018, 0.004), 0.0012), 0.0)],
+                        "trim", tris=60, h=0.0006))
+    nP, nN = ctx["nose"]
+    Rn = basis(x=(1, 0, 0), y=nN)
+    out.append(mesh_part("nosecap", *plate_poly(nP + nN * 0.0012, Rn, [(-0.012, 0.006), (0.012, 0.006), (0.0035, -0.008), (-0.0035, -0.008)],
+                                                0.0028, 0.0012, n=24, corner=5), "trim"))
+    for side in (-1, 1):
+        for j, (p, n_) in enumerate(ctx["vents"][(side + 1) // 2]):
+            out.append(slot_insert(f"vent{side}{j}", p - n_ * 0.0025, basis(x=unit(np.cross(n_, (0, 1, 0))), y=n_),
+                                   (0.0102, 0.0016, 0.0012), "trim"))
+        # The ear's hinge: a big machined drum on the side of the crown,
+        # a lit ring round its cap.
+        segs = _bunny_ear_segments(side)
+        root = A(segs[0][0][0])
+        pc, pn = land(F, root + A(side * 0.15, -0.006, 0.0), (-side, 0, 0))
+        out.append(gk.fin(cylinder_mesh(f"pod{side}", pc + pn * 0.006, pn, 0.021, 0.0065, segs=24), "trim"))
+        out.append(gk.fin(cylinder_mesh(f"podcap{side}", pc + pn * 0.0128, pn, 0.011, 0.0012, segs=16), "trim"))
+        out.append(gk.fin(torus_mesh(f"podring{side}", pc + pn * 0.0128, pn, 0.0158, 0.0014, segs=24, sides=4), "glow"))
+        for k, (path, wid) in enumerate(segs):
+            Pp = [A(p) for p in path]
+            V, Q, T = path_loft([p + A(0, 0, -0.0075) for p in Pp], [w * 0.62 for w in wid], 0.0022, (1, 0, 0.2),
+                                profile=profile_poly(EAR_PROF, corner=8), seg=10, sub=3, caps=(0.4, 0.9), cap_rings=2)
+            out.append(mesh_part(f"earpanel{side}{k}", V, Q, T, "trim"))
+            edge = [p_ + A(-side * w * 0.93, 0, -0.002) for p_, w in zip(Pp, wid)]
+            out.append(gk.fin(gk.tube(f"led{side}{k}", [tuple(e) for e in edge], 0.0016, sides=5, step=0.007), "glow"))
+    for i, kp in enumerate(_bunny_knuckles()):
+        out.append(gk.fin(cylinder_mesh(f"knuckle{i}", kp, (1, 0, 0), 0.0075, 0.016, segs=16), "trim"))
+    return out
+
+
+def bunny_cranium(F, ctx):
+    c, r = BUNNY_DOME
+    F.add(ellipsoid(c, r))
+    for n, p0 in BUNNY_FACE:
+        clip(F, n, p0, k=0.006)
+    return (0, 0.03, 0.01)
+
+
+BUNNY = Head("bunny", (-0.2, -0.15, -0.2), (0.2, 0.36, 0.2), bunny_form, bunny_parts, bunny_cranium,
+             h_low=0.0022, sharp=40.0, lows=bunny_lows)
 
 
 # ===========================================================================
@@ -1800,11 +2300,11 @@ PIECES = {
                      fit=dict(s=(0.589, 0.904, 0.694), y=-0.0302, z=0.0125),
                      view=dict(target=(0, -0.03, -0.05), dist=1.2)),
     "wolf": dict(slot="face", build=WOLF.build, tex=1024, uv_angle=66,
-                 fit=dict(s=(0.849, 0.865, 0.885), y=-0.0203, z=0.0232),
+                 fit=dict(s=(0.851, 0.861, 0.936), y=0.0064, z=0.03),
                  view=dict(target=(0, 0.0, -0.03), dist=1.1)),
     "frog": dict(slot="face", build=FROG.build, tex=1024, uv_angle=66,
-                 fit=dict(s=(1.233, 0.834, 1.035), y=-0.0386, z=0.0189)),
+                 fit=dict(s=(1.2, 0.754, 1.284), y=-0.0369, z=0.0075)),
     "bunny": dict(slot="face", build=BUNNY.build, tex=1024, uv_angle=66,
-                  fit=dict(s=(0.949, 1.059, 0.968), y=0.0047, z=0.0184),
-                  view=dict(target=(0, 0.09, -0.01), dist=1.3)),
+                  fit=dict(s=(0.851, 0.923, 0.9), y=0.008, z=0.0125),
+                  view=dict(target=(0, 0.08, -0.01), dist=1.3)),
 }
