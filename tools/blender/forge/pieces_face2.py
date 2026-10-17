@@ -2332,8 +2332,8 @@ PIECES = {
     "frog": dict(slot="face", build=FROG.build, tex=1024, uv_angle=66,
                  fit=dict(s=(1.2, 0.846, 1.166), y=-0.0375, z=0.01)),
     "bunny": dict(slot="face", build=BUNNY.build, tex=1024, uv_angle=66,
-                  flops={"ear_l": dict(pivot=(-0.04, 0.11, 0.022), dir=(-0.098, 0.988, 0.137), len=0.205, stiff=120, damp=4.5, swing=0.6),
-                         "ear_r": dict(pivot=(0.04, 0.11, 0.022), dir=(0.157, 0.566, -0.809), len=0.134, stiff=160, damp=6.0, swing=0.5)},
+                  flops={"ear_l": dict(pivot=(-0.04, 0.11, 0.022), dir=(-0.098, 0.988, 0.137), len=0.205, stiff=40, damp=2.2, swing=0.8),
+                         "ear_r": dict(pivot=(0.04, 0.11, 0.022), dir=(0.157, 0.566, -0.809), len=0.134, stiff=55, damp=2.8, swing=0.7)},
                   fit=dict(s=(0.851, 0.923, 0.9), y=0.008, z=0.0125),
                   view=dict(target=(0, 0.08, -0.01), dist=1.3)),
 }
