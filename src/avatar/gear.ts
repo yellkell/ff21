@@ -44,6 +44,7 @@ import { atlasGear, type GearMap, mapFromUv, mergePiece } from './gearAtlas.js';
 import { applyLook, type Look, setGearRemap } from './paint.js';
 import { type FlopState, flopState, installFlop } from './flop.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
+import { retireMaterial } from './shaderKeep.js';
 import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearKit, fitGearMaps, forgeFaceFit, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
 
 /** 'face' is THE HEADS (avatar/heads.ts): a whole head worn in place of
@@ -1993,7 +1994,8 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
       if (mesh.isMesh) {
         // A Forge piece's geometry is shared by everyone wearing it.
         if (!mesh.userData.forged) mesh.geometry.dispose();
-        (mesh.material as MeshStandardMaterial).dispose?.();
+        // Its program is kept, if nothing else holds it (shaderKeep.ts).
+        if (!Array.isArray(mesh.material)) retireMaterial(mesh.material);
       }
     });
   }
