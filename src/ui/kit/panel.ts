@@ -292,6 +292,10 @@ export class Panel {
 
     // Hover eases + press flash decay → transient canvas repaints.
     let live = false;
+    // Only a frame where something actually moved is drawn: paint() has
+    // just drawn the face, and settling with nothing to ease used to draw
+    // (and upload) the whole canvas a second time, every repaint.
+    let moved = false;
     for (const b of this.buttons) {
       const want = this.hover === b.id && !b.disabled && !b.display ? 1 : 0;
       const at = this.hoverAmt.get(b.id) ?? 0;
@@ -299,10 +303,12 @@ export class Panel {
       const rate = want > at ? delta / HOVER_IN_S : delta / HOVER_OUT_S;
       const next = at < want ? Math.min(want, at + rate) : Math.max(want, at - rate);
       this.hoverAmt.set(b.id, next);
+      moved = true;
       if (next !== want) live = true;
     }
     if (this.flashAmt > 0) {
       this.flashAmt = Math.max(0, this.flashAmt - delta / FLASH_S);
+      moved = true;
       if (this.flashAmt > 0) live = true;
       else this.flashId = null;
     }
@@ -310,7 +316,7 @@ export class Panel {
     for (const id of this.hoverAmt.keys()) {
       if (!this.buttons.some((b) => b.id === id)) this.hoverAmt.delete(id);
     }
-    this.draw();
+    if (moved) this.draw();
     this.animating = live;
   }
 

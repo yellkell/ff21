@@ -13,13 +13,11 @@
 import { createSystem, InputComponent } from '@iwsdk/core';
 import {
   BufferGeometry,
-  CylinderGeometry,
   Group,
   Line,
   LineBasicMaterial,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   Object3D,
   Quaternion,
   Raycaster,
@@ -99,6 +97,7 @@ import {
   setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setFrame, setGear, toggleGear } from '../menu/customization.js';
 import { frameDef, frameOf, framesReady, loadForgeGear } from '../avatar/forge.js';
 import { warmForge } from '../avatar/forgeWarm.js';
+import { buildPlinth, type Plinth, tickPlinth } from '../menu/podiumPlinth.js';
 import { canAfford, coins, spendCoins } from '../menu/wallet.js';
 import { playCash, preloadCash } from '../audio/cash.js';
 import { setMenuMusicActive, toggleMusicMuted } from '../audio/menuMusic.js';
@@ -243,8 +242,10 @@ const MIRROR_PAINT = { x: -0.42, z: -1.22 };
 const BAY_SPIN_RATE = 2.4;
 const BAY_TWIST_RATE = 0.3;
 const wrapAngle = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
-/** The faces that draw the player's look — what a skin change repaints. */
-const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'balls', 'loadout', 'profile', 'profilecard', 'paintbay']);
+/** The faces that draw the player's look — what a skin change repaints.
+ *  (Not the BALLS board: it draws nothing a pick changes, and repainted
+ *  its 768² texture three times on every head swap.) */
+const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'loadout', 'profile', 'profilecard', 'paintbay']);
 
 export class MenuSystem extends createSystem({}) {
   private menu!: Menu;
@@ -306,6 +307,7 @@ export class MenuSystem extends createSystem({}) {
   /** THE PODIUM: your blank standing beside the YOU wing, always on show
    *  in the lobby — the avatar IS the menu's centrepiece now. */
   private podium?: Group;
+  private plinth?: Plinth;
   /** THE BELT RACK, HELD UP: a belt you click on the rack rises in front of
    *  you the way it did the night you won it (campaign/beltCeremony.ts). */
   private beltShow!: BeltCeremony;
@@ -812,7 +814,10 @@ export class MenuSystem extends createSystem({}) {
     if (this.podium) {
       this.podium.visible = arcUp;
       this.podium.userData.beat = (this.podium.userData.beat ?? 0) + 1;
-      if (arcUp) this.podium.rotation.y += delta * 0.3;
+      if (arcUp) {
+        this.podium.rotation.y += delta * 0.3;
+        if (this.plinth) tickPlinth(this.plinth, delta);
+      }
     }
 
     // Lobby / queueing: hover + click the panels.
@@ -1908,20 +1913,11 @@ export class MenuSystem extends createSystem({}) {
     solveTorso(rig, new Vector3(0, 1.5, 0), new Quaternion(), 0, 0, _dir, _end);
     rig.gloves[0].position.set(-0.24, 1.05, -0.2);
     rig.gloves[1].position.set(0.24, 1.05, -0.2);
-    // The plinth: a low dark drum with a primer top ring — display
-    // furniture, not a platform.
-    const drum = new Mesh(
-      new CylinderGeometry(0.42, 0.48, 0.16, 24),
-      new MeshStandardMaterial({ color: 0x15171b, metalness: 0.85, roughness: 0.35 }),
-    );
-    drum.position.y = 0.08;
-    stand.add(drum);
-    const ring = new Mesh(
-      new CylinderGeometry(0.425, 0.425, 0.018, 24),
-      new MeshStandardMaterial({ color: 0x98948b, metalness: 0.1, roughness: 0.8 }),
-    );
-    ring.position.y = 0.168;
-    stand.add(ring);
+    // The plinth: a gunmetal drum in the neon district's language — a cyan
+    // seam, a pink foot line, an etched dial deck (menu/podiumPlinth.ts).
+    // Display furniture, not a platform.
+    this.plinth = buildPlinth();
+    stand.add(this.plinth.group);
     const podium = new Group();
     podium.name = 'podium-root';
     podium.add(stand);

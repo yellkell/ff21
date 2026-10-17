@@ -17,7 +17,7 @@
  * the surface (avatar/paint.ts), and to the gear fit (avatar/gear.ts).
  */
 
-import { type BufferGeometry, Mesh, MeshStandardMaterial, type Object3D, type Texture, TextureLoader, Vector2 } from 'three';
+import { type BufferGeometry, ImageBitmapLoader, Mesh, MeshStandardMaterial, type Object3D, Texture, Vector2 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { registerFrameChart, rebakeMesh } from './paint.js';
 import type { FlopSpec } from './flop.js';
@@ -96,10 +96,17 @@ export function framesReady(): Promise<unknown> {
 const kits = new Map<string, FrameKit>();
 const loading = new Map<string, Promise<FrameKit | null>>();
 
+/** A Forge map, decoded OFF the main thread (an ImageBitmap): an <img>
+ *  texture is decoded on the frame it is first drawn, so a head's first
+ *  wear stalled on decoding its two 1024² maps. Taken exactly as stored —
+ *  no colour conversion, no premultiply: these are normals and ORM. */
 function loadTex(file: string): Promise<Texture> {
-  return new TextureLoader().loadAsync(BASE + file).then((t) => {
-    t.flipY = false; // glTF UVs: v runs down the image
+  const loader = new ImageBitmapLoader().setOptions({ imageOrientation: 'none', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  return loader.loadAsync(BASE + file).then((bitmap) => {
+    const t = new Texture(bitmap);
+    t.flipY = false; // glTF UVs: v runs down the image (and a bitmap can't flip)
     t.anisotropy = 4;
+    t.needsUpdate = true;
     return t;
   });
 }

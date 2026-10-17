@@ -149,12 +149,26 @@ const markLegacy = (p: PlacedPaint): PlacedPaint => (isGearPart(p.part) ? { ...p
  * their old measure (no bit), so nobody's face grows under them.
  */
 const TRUE_SIZE = 0x40;
-/** Metres a len of 1 spans on the body (bodyChart) — and, at TRUE_SIZE, on the head. */
+/**
+ * TRUE SIZE ON THE SHOULDERS, the same again: pauldrons and the like took
+ * the gear measure (0.2 m a len), so a dot carried over from the chest
+ * landed under a quarter of its size there. A mark placed now carries this
+ * bit too and is drawn at the body's measure on the shoulders. Every mark
+ * placed since TRUE_SIZE already carries that bit, so the shoulders needed
+ * their own — without it, every shoulder mark placed since would grow.
+ */
+const TRUE_SIZE_SHOULDERS = 0x10;
+/** The bits a freshly placed mark carries: true size wherever it lands. */
+const TRUE_SIZE_ALL = TRUE_SIZE | TRUE_SIZE_SHOULDERS;
+/** Metres a len of 1 spans on the body (bodyChart) — and, at true size, on the head and shoulders. */
 const BODY_S = 0.9;
 const isHeadPart = (part: PaintPart): boolean => part === 'head' || part === 'gearHead' || part === 'gearFace';
+/** Is this mark drawn at the body's measure (rather than its surface's own)? */
+const isTrueSize = (p: PlacedPaint): boolean =>
+  isHeadPart(p.part) ? (p.variant & TRUE_SIZE) !== 0 : p.part === 'gearShoulders' && (p.variant & TRUE_SIZE_SHOULDERS) !== 0;
 /** The metres-per-len a unit is drawn at: its surface's own `S`, or the
- *  body's for a TRUE_SIZE mark on the head. */
-const unitS = (p: PlacedPaint, S: number): number => (p.variant & TRUE_SIZE && isHeadPart(p.part) ? BODY_S : S);
+ *  body's for a true-size mark on the head or shoulders. */
+const unitS = (p: PlacedPaint, S: number): number => (isTrueSize(p) ? BODY_S : S);
 
 /** Before the hands' gear was split (LOOK_VERSION 3, wire 6), one mark on
  *  'gearHands' was worn by BOTH hands — so an older look gets a copy of
@@ -520,7 +534,7 @@ export function handTake(kind: PaintKind, colour: number): boolean {
   bay.held = {
     kind,
     colour,
-    variant: TRUE_SIZE,
+    variant: TRUE_SIZE_ALL,
     part: 'body',
     u: 0.75,
     v: 0.5,
@@ -552,7 +566,7 @@ export function handPlace(part: PaintPart, u: number, v: number, map?: GearMap):
   lastPose[kind] = { angle, len, wid };
   // A mark placed now is a fresh decal, whatever it was lifted as.
   const forged = map ? map.key.startsWith('forge:') : forgedParts.has(part);
-  const variant = TRUE_SIZE | (forged ? FORGE_ATLAS : 0);
+  const variant = TRUE_SIZE_ALL | (forged ? FORGE_ATLAS : 0);
   setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant }] });
   bay.held = null;
   bay.version += 1;
@@ -594,14 +608,14 @@ export function handLift(part: PaintPart, u: number, v: number, map?: GearMap): 
   const paint = [...myLook().paint];
   const [unit] = paint.splice(i, 1);
   setLook({ paint });
-  // A head mark from before TRUE_SIZE comes up at the size it was drawn,
-  // so putting it back down doesn't grow it.
-  if (!(unit.variant & TRUE_SIZE) && isHeadPart(part)) {
+  // A head or shoulder mark from before true size comes up at the size it
+  // was drawn, so putting it back down doesn't grow it.
+  if (!isTrueSize(unit) && (isHeadPart(part) || part === 'gearShoulders')) {
     const k = (isGearPart(part) ? GEAR_S : chartOf(part).S) / BODY_S;
     unit.len = Math.max(0.01, unit.len * k);
     unit.wid = Math.max(0.01, unit.wid * k);
   }
-  bay.held = { ...unit, variant: TRUE_SIZE };
+  bay.held = { ...unit, variant: TRUE_SIZE_ALL };
   bay.version += 1;
   return true;
 }
@@ -767,6 +781,7 @@ export function registerFrameChart(id: string, rows: ReadonlyArray<readonly numb
   }
   frameCharts.set(id, c);
   for (const key of [...grids.keys()]) if (key.startsWith(`body|${id}|`)) grids.delete(key);
+  chartEpoch += 1;
 }
 
 /** The frame YOUR body wears — what the bay measures your marks by. */
@@ -995,6 +1010,14 @@ function xAt(g: Grid, j: number, u: number): number {
 
 const rgbOf = (hex: number): [number, number, number] => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
 
+/** The rows the last raster call may have touched (a ghost redraws only
+ *  those, not the whole canvas). Empty when hi < lo. */
+const touched = { lo: 0, hi: -1 };
+const touch = (j: number): void => {
+  if (j < touched.lo) touched.lo = j;
+  if (j > touched.hi) touched.hi = j;
+};
+
 /**
  * Rasterize one unit into an RGBA buffer laid out on `g`. Every texel the
  * unit could reach is measured back to its centre along the surface and
@@ -1002,6 +1025,8 @@ const rgbOf = (hex: number): [number, number, number] => [(hex >> 16) & 255, (he
  * `alpha` < 1 is the ghost: the held unit, not yet placed.
  */
 function rasterUnit(data: Uint8ClampedArray, g: Grid, S: number, p: PlacedPaint, alpha = 1): void {
+  touched.lo = Infinity;
+  touched.hi = -1;
   const [cr, cg, cb] = rgbOf(PAINT.colours[p.colour] ?? 0xffffff);
   const reach = unitReach(p, S) + g.maxTexel * 1.5;
   const size = unitSize(p, S);
@@ -1064,6 +1089,7 @@ function rasterUnit(data: Uint8ClampedArray, g: Grid, S: number, p: PlacedPaint,
     if (Math.abs(dyc) > reach * 1.6) continue;
     const [lo, hi] = band(dyc);
     if (lo > hi) continue;
+    touch(j);
     const C = Cs[j];
     const row = j * W;
     const x0 = xAt(g, j, p.u);
@@ -1176,7 +1202,13 @@ function decalFrame(map: GearMap, k: number, angle: number): DecalFrame {
 const decalDepth = (reach: number): number => reach * 0.6 + 0.004;
 
 function rasterGearUnit(data: Uint8ClampedArray, map: GearMap, p: PlacedPaint, alpha = 1): void {
-  if (p.variant & LEGACY_GEAR) return rasterLegacyGear(data, map, p, alpha);
+  touched.lo = Infinity;
+  touched.hi = -1;
+  if (p.variant & LEGACY_GEAR) {
+    touched.lo = 0;
+    touched.hi = map.H - 1;
+    return rasterLegacyGear(data, map, p, alpha);
+  }
   const c = texelNear(map, p.u, p.v);
   if (c < 0) return;
   const f = decalFrame(map, c, p.angle);
@@ -1202,6 +1234,7 @@ function rasterGearUnit(data: Uint8ClampedArray, map: GearMap, p: PlacedPaint, a
     const d = shapeSdf(p.kind, size, lx, ly);
     const cov = Math.min(1, 0.5 - d / t) * alpha * Math.min(1, facing * 5);
     if (cov <= 0) continue;
+    touch((k / map.W) | 0);
     const o = k * 4;
     data[o] += (cr - data[o]) * cov;
     data[o + 1] += (cg - data[o + 1]) * cov;
@@ -1306,8 +1339,12 @@ interface PaintStore {
   tex: CanvasTexture;
   /** The committed look's bake — the ghost draws over a copy of it. */
   base: ImageData | null;
-  /** The ghost's working buffer, reused frame to frame. */
+  /** The ghost's working buffer, reused frame to frame: a copy of `base`
+   *  (the one it was copied from is `scratchOf`) but for the rows `dirty`,
+   *  where the ghost on show is drawn. */
   scratch: ImageData | null;
+  scratchOf: ImageData | null;
+  dirty: { lo: number; hi: number } | null;
   /** True while this canvas shows a ghost rather than `base`. */
   ghost: boolean;
 }
@@ -1329,7 +1366,7 @@ function storeFor(mesh: Mesh, part: PaintPart): PaintStore {
       tex.generateMipmaps = false;
       tex.minFilter = LinearFilter;
     }
-    store = { canvas, tex, base: null, scratch: null, ghost: false };
+    store = { canvas, tex, base: null, scratch: null, scratchOf: null, dirty: null, ghost: false };
     mesh.userData.paintStore = store;
   }
   return store;
@@ -1341,10 +1378,9 @@ function storeFor(mesh: Mesh, part: PaintPart): PaintStore {
  * has its own path, applyGhost).
  */
 export function applyLook(root: Object3D, look: Look): void {
-  const memo = new Map<string, ImageData>();
   root.traverse((o) => {
     if (!o.userData?.paintPart) return;
-    bakeMesh(o as Mesh, look, memo);
+    bakeMesh(o as Mesh, look, false);
   });
 }
 
@@ -1352,10 +1388,40 @@ export function applyLook(root: Object3D, look: Look): void {
  *  chart) changed under it (avatar/forge.ts). */
 export function rebakeMesh(mesh: Mesh): void {
   const look = mesh.userData.paintLook as Look | undefined;
-  if (look && mesh.userData.paintStore) bakeMesh(mesh, look, new Map());
+  if (look && mesh.userData.paintStore) bakeMesh(mesh, look, true);
 }
 
-function bakeMesh(mesh: Mesh, look: Look, memo: Map<string, ImageData>): void {
+/**
+ * ONLY WHAT CHANGED IS BAKED. A look change used to re-bake every surface
+ * of every rig that is yours (the mirror, your own body, the podium) and
+ * re-upload every one of their textures: one mark on the chest, or a new
+ * head, cost a 768² body bake and upload per rig plus every gear canvas —
+ * the hitch on the trigger, and on every head swap. Now a surface keeps
+ * its bake while the marks on IT (and its tone, canvas, atlas and frame)
+ * are what they were, and a bake made for one rig is lent to the next.
+ */
+const partSigs = new WeakMap<Look, Map<PaintPart, string>>();
+function partSig(look: Look, part: PaintPart): string {
+  let sigs = partSigs.get(look);
+  if (!sigs) {
+    sigs = new Map();
+    partSigs.set(look, sigs);
+  }
+  let sig = sigs.get(part);
+  if (sig === undefined) {
+    sig = '';
+    for (const p of look.paint) if (p.part === part) sig += `${p.kind},${p.colour},${p.variant},${p.u},${p.v},${p.angle},${p.len},${p.wid};`;
+    sigs.set(part, sig);
+  }
+  return sig;
+}
+/** Recent bakes by key — a body bake is 2.3 MB, so only a few are kept. */
+const bakes = new Map<string, ImageData>();
+const BAKES_KEPT = 12;
+/** Bumped when a frame's chart lands: every body bake keyed before it is stale. */
+let chartEpoch = 0;
+
+function bakeMesh(mesh: Mesh, look: Look, force: boolean): void {
   const part = mesh.userData.paintPart as PaintPart;
   if (Array.isArray(mesh.material)) return;
   const mat = mesh.material as MeshStandardMaterial;
@@ -1368,16 +1434,27 @@ function bakeMesh(mesh: Mesh, look: Look, memo: Map<string, ImageData>): void {
   const frame = (mesh.userData.paintFrame as string | undefined) ?? '';
   if (map?.key.startsWith('forge:')) forgedParts.add(part);
   else if (map) forgedParts.delete(part);
-  const key = `${part}|${fill}|${size}|${map?.key ?? ''}|${frame}`;
-  let img = memo.get(key);
-  if (!img) {
-    img = map ? bakeGear(look, part, fill, map) : bakePart(look, part, fill, size, size, frame);
-    memo.set(key, img);
+  const sig = partSig(look, part);
+  const key = `${part}|${fill}|${size}|${map?.key ?? ''}|${frame}|${chartEpoch}|${sig}`;
+  if (force || key !== mesh.userData.paintBaked || !store.base) {
+    let img = force ? undefined : bakes.get(key);
+    if (!img) {
+      img = map ? bakeGear(look, part, fill, map) : bakePart(look, part, fill, size, size, frame);
+      if (bakes.size >= BAKES_KEPT) bakes.delete(bakes.keys().next().value!);
+    }
+    bakes.delete(key);
+    bakes.set(key, img);
+    mesh.userData.paintBaked = key;
+    store.base = img;
+    store.ghost = false;
+    store.canvas.getContext('2d')!.putImageData(img, 0, 0);
+    store.tex.needsUpdate = true;
+  } else if (store.ghost) {
+    store.ghost = false;
+    store.canvas.getContext('2d')!.putImageData(store.base, 0, 0);
+    store.tex.needsUpdate = true;
   }
-  store.base = img;
-  store.ghost = false;
-  store.canvas.getContext('2d')!.putImageData(img, 0, 0);
-  const painted = look.paint.some((p) => p.part === part);
+  const painted = sig !== '';
   // PAINT ON METAL. A near-mirror surface has almost no diffuse, so a
   // stripe laid on a hand's steel would read as a faint tint of a
   // reflection and nothing more. Where paint actually lands, the finish
@@ -1387,7 +1464,6 @@ function bakeMesh(mesh: Mesh, look: Look, memo: Map<string, ImageData>): void {
   const metal0 = (mesh.userData.paintMetal0 as number | undefined) ?? mat.metalness;
   mesh.userData.paintMetal0 = metal0;
   mat.metalness = painted ? Math.min(metal0, PAINT.metalness) : metal0;
-  store.tex.needsUpdate = true;
   // The map carries ALL the colour now (base tone included), so the
   // material tint steps aside — sheen/roughness stay the tone's own.
   if (mat.map !== store.tex) {
@@ -1414,23 +1490,45 @@ export function applyGhost(root: Object3D, unit: PlacedPaint | null): void {
     if (!part) return;
     const store = o.userData.paintStore as PaintStore | undefined;
     if (!store?.base) return;
+    const base = store.base;
     const g2d = store.canvas.getContext('2d')!;
+    const W = store.canvas.width;
     if (unit && unit.part === part) {
-      const W = store.canvas.width;
       const H = store.canvas.height;
-      if (!store.scratch || store.scratch.width !== W) store.scratch = new ImageData(W, H);
-      store.scratch.data.set(store.base.data);
+      // ONLY THE ROWS IT MOVED THROUGH: the scratch stays a copy of the
+      // bake, the last ghost's rows are put back from it, the new ghost is
+      // drawn, and just the rows either one touched go to the canvas — not
+      // a copy and a put of the whole 768² body every frame the ray moves.
+      if (!store.scratch || store.scratch.width !== W || store.scratchOf !== base) {
+        if (!store.scratch || store.scratch.width !== W) store.scratch = new ImageData(W, H);
+        store.scratch.data.set(base.data);
+        store.scratchOf = base;
+        store.dirty = null;
+      }
+      const was = store.ghost ? store.dirty : null;
+      if (store.dirty) {
+        const a = store.dirty.lo * W * 4;
+        const b = (store.dirty.hi + 1) * W * 4;
+        store.scratch.data.set(base.data.subarray(a, b), a);
+      }
       const map = o.userData.paintMap as GearMap | undefined;
       if (map) rasterGearUnit(store.scratch.data, map, unit, GHOST_ALPHA);
       else {
         const frame = (o.userData.paintFrame as string | undefined) ?? '';
         rasterUnit(store.scratch.data, gridOf(part, W, H, frame), unitS(unit, chartOf(part, frame).S), unit, GHOST_ALPHA);
       }
-      g2d.putImageData(store.scratch, 0, 0);
+      const now = touched.hi >= touched.lo ? { lo: touched.lo, hi: touched.hi } : null;
+      store.dirty = now;
+      const lo = Math.min(was?.lo ?? Infinity, now?.lo ?? Infinity);
+      const hi = Math.max(was?.hi ?? -1, now?.hi ?? -1);
+      if (hi >= lo) {
+        g2d.putImageData(store.scratch, 0, 0, 0, lo, W, hi - lo + 1);
+        store.tex.needsUpdate = true;
+      }
       store.ghost = true;
-      store.tex.needsUpdate = true;
     } else if (store.ghost) {
-      g2d.putImageData(store.base, 0, 0);
+      const d = store.dirty;
+      if (d) g2d.putImageData(base, 0, 0, 0, d.lo, W, d.hi - d.lo + 1);
       store.ghost = false;
       store.tex.needsUpdate = true;
     }

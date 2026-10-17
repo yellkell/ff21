@@ -13,6 +13,22 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **PAINT SITS RIGHT ON THE SHOULDERS, AND HEADS SWAP WITHOUT A STALL.**
+  A mark placed on shoulder gear is now the same size in metres as on
+  the body, as the head's already were; shoulder marks placed before
+  keep their size (`avatar/paint.ts` `TRUE_SIZE_SHOULDERS`). A look
+  change re-bakes only the surfaces whose marks changed, and lends one
+  rig's bake to the next: placing a mark, or swapping a head, used to
+  re-bake and re-upload every paint canvas on all five of your rigs. The
+  live ghost redraws only the rows it moves through. Head swaps no
+  longer compile shaders: the Forge warm-up compiles again whenever the
+  arena's fog or lights change (it ran before the fog was set, so every
+  wear compiled its own), and a piece taken off keeps its programs
+  (`avatar/shaderKeep.ts`). Forge maps decode off the main thread, and
+  a menu panel no longer draws twice per repaint. The **PODIUM** your
+  blank turns on is in the neon district's language now: a gunmetal
+  drum, a cyan seam under its lip, a pink foot line and an etched dial
+  deck that turns slowly against it (`menu/podiumPlinth.ts`).
 - **PAINT IS BOUGHT WHERE IT IS USED, AND IT SITS RIGHT ON THE HEAD.**
   The STORE's PAINT board is gone: a tap on a colour on the PAINT tab
   buys one unit, and that is the one paint shop. A mark placed on the
