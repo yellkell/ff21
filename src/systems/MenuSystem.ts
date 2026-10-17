@@ -98,6 +98,7 @@ import {
   setPlatformSkin,
   setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setFrame, setGear, toggleGear } from '../menu/customization.js';
 import { frameDef, frameOf, framesReady, loadForgeGear } from '../avatar/forge.js';
+import { warmForge } from '../avatar/forgeWarm.js';
 import { canAfford, coins, spendCoins } from '../menu/wallet.js';
 import { playCash, preloadCash } from '../audio/cash.js';
 import { setMenuMusicActive, toggleMusicMuted } from '../audio/menuMusic.js';
@@ -242,6 +243,8 @@ const MIRROR_PAINT = { x: -0.42, z: -1.22 };
 const BAY_SPIN_RATE = 2.4;
 const BAY_TWIST_RATE = 0.3;
 const wrapAngle = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+/** The faces that draw the player's look — what a skin change repaints. */
+const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'balls', 'loadout', 'profile', 'profilecard', 'paintbay']);
 
 export class MenuSystem extends createSystem({}) {
   private menu!: Menu;
@@ -617,6 +620,9 @@ export class MenuSystem extends createSystem({}) {
       return url;
     };
     this.buildPodium();
+    // THE FORGE: compile every gear shader in the background once the lobby
+    // has settled, so trying a piece on never stalls the frame on a link.
+    window.setTimeout(() => void warmForge(this.renderer, this.camera, this.scene), 4000);
     this.panel = createActionPanel(this.scene);
     this.keyboard = createNameKeyboard(this.scene);
     this.pointers.left = this.makePointer();
@@ -918,11 +924,18 @@ export class MenuSystem extends createSystem({}) {
     }
     // A scroll repaints its own page, nothing else.
     if (boardScrolled || newsScrolled) this.redrawPanel(app.readerOpen ? 'reader' : 'duel');
-    // A skin change can touch several faces (locker, shop, board avatar) —
-    // it's a rare, single event, so the full repaint is fine. A slider scrub
-    // bumps the version EVERY frame — the drag branch below repaints just the
-    // locker faces instead.
-    if (skinChanged && !dragged) this.menu.redrawAll(this.hovered, this.hoveredAction);
+    // A skin change repaints only the faces that show the look (locker,
+    // store, balls, profile, paint bay). It used to be a redrawAll — the news
+    // page, the boards and the campaign all re-rasterised and re-uploaded on
+    // every pick in the locker or store, a dropped frame each time. A slider
+    // scrub bumps the version EVERY frame — the drag branch below repaints
+    // just the locker faces instead.
+    if (skinChanged && !dragged) {
+      for (const p of this.menu.panels) {
+        if (!p.mesh.visible || !SKIN_PANELS.has(p.id)) continue;
+        p.redraw(p.id === this.hovered ? this.hoveredAction : null);
+      }
+    }
 
     // Self-contained panel click (e.g. the ball loadout tiles).
     if (clicked) {

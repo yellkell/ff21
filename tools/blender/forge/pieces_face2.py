@@ -1636,14 +1636,19 @@ WOLF = Head("wolf", (-0.2, -0.17, -0.27), (0.2, 0.25, 0.23), wolf_form, wolf_par
 # steel rim (a dark disc reads as a second pair of eyes); two steel intake
 # slots for nostrils; crisp seams down the crown and round the turrets.
 
-FROG_TOP = ((0, -0.012, 0.0), (0.152, 0.09, 0.15))
+FROG_TOP = ((0, -0.012, 0.0), (0.152, 0.097, 0.15))
 FROG_JAW = ((0, -0.034, 0.004), (0.144, 0.078, 0.14))
 FROG_SPLIT = -0.044
 # The top shell's facets: a flat deck between the turrets, a sloped snout
 # face (the nostrils sit on it), and the split plane under it.
-FROG_BRIDGE = ((0, 0.044, -0.035), (0.098, 0.04, 0.07))
-FROG_FACETS = [((0, 0.72, -0.69), (0, 0.004, -0.122)), ((0, -1, 0), (0, FROG_SPLIT, 0)),
-               ((0.94, 0.34, 0), (0.136, 0.0, 0)), ((-0.94, 0.34, 0), (-0.136, 0.0, 0)), ((0, 0.45, 0.89), (0, 0.025, 0.128))]
+# (normal, point, blend): the facets are CONVEX roundings only (smax), so
+# the dome stays one fair form — no unions on the top shell, which left a
+# lump between the eyes and a concave band that caught a "smile" of
+# reflection across the face in glossy onyx.
+FROG_FACETS_K = [((0, -1, 0), (0, FROG_SPLIT, 0), 0.004),
+                 ((0.94, 0.34, 0), (0.136, 0.0, 0), 0.02), ((-0.94, 0.34, 0), (-0.136, 0.0, 0), 0.02),
+                 ((0, 0.45, 0.89), (0, 0.025, 0.128), 0.02)]
+FROG_FACETS = [(n, p0) for n, p0, k in FROG_FACETS_K]
 
 
 def _frog_turret(side):
@@ -1768,8 +1773,8 @@ def _frog_ridge(P, N, seg=32, sub=6, cap_rings=3):
 def frog_form(F, ctx):
     c, r = FROG_TOP
     F.add(ellipsoid(c, r))
-    for n, p0 in FROG_FACETS:
-        clip(F, n, p0, k=0.004)
+    for n, p0, kk in FROG_FACETS_K:
+        clip(F, n, p0, k=kk)
     cj, rj = FROG_JAW
     jaw = ellipsoid(cj, rj)
     sl, d = F.eval(jaw, 0.01)
@@ -1779,9 +1784,6 @@ def frog_form(F, ctx):
             n, p0 = unit(n), A(p0)
             d = smax(d, ((X - p0[0]) * n[0] + (Y - p0[1]) * n[1] + (Z - p0[2]) * n[2]).astype(np.float32), 0.002)
         F.D[sl] = np.minimum(F.D[sl], d)
-    # The crown between and behind the eyes: one rounded swell flowing
-    # up into both turrets (no flat deck between them).
-    F.add(ellipsoid(*FROG_BRIDGE), k=0.025)
     for side in (-1, 1):
         base, ax, Rl = _frog_turret(side)
         F.add(cylinder(base - ax * 0.008, ax, Rl + 0.014, 0.012, 0.004), k=0.016)
@@ -1832,12 +1834,13 @@ def frog_lows(F, ctx):
     # The top shell is ONE piece: the dome and the swell between the eyes
     # as a single surface — the dome's mesh pulled out onto their smooth
     # union (no overlapping crown part, no seam, no shading step).
-    top = ellipsoid_mesh("top", c, r, segs=36, rings=20, clips=FROG_FACETS)
+    # (28 rings put one exactly on the split plane, so the clipped edge is
+    # a clean ring, not a stair-step)
+    top = ellipsoid_mesh("top", c, r, segs=32, rings=28, clips=FROG_FACETS)
     T = Field(F.lo, F.lo + F.h * (F.n - 1), 0.0015, detail=False)
     T.add(ellipsoid(c, r))
-    for n, p0 in FROG_FACETS:
-        clip(T, n, p0, k=0.004)
-    T.add(ellipsoid(*FROG_BRIDGE), k=0.025)
+    for n, p0, kk in FROG_FACETS_K:
+        clip(T, n, p0, k=kk)
     T.blur(1)
     me = top.data
     co = np.empty(len(me.vertices) * 3)
@@ -1886,8 +1889,8 @@ def frog_parts(F, ctx):
 def frog_cranium(F, ctx):
     c, r = FROG_TOP
     F.add(ellipsoid(c, r))
-    for n, p0 in FROG_FACETS:
-        clip(F, n, p0, k=0.004)
+    for n, p0, kk in FROG_FACETS_K:
+        clip(F, n, p0, k=kk)
     return (0, 0.0, 0.0)
 
 
@@ -2331,7 +2334,7 @@ PIECES = {
                  fit=dict(s=(0.851, 0.861, 0.936), y=0.0064, z=0.03),
                  view=dict(target=(0, 0.0, -0.03), dist=1.1)),
     "frog": dict(slot="face", build=FROG.build, tex=1024, uv_angle=66,
-                 fit=dict(s=(1.2, 0.846, 1.166), y=-0.0375, z=0.01)),
+                 fit=dict(s=(1.169, 0.9, 1.255), y=-0.0378, z=0.0)),
     "bunny": dict(slot="face", build=BUNNY.build, tex=1024, uv_angle=66,
                   flops={"ear_l": dict(pivot=(-0.04, 0.11, 0.022), dir=(-0.098, 0.988, 0.137), len=0.205, stiff=40, damp=2.2, swing=0.8),
                          "ear_r": dict(pivot=(0.04, 0.11, 0.022), dir=(0.157, 0.566, -0.809), len=0.134, stiff=55, damp=2.8, swing=0.7)},

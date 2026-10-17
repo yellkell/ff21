@@ -42,7 +42,7 @@ import { GEAR as GEAR_CATALOGUE, type GearDef, type GearSlot } from '../avatar/g
 import { drawGearIcon, drawPlatformIcon } from './skinIcons.js';
 import { bankBoard } from './bankBoard.js';
 import { HUB_TITLE, hubTabs } from './paintbay.js';
-import { FRAMES, preloadFrame } from '../avatar/forge.js';
+import { FRAMES, loadForgeGear, preloadFrame } from '../avatar/forge.js';
 import { drawIcon, forgeIcon } from './forgeIcons.js';
 
 export const LOCKER_W = 1024;
@@ -119,7 +119,10 @@ function tiles(locker: boolean): Tile[] {
   const picked: Array<{ kind: 'platform' | 'gear'; def: PlatformSkin | GearDef; index: number }> = [];
   if (b === 'gear') {
     GEAR_CATALOGUE.forEach((g, i) => {
-      if (!g.hidden && g.slot === customization.gearSlot && gearOwned(g.id) === locker) picked.push({ kind: 'gear', def: g, index: i });
+      if (!g.hidden && g.slot === customization.gearSlot && gearOwned(g.id) === locker) {
+        picked.push({ kind: 'gear', def: g, index: i });
+        void loadForgeGear(g.id); // the shelf on show is fetched ahead of the tap
+      }
     });
   } else if (b === 'platforms') {
     PLATFORM_SKINS.forEach((s, i) => {
