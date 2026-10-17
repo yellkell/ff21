@@ -237,10 +237,17 @@ console.log('=== the wire: pack / unpack ===');
   // own patch of the canvas — the two PAULDRONS take paint separately —
   // and a gear mark is a decal on the piece, found where it was placed.
   console.log('\n=== the gear atlas: each pad its own ===');
+  // THE FORGE (avatar/forge.ts): a piece's kit loads on first wear, so wait
+  // for every worn kit to land and the bay to collect the new surfaces.
+  const forged = async () => {
+    await page.evaluate(() => window.__ff2.forge?.ready?.());
+    await page.waitForFunction(() => window.__ff2.bayGearProbe.count() > 0, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+  };
   // Aimed at each pad from above and outside, in the mirror's own frame.
   for (const id of ['pauldrons', 'spikepads']) {
     await page.evaluate((g) => window.__ff2.gear.equip(g), id);
-    await page.waitForTimeout(700); // the rig re-dresses, the bay re-collects
+    await forged();
     const pads = await page.evaluate(() => {
       const g = window.__ff2.bayGearProbe;
       const p = window.__ff2.paint;
@@ -278,7 +285,7 @@ console.log('=== the wire: pack / unpack ===');
   // ('gearHandsR'), so a mark on the left cuff is not on the right one —
   // and a look from before the split still wears its hand marks on both.
   await page.evaluate(() => window.__ff2.gear.equip('cuffs'));
-  await page.waitForTimeout(700);
+  await forged();
   const cuffs = await page.evaluate(() => {
     const g = window.__ff2.bayGearProbe;
     const p = window.__ff2.paint;
@@ -332,7 +339,7 @@ console.log('=== the wire: pack / unpack ===');
   // faces the same UVs, so a mark on one face could never show. A dot on
   // the fin's left face is on the left face, and not through on the right.
   await page.evaluate(() => window.__ff2.gear.equip('crest'));
-  await page.waitForTimeout(700);
+  await forged();
   const fin = await page.evaluate(() => {
     const g = window.__ff2.bayGearProbe;
     const p = window.__ff2.paint;
@@ -348,7 +355,7 @@ console.log('=== the wire: pack / unpack ===');
   check('a dot on one face of the crest fin is on that face, not through on the other', fin.hitL && fin.hitR && fin.placed && fin.onL === 0 && fin.onR === -1, JSON.stringify(fin));
   await page.evaluate(() => window.__ff2.gear.clear('head'));
   await page.evaluate(() => window.__ff2.gear.equip('chestplate'));
-  await page.waitForTimeout(700);
+  await forged();
   const plate = await page.evaluate(() => {
     const g = window.__ff2.bayGearProbe;
     const p = window.__ff2.paint;

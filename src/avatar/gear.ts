@@ -41,7 +41,7 @@ import { BoxGeometry, BufferGeometry, CapsuleGeometry, CatmullRomCurve3, ConeGeo
 import { BODY_IK, PAINT } from '../config.js';
 import { BODY_RINGS, EGG_SCALE, HEAD_SCALE, type BlankTone } from './mannequin.js';
 import { atlasGear, type GearMap, mapFromUv, mergePiece } from './gearAtlas.js';
-import { setGearRemap } from './paint.js';
+import { applyLook, type Look, setGearRemap } from './paint.js';
 import { type FlopState, flopState, installFlop } from './flop.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
 import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearKit, fitGearMaps, forgeFaceFit, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
@@ -2010,6 +2010,7 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
       if (o.userData[keyName] !== key) return; // dressed in something else since
       delete o.userData[keyName];
       dressSlot(o, slot, id, tone, face);
+      lateDressed(o, slot);
       if (slot === 'face') {
         // The head is on: the skull goes, and the headgear refits to it.
         showSkull(o, !o.getObjectByName(childName('face')));
@@ -2178,6 +2179,25 @@ function frameFit(frame: string, y: number): { s: [number, number, number]; y: n
   const f = frameRing(frame, y);
   if (!std || !f) return undefined;
   return { s: [f[0] / std[0], 1, f[1] / std[1]], y: 0, z: f[2] - std[2], rx: 0 };
+}
+
+/**
+ * A Forge piece that went on AFTER its rig was dressed and painted (its
+ * kit was still loading): it takes the look already baked on the rig — or
+ * the wearer's paint would be missing from it until their look next
+ * changed — and the paint bay is told to collect its surfaces again.
+ */
+export const forgeDress = { version: 0 };
+function lateDressed(o: Object3D, slot: GearSlot): void {
+  forgeDress.version += 1;
+  let root: Object3D = o;
+  while (root.parent) root = root.parent;
+  let look: Look | undefined;
+  root.traverse((m) => {
+    if (!look && m.userData?.paintLook) look = m.userData.paintLook as Look;
+  });
+  const piece = o.getObjectByName(childName(slot));
+  if (look && piece) applyLook(piece, look);
 }
 
 /** The paint surface a slot's piece is, on which side. */

@@ -120,6 +120,9 @@ export function setGearRemap(fn: GearRemap): void {
   gearRemap = fn;
 }
 const remapped = new Map<string, [number, number] | null>();
+/** The gear surfaces last baked on a Forge piece: a mark placed there with
+ *  no map to hand (a dev hook, a probe) is a Forge mark all the same. */
+const forgedParts = new Set<PaintPart>();
 
 /** A gear unit as it lands on `map`: itself, carried onto a Forge atlas,
  *  or null (a pre-atlas stamp has no place on a forged shape). */
@@ -548,7 +551,8 @@ export function handPlace(part: PaintPart, u: number, v: number, map?: GearMap):
   const { kind, angle, len, wid } = bay.held;
   lastPose[kind] = { angle, len, wid };
   // A mark placed now is a fresh decal, whatever it was lifted as.
-  const variant = TRUE_SIZE | (map?.key.startsWith('forge:') ? FORGE_ATLAS : 0);
+  const forged = map ? map.key.startsWith('forge:') : forgedParts.has(part);
+  const variant = TRUE_SIZE | (forged ? FORGE_ATLAS : 0);
   setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant }] });
   bay.held = null;
   bay.version += 1;
@@ -1362,6 +1366,8 @@ function bakeMesh(mesh: Mesh, look: Look, memo: Map<string, ImageData>): void {
   const fill = (mat.userData?.paintFill as string) ?? TONE_FILL[tone] ?? TONE_FILL.white;
   const map = mesh.userData.paintMap as GearMap | undefined;
   const frame = (mesh.userData.paintFrame as string | undefined) ?? '';
+  if (map?.key.startsWith('forge:')) forgedParts.add(part);
+  else if (map) forgedParts.delete(part);
   const key = `${part}|${fill}|${size}|${map?.key ?? ''}|${frame}`;
   let img = memo.get(key);
   if (!img) {

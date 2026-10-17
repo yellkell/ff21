@@ -77,7 +77,7 @@ import { currentVoiceContext, VOICE_RULES, voiceAllowed, hearAllowed } from '../
 import { applyGhost, applyLook, bay, handLift, handPlace, handReturn, installPaintDevHook, myLook, paintState, togglePaintHiddenAll, undoLast, unitAt, type PaintPart } from '../avatar/paint.js';
 import { pulseHand } from '../input/haptics.js';
 import type { GearMap } from '../avatar/gearAtlas.js';
-import { applyGear, cleanGear, GEAR, gearDef, type GearSlot, wornGear } from '../avatar/gear.js';
+import { applyGear, cleanGear, forgeDress, GEAR, gearDef, type GearSlot, wornGear } from '../avatar/gear.js';
 import { installGrammarDevHook } from '../campaign/grammar.js';
 import { BeltCeremony } from '../campaign/beltCeremony.js';
 import { beltOf, heldBelts } from '../campaign/belts.js';
@@ -2041,7 +2041,14 @@ export class MenuSystem extends createSystem({}) {
    * your torso, both gloves and your platform. Visual only — PlayerBodyPart
    * hitboxes never move.
    */
+  private forgeDressSeen = 0;
+
   private applyOwnSkins(): void {
+    // A Forge piece that landed late is a new paint surface for the bay.
+    if (forgeDress.version !== this.forgeDressSeen) {
+      this.forgeDressSeen = forgeDress.version;
+      if (app.paintBayOpen) this.collectBayMeshes();
+    }
     const skinChanged = customization.version !== this.skinVersion;
     const accentChanged = app.accentHue !== this.accentHue || app.accentLight !== this.accentLight;
     const paintChanged = paintState.version !== this.paintVersionSeen;
