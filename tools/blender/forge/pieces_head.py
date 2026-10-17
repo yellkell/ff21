@@ -677,7 +677,7 @@ def horn_root_dir():
 
 def _horn_r(t):
     # Thick at the root (a little flare where it leaves the mount), tapering.
-    return 0.0300 * (1 - t) ** 0.58 + 0.0016
+    return 0.0375 * (1 - t) ** 0.5 + 0.0020
 
 
 def _horn_sec(t, m=16, k=0.10, scale=1.0):
@@ -755,7 +755,7 @@ def horns(ref):
     def plate(th):
         c, s = math.cos(th), math.sin(th)
         f = 1 + 0.10 * math.cos(3 * th + 0.4)
-        return 0.046 * f * c, 0.040 * f * s
+        return 0.058 * f * c, 0.051 * f * s  # sized to the (thicker) horn root
     mount, place, _ = skull_patch("mount", HORN_ROOT_DIR, (0.0, 0.0, 1.0), plate, GAP, TH, bulge=0.0025, rings=3, segs=22)
     gk.bevel(mount, 0.0014, segments=2, angle=35)
     objs.append(gk.fin(mount, "shell"))
