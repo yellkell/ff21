@@ -43,7 +43,7 @@ import { BODY_RINGS, EGG_SCALE, HEAD_SCALE, type BlankTone } from './mannequin.j
 import { atlasGear, type GearMap, mapFromUv, mergePiece } from './gearAtlas.js';
 import { setGearRemap } from './paint.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
-import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearMaps, forgeFaceFit, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
+import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearKit, fitGearMaps, forgeFaceFit, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
 
 /** 'face' is THE HEADS (avatar/heads.ts): a whole head worn in place of
  *  the bare skull. It came after the other three, so it packs after them —
@@ -2013,7 +2013,10 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
     });
     return;
   }
-  const kit = forge === 'ready' ? forgeGearKit(id) : null;
+  // A body or shoulder piece is refitted, vertex by vertex, to the frame.
+  const bodyPiece = slot === 'body' || slot === 'shoulders';
+  const base = forge === 'ready' ? forgeGearKit(id) : null;
+  const kit = base && bodyPiece ? fitGearKit(base, frame) : base;
   const variant = !kit && slot === 'head' && face && forgeGearState(face) === 'none' ? VARIANTS[face]?.[id] : undefined;
   const build = kit ? null : (variant ?? BUILDERS[id]);
   if (!build && !kit) return;
@@ -2065,7 +2068,7 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
   // key); a Forge piece brings its atlas with it.
   const canvas = PAINT.canvas[part] ?? 256;
   const map = kit
-    ? mapFromUv(g, paintable, `forge:${id}|${side}`, canvas)
+    ? mapFromUv(g, paintable, `forge:${id}|${side}${bodyPiece ? `@${frame}` : ''}`, canvas)
     : atlasGear(g, paintable, variant ? `${id}@${face}|${side}` : `${id}|${side}`, canvas);
   for (const mesh of paintable) mesh.userData.paintMap = map;
   if (!kit) mergePiece(g); // a few draw calls per piece, not dozens (gearAtlas.ts)
@@ -2094,7 +2097,7 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
       ? { rx: 0, ...faceFit }
       : slot === 'head' && !variant && HEAD_FIT[face]
       ? { rx: 0, ...HEAD_FIT[face], ...PIECE_FIT[face]?.[id] }
-      : slot === 'body' || slot === 'shoulders'
+      : (slot === 'body' || slot === 'shoulders') && !kit
         ? frameFit(frame, slot === 'shoulders' ? SHOULDER_ANCHOR : (BODY_ANCHOR[id] ?? 0.29))
         : undefined;
   if (fit) {
@@ -2171,7 +2174,9 @@ function partOf(slot: GearSlot, side: 1 | -1): string {
  * Forge's (the head pieces on the old egg, refitted here as the rig did).
  */
 setGearRemap((map: GearMap, u: number, v: number): [number, number] | null => {
-  const m = /^forge:(.+)\|(-?1)$/.exec(map.key);
+  // (A body or shoulder piece's key carries its frame: the UVs, and so the
+  // answer, are the same on every frame.)
+  const m = /^forge:(.+?)\|(-?1)(?:@.+)?$/.exec(map.key);
   if (!m) return null;
   const id = m[1];
   const side = Number(m[2]) as 1 | -1;

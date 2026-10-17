@@ -419,3 +419,55 @@ export function dressHead(root: Object3D): void {
     if (k) for (const s of skulls) wearHead(s, k);
   });
 }
+
+/**
+ * A body or shoulder piece FITTED to a frame: every vertex moved by that
+ * frame's ring over STANDARD's ring at the vertex's own height — across by
+ * the half-width ratio, fore-aft by the half-depth ratio about the ring's
+ * centre — so a belt follows CURVED's waist AND its hips, where one scale
+ * at one anchor height sank its lower edge into the hips. Normals take the
+ * inverse scale. Heights past the shoulder line and below the tip use the
+ * ring there. Cached per piece and frame; shared like the kit.
+ */
+const fitted = new Map<string, GearKit>();
+export function fitGearKit(kit: GearKit, frame: string): GearKit {
+  if (frame === DEFAULT_FRAME || !frameChart(frame) || !frameChart(DEFAULT_FRAME)) return kit;
+  const key = `${kit.id}|${frame}`;
+  const hit = fitted.get(key);
+  if (hit) return hit;
+  const ratio = new Map<number, [number, number, number, number]>();
+  const at = (y: number): [number, number, number, number] => {
+    const yy = Math.round(Math.max(-0.2, Math.min(0.4, y)) * 400) / 400; // 2.5 mm steps
+    let r = ratio.get(yy);
+    if (!r) {
+      const s = frameRing(DEFAULT_FRAME, yy)!;
+      const f = frameRing(frame, yy)!;
+      r = [f[0] / s[0], f[1] / s[1], s[2], f[2]];
+      ratio.set(yy, r);
+    }
+    return r;
+  };
+  const meshes = kit.meshes.map(({ finish, geo }) => {
+    const g = geo.clone();
+    const pos = g.getAttribute('position');
+    const nrm = g.getAttribute('normal');
+    for (let i = 0; i < pos.count; i++) {
+      const [rw, rd, sz, fz] = at(pos.getY(i));
+      pos.setX(i, pos.getX(i) * rw);
+      pos.setZ(i, fz + (pos.getZ(i) - sz) * rd);
+      if (nrm) {
+        const nx = nrm.getX(i) / rw;
+        const ny = nrm.getY(i);
+        const nz = nrm.getZ(i) / rd;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nrm.setXYZ(i, nx / l, ny / l, nz / l);
+      }
+    }
+    pos.needsUpdate = true;
+    g.computeBoundingSphere();
+    return { finish, geo: g };
+  });
+  const out: GearKit = { ...kit, meshes };
+  fitted.set(key, out);
+  return out;
+}
