@@ -107,6 +107,11 @@ export const GEL_LOOK = {
    *  turned up so a fresh hit sets the whole surface roiling. */
   wobble: 0.010,
   wobbleAgitated: 0.044,
+  /** BLACK CHROME's eyes (the baked-arena look): the street's reflection
+   *  tinted this colour, over a floor of it so they always read. */
+  eyeChromeColor: 0x52ff6e,
+  eyeChromeBase: 0.3,
+  eyeChromeGain: 1.4,
 };
 
 /**

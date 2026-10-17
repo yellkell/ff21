@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- DEV-ONLY harness: GOOPLIATH standing in the NEON PLAZA, seen from your
+     pad, for judging his gel's look. Not shipped.
+     ?refl=0 turns the baked-arena reflections off (the procedural tint).
+     ?raid=1 stands him in the raid pit (and uses the raid bake).
+     ?hit=1 lands a fireball-strength hit every ~1.2 s; ?enrage=0..1.
+     ?cam=x,y,z&look=x,y,z frees the camera. -->
+<html>
+  <body style="margin:0; background:#000">
+    <script type="module">
+      import { Group, NoToneMapping, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
+      import { buildNeon } from '/src/arena/neon/index.ts';
+      import { makePlatform } from '/src/arena/arena.ts';
+      import { ARENA_GAP, GOOPLIATH, RAID_RING_RADIUS } from '/src/config.ts';
+      import { GOOPLIATH_DEF } from '/src/campaign/bosses.ts';
+      import { GelCreature } from '/src/goopliath/GelCreature.ts';
+      import { GooFx } from '/src/goopliath/splats.ts';
+      import { CREATURE } from '/src/goopliath/goopConfig.ts';
+      import { goopArenaEnv } from '/src/goopliath/arenaEnv.ts';
+
+      const params = new URLSearchParams(location.search);
+      const raid = params.get('raid') === '1';
+      const refl = params.get('refl') !== '0';
+      const hits = params.get('hit') === '1';
+
+      const scene = new Scene();
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = NoToneMapping; // like the headset
+      document.body.appendChild(renderer.domElement);
+
+      const neon = buildNeon(renderer);
+      neon.setSite('plaza');
+      neon.setShown(true);
+      neon.root.visible = true;
+      scene.add(neon.root);
+      scene.background = neon.skyColor;
+      scene.fog = neon.fog;
+      scene.add(makePlatform(0xff7a18));
+
+      const bossZ = -(raid ? RAID_RING_RADIUS : ARENA_GAP) - GOOPLIATH_DEF.zOffset;
+      const scale = ((raid ? GOOPLIATH.scaleRaid : GOOPLIATH.scaleCampaign) * GOOPLIATH.titanHeightPerScale) / CREATURE.height;
+      const fx = new GooFx();
+      scene.add(fx.group);
+      const goop = new GelCreature(fx);
+      goop.qualityOverride = GOOPLIATH.quality;
+      goop.sim.impactScale = GOOPLIATH.impactScale;
+      goop.enrage = Number(params.get('enrage') ?? 0);
+      goop.setFormTarget(1);
+      const root = new Group();
+      root.scale.setScalar(scale);
+      root.position.set(0, 0, bossZ);
+      root.add(goop.group);
+      scene.add(root);
+      if (refl) goop.setEnvironment(await goopArenaEnv(raid ? 'raid' : 'solo'));
+
+      const camera = new PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 2000);
+      camera.position.set(0, 1.6, 0.4);
+      camera.lookAt(0, 2.4, bossZ);
+      const cam = params.get('cam');
+      if (cam) {
+        const c = cam.split(',').map(Number);
+        const l = (params.get('look') ?? `0,2.4,${bossZ}`).split(',').map(Number);
+        camera.position.set(c[0], c[1], c[2]);
+        camera.lookAt(l[0], l[1], l[2]);
+      }
+      window.__goop = goop;
+
+      const head = new Vector3();
+      const hitPt = new Vector3();
+      const dir = new Vector3();
+      let last = performance.now();
+      let nextHit = 1.5;
+      let t = 0;
+      const tick = () => {
+        requestAnimationFrame(tick);
+        const now = performance.now();
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        if (!neon.ready) return;
+        t += dt;
+        neon.update(dt, now / 1000, camera.position);
+        // Root stays put; face your pad like the fight does.
+        camera.getWorldPosition(head);
+        // As animateGoop does: the creature lives in its parent's scaled frame.
+        goop.faceToward(head.clone().sub(root.position).divideScalar(scale));
+        if (hits && t > nextHit) {
+          nextHit = t + 1.2;
+          // A ball arriving at his chest from your pad, slightly off-centre.
+          goop.headWorld(hitPt);
+          hitPt.y -= 0.9 * scale * 0.4;
+          hitPt.x += (Math.random() - 0.5) * 1.2;
+          dir.copy(hitPt).sub(head).normalize();
+          hitPt.addScaledVector(dir, -0.6);
+          goop.receivePunchWorld(hitPt, dir, GOOPLIATH.punchMax);
+        }
+        fx.update(dt);
+        goop.update(dt * GOOPLIATH.timeScale, head);
+        renderer.render(scene, camera);
+        document.title = 'preview-ready';
+      };
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>

@@ -83,6 +83,7 @@ import { Bolt, impactOf, lungeEnvelope, throwingArm } from '../campaign/delivery
 import { playBossVoice, preloadBossVoice } from '../audio/bossVoice.js';
 import { GelCreature } from '../goopliath/GelCreature.js';
 import { GooFx } from '../goopliath/splats.js';
+import { goopArenaEnv } from '../goopliath/arenaEnv.js';
 import { ATTACKS as GOOP_ATTACKS, CREATURE as GOOP_BODY, type AttackName as GoopAttackName } from '../goopliath/goopConfig.js';
 import {
   bankDifficultyClear,
@@ -1239,6 +1240,16 @@ export class CampaignSystem extends createSystem({
     this.goopRoot.position.set(0, 0, this.bossZ());
     this.goopRoot.add(this.goop.group);
     this.scene.add(this.goopRoot);
+    // In the NEON PLAZA his skin reflects the plaza itself, baked in Blender
+    // from where he stands. A bout torn down before it lands keeps nothing.
+    if (app.environment === 'neon') {
+      const goop = this.goop;
+      goopArenaEnv(this.raid() ? 'raid' : 'solo')
+        .then((t) => {
+          if (this.goop === goop) goop.setEnvironment(t);
+        })
+        .catch(() => {}); // a missing bake just leaves the procedural tint
+    }
   }
 
   private disposeGoop(): void {

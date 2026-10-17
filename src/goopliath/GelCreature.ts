@@ -17,19 +17,22 @@
 import {
   BoxGeometry,
   CanvasTexture,
+  Color,
   Group,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
   Quaternion,
+  ShaderMaterial,
   SphereGeometry,
+  type Texture,
   Vector3,
 } from 'three';
-import { ATTACKS, CREATURE, type AttackName } from './goopConfig.js';
+import { ATTACKS, CREATURE, GEL_LOOK, type AttackName } from './goopConfig.js';
 import * as sfx from '../audio/sfx.js';
 import type { GooFx } from './splats.js';
-import { createGelMaterial, type GelUniforms } from './gelMaterial.js';
+import { createChromeEyeMaterial, createGelMaterial, type GelUniforms } from './gelMaterial.js';
 import { A, ANCHOR_COUNT, BOXER_POSE } from './poses.js';
 import type { StylePoseDelta } from './styles.js';
 import { GoopSim, type PunchResult } from './sim.js';
@@ -64,6 +67,8 @@ const _v2 = new Vector3();
 const _v3 = new Vector3();
 const _q = new Quaternion();
 const _m = new Matrix4();
+/** The telegraph's eye colour on BLACK CHROME (the plain beads ramp to the same amber). */
+const _amber = new Color(1.0, 0.65, 0.06);
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -93,6 +98,10 @@ export class GelCreature {
   private eyeL: Group;
   private eyeR: Group;
   private eyeMats: MeshBasicMaterial[] = [];
+  /** The eyeballs themselves, so BLACK CHROME can swap their material. */
+  private eyeBalls: Mesh[] = [];
+  /** BLACK CHROME's eyes, while the baked arena is up (null = plain beads). */
+  private chromeEye: ShaderMaterial | null = null;
   private blinkTimer = 3;
   private blink = 0; // 0 open .. 1 shut
 
@@ -160,6 +169,7 @@ export class GelCreature {
       const ball = new MeshBasicMaterial({ color: 0x101b10 });
       this.eyeMats.push(ball);
       const eye = new Mesh(new SphereGeometry(0.046, 16, 12), ball);
+      this.eyeBalls.push(eye);
       const glint = new Mesh(
         new SphereGeometry(0.013, 8, 6),
         new MeshBasicMaterial({ color: 0xf4fff2 }),
@@ -344,7 +354,18 @@ export class GelCreature {
       mat?.dispose?.();
     });
     (this.shadow.material as MeshBasicMaterial).map?.dispose();
+    this.eyeMats.forEach((m) => m.dispose()); // swapped out while chrome
     this.group.removeFromParent();
+  }
+
+  /** Reflect a baked panorama of the arena he stands in (null = the
+   *  procedural tint). Look only — the sim and the field never see it. */
+  setEnvironment(tex: Texture | null): void {
+    this.gel.setEnvironment(tex);
+    // The eyes go chrome with the body: the same street, in the eye colour.
+    this.chromeEye?.dispose();
+    this.chromeEye = tex ? createChromeEyeMaterial(tex) : null;
+    this.eyeBalls.forEach((m, i) => (m.material = this.chromeEye ?? this.eyeMats[i]));
   }
 
   /** A slow fist pressing into it — gentle shove, playful wobble. */
@@ -916,6 +937,9 @@ export class GelCreature {
         0.1 + flash * 0.55,
         0.06,
       );
+    }
+    if (this.chromeEye) {
+      (this.chromeEye.uniforms.uTint.value as Color).set(GEL_LOOK.eyeChromeColor).lerp(_amber, flash);
     }
   }
 }
