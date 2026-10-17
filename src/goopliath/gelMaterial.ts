@@ -24,9 +24,13 @@
  * fragment writes gl_FragDepth from the real hit point so fists and eyeballs
  * sort correctly INTO the gel, not against the bounding box. The MARCH itself
  * is bounded by the blob spheres, not that box — see blobRange below.
+ *
+ * Where the arena was baked for him (setEnvironment — Blender panoramas of
+ * the NEON PLAZA rendered from his chest) none of that gel shading runs: he
+ * is BLACK CHROME instead, an opaque liquid mirror of the street.
  */
 
-import { BackSide, Color, Matrix4, ShaderMaterial, Vector3 } from 'three';
+import { BackSide, Color, Matrix4, ShaderMaterial, type Texture, Vector3 } from 'three';
 import { CREATURE, GEL_LOOK, MARCH } from './goopConfig.js';
 import { MAX_BLOBS, MAX_DENTS } from './sim.js';
 
@@ -76,8 +80,25 @@ const FRAG = /* glsl */ `
   uniform vec3 uDeep;
   uniform vec3 uNucleus;
   uniform vec3 uFlash;
+  uniform sampler2D uEnvMap;
+  uniform float uEnvMix;
 
   varying vec3 vLocal;
+
+  // The baked arena, sampled like three's equirect envMap (same u/v
+  // convention, world-space direction). The u seam is where atan wraps;
+  // taking whichever of u / fract(u + 0.5) has the smaller derivative keeps
+  // the mip pick sane across it instead of a one-pixel blur line.
+  vec3 envBaked(vec3 dir) {
+    vec2 uv = vec2(atan(dir.z, dir.x) * 0.15915494 + 0.5, asin(clamp(dir.y, -1.0, 1.0)) * 0.31830989 + 0.5);
+    vec2 dx = dFdx(uv);
+    vec2 dy = dFdy(uv);
+    float uB = fract(uv.x + 0.5);
+    float dxB = dFdx(uB);
+    float dyB = dFdy(uB);
+    if (abs(dxB) + abs(dyB) < abs(dx.x) + abs(dy.x)) { dx.x = dxB; dy.x = dyB; }
+    return textureGrad(uEnvMap, uv, dx, dy).rgb;
+  }
 
   // Polynomial smooth-min — identical maths to GoopSim.fieldAt on the CPU.
   float smin(float a, float b, float k) {
@@ -276,6 +297,26 @@ const FRAG = /* glsl */ `
     float ndv = max(dot(n, v), 0.0);
     float fresnel = pow(1.0 - ndv, 3.0);
 
+    // ---- true depth so fists/eyes intersect the SURFACE, not the box.
+    vec4 clip = projectionMatrix * viewMatrix * modelMatrix * vec4(p, 1.0);
+    gl_FragDepth = (clip.z / clip.w) * 0.5 + 0.5;
+
+    vec3 rWorld = normalize(mat3(modelMatrix) * reflect(rd, n));
+
+    // ---- BLACK CHROME: where the arena was baked for him, his skin is a
+    // dark liquid mirror of the street — opaque, every sign around him
+    // sliding over the wobble and the dents. Nothing here needs the
+    // thickness probes, so this path skips two whole blob loops a pixel.
+    // The tells survive: enrage bleeds the mirror and its rim to blood, the
+    // telegraph pulses warm over it exactly as it does over the green.
+    if (uEnvMix > 0.5) {
+      vec3 chrome = envBaked(rWorld) * mix(vec3(1.0), vec3(1.0, 0.3, 0.24), uEnrage * 0.85);
+      chrome += vec3(1.0, 0.26, 0.18) * fresnel * fresnel * 0.5 * uEnrage;
+      chrome = mix(chrome, uFlash, uTelegraph * 0.35 * (0.6 + 0.4 * sin(uTime * 18.0)));
+      gl_FragColor = vec4(chrome, 1.0);
+      return;
+    }
+
     // ---- approximate thickness along the view ray ----
     // Two soft density samples (not binary inside/outside) keep the alpha
     // and absorption ramps continuous — no onion-ring banding at the rim.
@@ -306,7 +347,6 @@ const FRAG = /* glsl */ `
 
     // Procedural environment tint in the reflection (soft sky above,
     // dim floor below) — sells "wet" without a cubemap.
-    vec3 rWorld = normalize(mat3(modelMatrix) * reflect(rd, n));
     vec3 env = mix(vec3(0.10, 0.11, 0.10), vec3(0.72, 0.78, 0.74), smoothstep(-0.35, 0.8, rWorld.y));
 
     // Two analytic lights: warm key high-front, cool rim behind-left.
@@ -335,11 +375,6 @@ const FRAG = /* glsl */ `
     float alpha = clamp(0.44 + 0.38 * thickN + 0.24 * fresnel, 0.0, 0.96);
 
     gl_FragColor = vec4(col, alpha);
-
-    // ---- true depth so fists/eyes intersect the SURFACE, not the box.
-    vec4 clip = projectionMatrix * viewMatrix * modelMatrix * vec4(p, 1.0);
-    float ndcZ = clip.z / clip.w;
-    gl_FragDepth = ndcZ * 0.5 + 0.5;
   }
 `;
 
@@ -364,6 +399,8 @@ export interface GelUniforms {
   /** Scale the march-step budget (1 = full quality; drops with distance). */
   setEnrage(v: number): void;
   setQuality(q: number): void;
+  /** Reflect a baked equirect panorama of the arena (null = procedural tint). */
+  setEnvironment(tex: Texture | null): void;
 }
 
 export function createGelMaterial(): GelUniforms {
@@ -394,6 +431,8 @@ export function createGelMaterial(): GelUniforms {
       uDeep: { value: new Color(GEL_LOOK.deepColor) },
       uNucleus: { value: new Color(GEL_LOOK.nucleusColor) },
       uFlash: { value: new Color(GEL_LOOK.telegraphColor) },
+      uEnvMap: { value: null },
+      uEnvMix: { value: 0 },
     },
   });
 
@@ -428,5 +467,51 @@ export function createGelMaterial(): GelUniforms {
       // boss always marched at full cost whatever the config said.
       material.uniforms.uSteps.value = Math.max(8, Math.round(GEL_LOOK.maxSteps * Math.min(1, q)));
     },
+    setEnvironment(tex) {
+      material.uniforms.uEnvMap.value = tex;
+      material.uniforms.uEnvMix.value = tex ? 1 : 0;
+    },
   };
+}
+
+const EYE_VERT = /* glsl */ `
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+
+  void main() {
+    vec4 w = modelMatrix * vec4(position, 1.0);
+    vWorld = w.xyz;
+    vNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * w;
+  }
+`;
+
+const EYE_FRAG = /* glsl */ `
+  precision highp float;
+  uniform sampler2D uEnvMap;
+  uniform vec3 uTint;
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+
+  void main() {
+    vec3 r = reflect(normalize(vWorld - cameraPosition), normalize(vNormal));
+    vec2 uv = vec2(atan(r.z, r.x) * 0.15915494 + 0.5, asin(clamp(r.y, -1.0, 1.0)) * 0.31830989 + 0.5);
+    vec3 e = texture2D(uEnvMap, uv).rgb;
+    // The body's own mirror, run through the eye colour — with a floor of
+    // it, so the eyes still read off black chrome where the street is dark.
+    gl_FragColor = vec4(uTint * (${GEL_LOOK.eyeChromeBase.toFixed(3)} + e * ${GEL_LOOK.eyeChromeGain.toFixed(3)}), 1.0);
+  }
+`;
+
+/** BLACK CHROME's eyeballs: the same baked street as the body, tinted
+ *  (GelCreature drives uTint — the eye colour, amber on a telegraph). */
+export function createChromeEyeMaterial(env: Texture): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: EYE_VERT,
+    fragmentShader: EYE_FRAG,
+    uniforms: {
+      uEnvMap: { value: env },
+      uTint: { value: new Color(GEL_LOOK.eyeChromeColor) },
+    },
+  });
 }
