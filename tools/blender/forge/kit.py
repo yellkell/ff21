@@ -265,7 +265,8 @@ def make_finish(name, kind, bevel=0.0012, ao_dist=0.03, micro=1.0, edge_wear=Tru
     emit = N(nt, "ShaderNodeEmission")
     comb = N(nt, "ShaderNodeCombineColor")
     mat["finish"] = kind
-    taps = dict(orm=[aov, rough, metal])
+    one = sock(nt, 1.0)
+    taps = dict(orm=[aov, rough, metal], mask=[one, one, one])
     return mat, dict(nt=nt, out=out, bsdf=bsdf, emit=emit, comb=comb, img=img, taps=taps, kind=kind)
 
 
@@ -310,7 +311,7 @@ def new_image(name, size, chan):
     return im
 
 
-def bake(objs, taps_list, chan, im, samples=32, high=None, extrusion=0.004, margin=8):
+def bake(objs, taps_list, chan, im, samples=32, high=None, extrusion=0.004, margin=8, clear=True):
     """Bake one channel of `objs` (sharing one UV atlas) into `im`.
     chan 'nrm' bakes the shaded normal (bevel + bump), or the high mesh's
     surface when `high` is given (selected → active); anything else bakes
@@ -326,13 +327,13 @@ def bake(objs, taps_list, chan, im, samples=32, high=None, extrusion=0.004, marg
         if len(objs) != 1:
             raise ValueError("a high → low bake takes one low object")
         bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", use_selected_to_active=True,
-                            cage_extrusion=extrusion, max_ray_distance=extrusion * 2.5, margin=margin, use_clear=True)
+                            cage_extrusion=extrusion, max_ray_distance=extrusion * 2.5, margin=margin, use_clear=clear)
     else:
         select_only(objs)
         if chan == "nrm":
-            bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", margin=margin, use_clear=True)
+            bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", margin=margin, use_clear=clear)
         else:
-            bpy.ops.object.bake(type="EMIT", margin=margin, use_clear=True)
+            bpy.ops.object.bake(type="EMIT", margin=margin, use_clear=clear)
     for t in taps_list:
         route(t, "shade")
     print("baked", chan, im.name, flush=True)

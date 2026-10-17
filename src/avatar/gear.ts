@@ -40,9 +40,9 @@
 import { BoxGeometry, BufferGeometry, CapsuleGeometry, CatmullRomCurve3, ConeGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, Group, IcosahedronGeometry, LatheGeometry, Mesh, MeshStandardMaterial, type Object3D, Quaternion, Shape, SphereGeometry, TorusGeometry, TubeGeometry, Vector2, Vector3 } from 'three';
 import { BODY_IK, PAINT } from '../config.js';
 import { BODY_RINGS, EGG_SCALE, HEAD_SCALE, type BlankTone } from './mannequin.js';
-import { atlasGear, mergePiece } from './gearAtlas.js';
+import { atlasGear, mapFromUv, mergePiece } from './gearAtlas.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
-import { DEFAULT_FRAME, FRAMES, dressFrame, frameRing } from './forge.js';
+import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearMaps, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
 
 /** 'face' is THE HEADS (avatar/heads.ts): a whole head worn in place of
  *  the bare skull. It came after the other three, so it packs after them —
@@ -1981,16 +1981,31 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
     old.traverse((m) => {
       const mesh = m as Mesh;
       if (mesh.isMesh) {
-        mesh.geometry.dispose();
+        // A Forge piece's geometry is shared by everyone wearing it.
+        if (!mesh.userData.forged) mesh.geometry.dispose();
         (mesh.material as MeshStandardMaterial).dispose?.();
       }
     });
   }
   // A head that wears its own cut of this piece (VARIANTS) builds that,
   // in its own frame: no skull refit, no HEAD_FIT.
-  const variant = slot === 'head' && face ? VARIANTS[face]?.[id] : undefined;
-  const build = variant ?? BUILDERS[id];
-  if (!build) return;
+  // THE FORGE (avatar/forge.ts): a piece remade in Blender wears its
+  // Forge shape. While its kit is on the way the slot stays empty, and the
+  // piece goes on when it lands; a piece that isn't forged (or whose kit
+  // failed) keeps its procedural shape below.
+  const forge = id ? forgeGearState(id) : 'none';
+  if (forge === 'loading') {
+    void loadForgeGear(id).then(() => {
+      if (o.userData[keyName] !== key) return; // dressed in something else since
+      delete o.userData[keyName];
+      dressSlot(o, slot, id, tone, face);
+    });
+    return;
+  }
+  const kit = forge === 'ready' ? forgeGearKit(id) : null;
+  const variant = !kit && slot === 'head' && face ? VARIANTS[face]?.[id] : undefined;
+  const build = kit ? null : (variant ?? BUILDERS[id]);
+  if (!build && !kit) return;
   const side: 1 | -1 = (o.userData.gearSide as 1 | -1 | undefined) ?? (o.name.endsWith('-right') ? -1 : 1);
   const glowMat = glow();
   const accent = accentOf(o);
@@ -1998,11 +2013,12 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
     glowMat.color.set(accent);
     glowMat.emissive.set(accent);
   }
-  const g = build(primer(tone), side, trim(tone), glowMat);
+  const g = kit ? forgePiece(kit, tone, glowMat, side) : build!(primer(tone), side, trim(tone), glowMat);
   g.name = childName(slot);
   g.userData.gear = id;
-  // The head pieces were modelled on the old egg skull; refit them.
-  if (slot === 'head' && !variant) g.scale.set(HEAD_SCALE[0] / EGG_SCALE[0], HEAD_SCALE[1] / EGG_SCALE[1], HEAD_SCALE[2] / EGG_SCALE[2]);
+  // The procedural head pieces were modelled on the old egg skull; refit
+  // them. (Forge pieces are modelled on the skull as it is.)
+  if (slot === 'head' && !variant && !kit) g.scale.set(HEAD_SCALE[0] / EGG_SCALE[0], HEAD_SCALE[1] / EGG_SCALE[1], HEAD_SCALE[2] / EGG_SCALE[2]);
   // A PAINT SURFACE (avatar/paint.ts): the piece shares its slot's
   // canvas, laid out by THE GEAR ATLAS (avatar/gearAtlas.ts) — every
   // mesh and every face its own patch of it, so each pauldron, plate and
@@ -2034,10 +2050,14 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
     mesh.userData.paintTone = tone;
     paintable.push(mesh);
   });
-  // A variant is its own geometry, so its own atlas (the map is cached by key).
-  const map = atlasGear(g, paintable, variant ? `${id}@${face}|${side}` : `${id}|${side}`, PAINT.canvas[part] ?? 256);
+  // A variant is its own geometry, so its own atlas (the map is cached by
+  // key); a Forge piece brings its atlas with it.
+  const canvas = PAINT.canvas[part] ?? 256;
+  const map = kit
+    ? mapFromUv(g, paintable, `forge:${id}|${side}`, canvas)
+    : atlasGear(g, paintable, variant ? `${id}@${face}|${side}` : `${id}|${side}`, canvas);
   for (const mesh of paintable) mesh.userData.paintMap = map;
-  mergePiece(g); // a few draw calls per piece, not dozens (gearAtlas.ts)
+  if (!kit) mergePiece(g); // a few draw calls per piece, not dozens (gearAtlas.ts)
   // …and onto a worn head's own skull (HEAD_FIT): every head piece was
   // modelled on the bare skull, and each animal's cranium is a different
   // size, shape and seat — a bear's is low and broad, a horse's small and
@@ -2075,6 +2095,27 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
     return;
   }
   o.add(g);
+}
+
+/**
+ * A Forge piece, dressed: its shell in the tone's primer (the paint
+ * surface), its trim in the tone's trim, its glow in the accent — each
+ * wearing the piece's baked normal and ORM maps. A piece is made for the
+ * LEFT hand; the right wears it mirrored.
+ */
+function forgePiece(kit: GearKit, tone: BlankTone, glowMat: MeshStandardMaterial, side: 1 | -1): Group {
+  const g = new Group();
+  for (const { finish, geo } of kit.meshes) {
+    const mat = finish === 'shell' ? primer(tone) : finish === 'trim' ? trim(tone) : glowMat;
+    fitGearMaps(mat, finish, kit);
+    const mesh = new Mesh(geo, mat);
+    mesh.userData.forged = true;
+    if (finish === 'trim') asTrim(mesh);
+    if (finish === 'glow') asGlow(mesh);
+    g.add(mesh);
+  }
+  if (side === -1 && gearDef(kit.id)?.slot === 'hands') g.scale.x = -1;
+  return g;
 }
 
 /** Where each body piece takes its fit from (hip-local y): the ring it

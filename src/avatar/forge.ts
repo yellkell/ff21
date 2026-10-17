@@ -193,3 +193,109 @@ export function frameOf(root: Object3D): string {
 export function preloadFrame(id: string): void {
   if (frameDef(id)) void loadFrame(id);
 }
+
+/* ── GEAR ─────────────────────────────────────────────────────────────── */
+//
+// A Forge piece (tools/blender/forge/gear.py) is a GLB of up to three
+// meshes named by FINISH — shell (the paint surface), trim, glow — sharing
+// one UV atlas, and a normal + ORM pair over that atlas. Pieces load on
+// first wear and are shared: every fighter in the room wearing CREST draws
+// from one geometry and one texture pair.
+
+export type Finish = 'shell' | 'trim' | 'glow';
+
+export interface GearKit {
+  id: string;
+  meshes: Array<{ finish: Finish; geo: BufferGeometry }>;
+  nrm: Texture;
+  orm: Texture;
+}
+
+interface GearEntry {
+  slot: string;
+  tris: number;
+  tex: number;
+  finishes: Finish[];
+}
+
+let gearList: Record<string, GearEntry> | null = null;
+const gearManifest: Promise<Record<string, GearEntry> | null> = fetch(`${BASE}gear/gear.json`)
+  .then((r) => (r.ok ? r.json() : null))
+  .then((j: Record<string, GearEntry> | null) => {
+    gearList = j ?? {};
+    return gearList;
+  })
+  .catch(() => {
+    gearList = {};
+    return gearList;
+  });
+
+const gearKits = new Map<string, GearKit>();
+const gearLoading = new Map<string, Promise<GearKit | null>>();
+const gearFailed = new Set<string>();
+
+/**
+ * Where a piece stands with the Forge: 'ready' (its kit is in), 'loading'
+ * (the manifest or the kit is on its way — build nothing yet), or 'none'
+ * (not forged, or it failed: the procedural shape stands in).
+ */
+export function forgeGearState(id: string): 'ready' | 'loading' | 'none' {
+  if (gearKits.has(id)) return 'ready';
+  if (gearFailed.has(id)) return 'none';
+  if (!gearList) return 'loading';
+  return gearList[id] ? 'loading' : 'none';
+}
+
+export function forgeGearKit(id: string): GearKit | null {
+  return gearKits.get(id) ?? null;
+}
+
+/** Fetch a piece's kit (once); resolves null if it isn't forged or fails. */
+export function loadForgeGear(id: string): Promise<GearKit | null> {
+  let p = gearLoading.get(id);
+  if (p) return p;
+  p = gearManifest.then((list) => {
+    if (!list?.[id]) return null;
+    return Promise.all([new GLTFLoader().loadAsync(`${BASE}gear/${id}.glb`), loadTex(`gear/${id}_nrm.webp`), loadTex(`gear/${id}_orm.webp`)])
+      .then(([gltf, nrm, orm]) => {
+        const kit: GearKit = { id, meshes: [], nrm, orm };
+        gltf.scene.traverse((o) => {
+          const m = o as Mesh;
+          if (!m.isMesh) return;
+          const finish = (['shell', 'trim', 'glow'] as const).find((f) => m.name.startsWith(f));
+          if (!finish) return;
+          m.updateWorldMatrix(true, false);
+          const geo = m.geometry.clone().applyMatrix4(m.matrixWorld);
+          geo.computeBoundingSphere();
+          (m.material as MeshStandardMaterial).dispose();
+          kit.meshes.push({ finish, geo });
+        });
+        gearKits.set(id, kit);
+        return kit;
+      })
+      .catch((err) => {
+        console.warn(`[forge] gear ${id} failed to load; the old shape stands in`, err);
+        gearFailed.add(id);
+        return null;
+      });
+  });
+  gearLoading.set(id, p);
+  return p;
+}
+
+/** Dress a finish's material with the kit's maps. The shell keeps its
+ *  tone's own roughness (the map is relative); trim and glow take theirs
+ *  from the bake. */
+export function fitGearMaps(mat: MeshStandardMaterial, finish: Finish, kit: GearKit): void {
+  mat.normalMap = kit.nrm;
+  mat.normalScale.copy(NORMAL_SCALE);
+  mat.aoMap = kit.orm;
+  mat.aoMapIntensity = 1;
+  mat.roughnessMap = kit.orm;
+  if (finish === 'trim') {
+    mat.metalnessMap = kit.orm;
+    mat.roughness = 1;
+    mat.metalness = 1;
+  }
+  mat.needsUpdate = true;
+}

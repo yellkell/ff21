@@ -550,4 +550,5 @@ def main():
         review(built)
 
 
-main()
+if __name__ == "__main__":
+    main()
