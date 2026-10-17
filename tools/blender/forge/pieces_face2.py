@@ -1800,9 +1800,26 @@ def frog_form(F, ctx):
 def frog_lows(F, ctx):
     c, r = FROG_TOP
     cj, rj = FROG_JAW
-    out = [ellipsoid_mesh("top", c, r, segs=30, rings=16, clips=FROG_FACETS),
-           ellipsoid_mesh("jaw", cj, rj, segs=28, rings=12, clips=_frog_jaw_clips()),
-           ellipsoid_mesh("crown", *FROG_BRIDGE, segs=22, rings=10)]
+    # The top shell is ONE piece: the dome and the swell between the eyes
+    # as a single surface — the dome's mesh pulled out onto their smooth
+    # union (no overlapping crown part, no seam, no shading step).
+    top = ellipsoid_mesh("top", c, r, segs=36, rings=20, clips=FROG_FACETS)
+    T = Field(F.lo, F.lo + F.h * (F.n - 1), 0.0015, detail=False)
+    T.add(ellipsoid(c, r))
+    for n, p0 in FROG_FACETS:
+        clip(T, n, p0, k=0.004)
+    T.add(ellipsoid(*FROG_BRIDGE), k=0.025)
+    T.blur(1)
+    me = top.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    G = np.stack([co[:, 0], co[:, 2], -co[:, 1]], 1)
+    G, _ = T.project(G, iters=10)
+    me.vertices.foreach_set("co", np.stack([G[:, 0], -G[:, 2], G[:, 1]], 1).astype(np.float32).ravel())
+    me.update()
+    relax(top, T, iters=3, w=0.4)
+    out = [top, ellipsoid_mesh("jaw", cj, rj, segs=28, rings=12, clips=_frog_jaw_clips())]
     rP, rN = ctx["ridge"]
     out.append(np_mesh("ridge", *_frog_ridge(rP, rN, seg=10, sub=3, cap_rings=2)))
     for side in (-1, 1):
