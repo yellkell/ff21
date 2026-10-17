@@ -40,9 +40,10 @@
 import { BoxGeometry, BufferGeometry, CapsuleGeometry, CatmullRomCurve3, ConeGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, Group, IcosahedronGeometry, LatheGeometry, Mesh, MeshStandardMaterial, type Object3D, Quaternion, Shape, SphereGeometry, TorusGeometry, TubeGeometry, Vector2, Vector3 } from 'three';
 import { BODY_IK, PAINT } from '../config.js';
 import { BODY_RINGS, EGG_SCALE, HEAD_SCALE, type BlankTone } from './mannequin.js';
-import { atlasGear, mapFromUv, mergePiece } from './gearAtlas.js';
+import { atlasGear, type GearMap, mapFromUv, mergePiece } from './gearAtlas.js';
+import { setGearRemap } from './paint.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
-import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearMaps, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
+import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearMaps, forgeFaceFit, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
 
 /** 'face' is THE HEADS (avatar/heads.ts): a whole head worn in place of
  *  the bare skull. It came after the other three, so it packs after them —
@@ -1948,11 +1949,14 @@ export function applyGear(root: Object3D, ids: readonly string[], tone: BlankTon
     // A worn head REPLACES the bare skull (the skull stays built — it is
     // the 'head' paint surface, and it comes back the moment the head
     // comes off).
-    if (slots.includes('face')) {
-      o.traverse((m) => {
-        if (m.userData.paintPart === 'head') m.visible = !face;
-      });
-    }
+    // (A forged head still on its way leaves the skull up until it lands.)
+    if (slots.includes('face')) showSkull(o, !face || forgeGearState(face) === 'loading');
+  });
+}
+
+function showSkull(o: Object3D, show: boolean): void {
+  o.traverse((m) => {
+    if (m.userData.paintPart === 'head') m.visible = show;
   });
 }
 
@@ -1972,7 +1976,7 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
   // The head gear is fitted to whatever face it sits on, and the body's
   // pieces to whatever frame they hang on, so either is a new fit.
   const frame = (o.userData.frameId as string | undefined) ?? DEFAULT_FRAME;
-  const key = slot === 'head' ? `${id}|${tone}|${face}` : slot === 'body' || slot === 'shoulders' ? `${id}|${tone}|${frame}|${frameRing(frame, 0.3) ? 1 : 0}` : `${id}|${tone}`;
+  const key = slot === 'head' ? `${id}|${tone}|${face}:${face ? forgeGearState(face) : ''}` : slot === 'body' || slot === 'shoulders' ? `${id}|${tone}|${frame}|${frameRing(frame, 0.3) ? 1 : 0}` : `${id}|${tone}`;
   if (o.userData[keyName] === key) return;
   o.userData[keyName] = key;
   const old = o.getObjectByName(childName(slot));
@@ -1993,17 +1997,24 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
   // Forge shape. While its kit is on the way the slot stays empty, and the
   // piece goes on when it lands; a piece that isn't forged (or whose kit
   // failed) keeps its procedural shape below.
+  if (slot === 'head') o.userData.headWant = id;
   const forge = id ? forgeGearState(id) : 'none';
   if (forge === 'loading') {
     void loadForgeGear(id).then(() => {
       if (o.userData[keyName] !== key) return; // dressed in something else since
       delete o.userData[keyName];
       dressSlot(o, slot, id, tone, face);
+      if (slot === 'face') {
+        // The head is on: the skull goes, and the headgear refits to it.
+        showSkull(o, !o.getObjectByName(childName('face')));
+        const head = o.userData.headWant as string | undefined;
+        if (head !== undefined) dressSlot(o, 'head', head, tone, id);
+      }
     });
     return;
   }
   const kit = forge === 'ready' ? forgeGearKit(id) : null;
-  const variant = !kit && slot === 'head' && face ? VARIANTS[face]?.[id] : undefined;
+  const variant = !kit && slot === 'head' && face && forgeGearState(face) === 'none' ? VARIANTS[face]?.[id] : undefined;
   const build = kit ? null : (variant ?? BUILDERS[id]);
   if (!build && !kit) return;
   const side: 1 | -1 = (o.userData.gearSide as 1 | -1 | undefined) ?? (o.name.endsWith('-right') ? -1 : 1);
@@ -2075,8 +2086,13 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
   // the ratio of that frame's ring to STANDARD's at the piece's ANCHOR —
   // the shoulder line for pads, the waist for a belt — per axis, after the
   // atlas for the same reason as the heads.
+  // A FORGED head carries its own measured cranium (its manifest fit);
+  // the hand-placed exceptions (PIECE_FIT) belong to the old heads.
+  const faceFit = slot === 'head' && face ? forgeFaceFit(face) : null;
   const fit =
-    slot === 'head' && !variant && HEAD_FIT[face]
+    faceFit && !variant
+      ? { rx: 0, ...faceFit }
+      : slot === 'head' && !variant && HEAD_FIT[face]
       ? { rx: 0, ...HEAD_FIT[face], ...PIECE_FIT[face]?.[id] }
       : slot === 'body' || slot === 'shoulders'
         ? frameFit(frame, slot === 'shoulders' ? SHOULDER_ANCHOR : (BODY_ANCHOR[id] ?? 0.29))
@@ -2140,6 +2156,72 @@ function frameFit(frame: string, y: number): { s: [number, number, number]; y: n
   if (!std || !f) return undefined;
   return { s: [f[0] / std[0], 1, f[1] / std[1]], y: 0, z: f[2] - std[2], rx: 0 };
 }
+
+/** The paint surface a slot's piece is, on which side. */
+function partOf(slot: GearSlot, side: 1 | -1): string {
+  return slot === 'face' ? 'gearFace' : slot === 'head' ? 'gearHead' : slot === 'body' ? 'gearBody' : slot === 'shoulders' ? 'gearShoulders' : side === -1 ? 'gearHandsR' : 'gearHands';
+}
+
+/**
+ * THE PAINT's bridge from the old shapes to the Forge (paint.ts onMap): a
+ * gear mark placed on a procedural piece's atlas is found in 3D on that
+ * piece — the old shape is built again, off-screen, exactly as it was laid
+ * — and moved to the texel of the forged piece nearest that point and
+ * facing the same way. The old pieces were made in the same frames as the
+ * Forge's (the head pieces on the old egg, refitted here as the rig did).
+ */
+setGearRemap((map: GearMap, u: number, v: number): [number, number] | null => {
+  const m = /^forge:(.+)\|(-?1)$/.exec(map.key);
+  if (!m) return null;
+  const id = m[1];
+  const side = Number(m[2]) as 1 | -1;
+  const def = gearDef(id);
+  const build = BUILDERS[id];
+  if (!def || !build) return null;
+  const g = build(primer('white'), side, trim('white'), glow());
+  const paintable: Mesh[] = [];
+  g.traverse((o) => {
+    const mesh = o as Mesh;
+    if (mesh.isMesh && !mesh.userData.trim) paintable.push(mesh);
+  });
+  const old = atlasGear(g, paintable, `${id}|${side}`, PAINT.canvas[partOf(def.slot, side)] ?? 256);
+  g.traverse((o) => (o as Mesh).geometry?.dispose());
+  // The texel the mark was centred on, in the old piece's frame.
+  const i0 = Math.min(old.W - 1, Math.max(0, Math.floor(u * old.W)));
+  const j0 = Math.min(old.H - 1, Math.max(0, Math.floor((1 - v) * old.H)));
+  let k = -1;
+  for (let r = 0; r <= 6 && k < 0; r++) {
+    for (let dj = -r; dj <= r && k < 0; dj++) {
+      for (let di = -r; di <= r; di++) {
+        const i = i0 + di;
+        const j = j0 + dj;
+        if (i < 0 || j < 0 || i >= old.W || j >= old.H || old.ts[j * old.W + i] <= 0) continue;
+        k = j * old.W + i;
+        break;
+      }
+    }
+  }
+  if (k < 0) return null;
+  const sc = def.slot === 'head' ? [HEAD_SCALE[0] / EGG_SCALE[0], HEAD_SCALE[1] / EGG_SCALE[1], HEAD_SCALE[2] / EGG_SCALE[2]] : [1, 1, 1];
+  const P = [old.pos[k * 3] * sc[0], old.pos[k * 3 + 1] * sc[1], old.pos[k * 3 + 2] * sc[2]];
+  const N = [old.nrm[k * 3], old.nrm[k * 3 + 1], old.nrm[k * 3 + 2]];
+  let best = -1;
+  let bestD = Infinity;
+  for (let t = 0; t < map.ts.length; t++) {
+    if (map.ts[t] <= 0) continue;
+    const dx = map.pos[t * 3] - P[0];
+    const dy = map.pos[t * 3 + 1] - P[1];
+    const dz = map.pos[t * 3 + 2] - P[2];
+    const facing = map.nrm[t * 3] * N[0] + map.nrm[t * 3 + 1] * N[1] + map.nrm[t * 3 + 2] * N[2];
+    const d = dx * dx + dy * dy + dz * dz + (facing < 0.2 ? 0.01 : 0);
+    if (d < bestD) {
+      bestD = d;
+      best = t;
+    }
+  }
+  if (best < 0) return null;
+  return [((best % map.W) + 0.5) / map.W, 1 - (Math.floor(best / map.W) + 0.5) / map.H];
+});
 
 /** The gear a subtree is wearing right now (dev hooks / probes). */
 export function wornGear(root: Object3D): string[] {

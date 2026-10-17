@@ -305,7 +305,11 @@ function drawTile(g: CanvasRenderingContext2D, t: Tile, locker: boolean, hover: 
   const cx = t.x + t.w / 2;
   const iconR = t.h * 0.24;
   const iconY = t.y + t.h * (tryOn ? 0.27 : 0.34);
-  if (gear) drawGearIcon(g, t.def as GearDef, cx, iconY, iconR, tint);
+  // THE FORGE's render of the piece (menu/forgeIcons.ts) when it has one;
+  // the drawn glyph until it lands, or for a piece not yet forged.
+  const art = gear ? forgeIcon(t.def.id) : null;
+  if (art) drawIcon(g, art, cx, t.y + t.h * (tryOn ? 0.29 : 0.36), t.w - 24, t.h * (tryOn ? 0.5 : 0.62));
+  else if (gear) drawGearIcon(g, t.def as GearDef, cx, iconY, iconR, tint);
   else drawPlatformIcon(g, t.def as PlatformSkin, cx, iconY, iconR);
 
   g.textAlign = 'center';

@@ -299,3 +299,12 @@ export function fitGearMaps(mat: MeshStandardMaterial, finish: Finish, kit: Gear
   }
   mat.needsUpdate = true;
 }
+
+/** A forged HEAD's cranium (its manifest `fit`): how the bare skull maps
+ *  onto it, so headgear rides that head's dome (avatar/gear.ts). Null for
+ *  a head that isn't forged, or before its kit has landed. */
+export function forgeFaceFit(id: string): { s: [number, number, number]; y: number; z: number } | null {
+  if (!gearKits.has(id)) return null;
+  const f = (gearList?.[id] as { fit?: { s: [number, number, number]; y: number; z: number } } | undefined)?.fit;
+  return f ?? null;
+}

@@ -97,7 +97,7 @@ import {
   setAvatarSkin,
   setPlatformSkin,
   setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setFrame, setGear, toggleGear } from '../menu/customization.js';
-import { frameDef } from '../avatar/forge.js';
+import { frameDef, frameOf, framesReady, loadForgeGear } from '../avatar/forge.js';
 import { canAfford, coins, spendCoins } from '../menu/wallet.js';
 import { playCash, preloadCash } from '../audio/cash.js';
 import { setMenuMusicActive, toggleMusicMuted } from '../audio/menuMusic.js';
@@ -1976,6 +1976,33 @@ export class MenuSystem extends createSystem({}) {
         pack: () => myPackedGear(),
         clean: (s: string) => cleanGear(s),
       };
+      // THE FORGE (avatar/forge.ts): which frame the mirror stands on and
+      // whether its pieces are the forged ones, and a wait for every kit
+      // the mirror is wearing to land.
+      (hook as unknown as { forge?: unknown }).forge = {
+        frame: () => (this.mirror ? frameOf(this.mirror.group) : ''),
+        frameWorn: () => {
+          let id = '';
+          this.mirror?.group.traverse((o) => {
+            if (!id && o.userData?.paintPart === 'body' && o.visible !== false) id = (o.userData.frameWorn as string) ?? '';
+          });
+          return id;
+        },
+        forged: () => {
+          const out: string[] = [];
+          this.mirror?.group.traverse((o) => {
+            if (!o.userData?.forged) return;
+            for (let p = o.parent; p; p = p.parent) {
+              if (typeof p.userData.gear === 'string') {
+                out.push(p.userData.gear);
+                break;
+              }
+            }
+          });
+          return [...new Set(out)];
+        },
+        ready: () => Promise.all([framesReady(), ...myGear().map((id) => loadForgeGear(id))]).then(() => true),
+      };
     }
     this.skinVersion = -1; // dress the new rig on the next applyOwnSkins
   }
@@ -2622,7 +2649,7 @@ export class MenuSystem extends createSystem({}) {
     }
     const session = this.world.session as Parameters<typeof pulseHand>[0];
     if (bay.held) {
-      if (handPlace(at.part, at.u, at.v)) {
+      if (handPlace(at.part, at.u, at.v, at.map)) {
         // setLook → the real bake replaces the ghost
         this.bayGhostOn = false;
         this.bayGhostKey = '';

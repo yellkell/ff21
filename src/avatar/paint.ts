@@ -104,6 +104,36 @@ export const isGearPart = (part: PaintPart): boolean =>
   part === 'gearHead' || part === 'gearBody' || part === 'gearHands' || part === 'gearHandsR' || part === 'gearFace' || part === 'gearShoulders';
 /** `variant` bit: a gear unit placed before the atlas (see LOOK_VERSION). */
 const LEGACY_GEAR = 0x80;
+/**
+ * `variant` bit: a gear unit placed on a FORGE piece (avatar/forge.ts),
+ * whose (u, v) is that piece's Blender atlas. A gear unit without it was
+ * placed on the old procedural shape's atlas; on a forged piece it is
+ * carried across by where it sat in 3D (setGearRemap), so nobody's paint
+ * is lost when their pauldrons are remade.
+ */
+const FORGE_ATLAS = 0x20;
+
+type GearRemap = (map: GearMap, u: number, v: number) => [number, number] | null;
+let gearRemap: GearRemap | null = null;
+/** avatar/gear.ts hands THE PAINT its way from an old atlas to a Forge one. */
+export function setGearRemap(fn: GearRemap): void {
+  gearRemap = fn;
+}
+const remapped = new Map<string, [number, number] | null>();
+
+/** A gear unit as it lands on `map`: itself, carried onto a Forge atlas,
+ *  or null (a pre-atlas stamp has no place on a forged shape). */
+function onMap(p: PlacedPaint, map: GearMap): PlacedPaint | null {
+  if (!map.key.startsWith('forge:') || p.variant & FORGE_ATLAS) return p;
+  if (p.variant & LEGACY_GEAR) return null;
+  const key = `${map.key}|${p.u.toFixed(4)}|${p.v.toFixed(4)}`;
+  let uv = remapped.get(key);
+  if (uv === undefined) {
+    uv = gearRemap?.(map, p.u, p.v) ?? null;
+    remapped.set(key, uv);
+  }
+  return uv ? { ...p, u: uv[0], v: uv[1], variant: p.variant | FORGE_ATLAS } : null;
+}
 const markLegacy = (p: PlacedPaint): PlacedPaint => (isGearPart(p.part) ? { ...p, variant: p.variant | LEGACY_GEAR } : p);
 
 /**
@@ -511,14 +541,15 @@ export function handReturn(): void {
 }
 
 /** Commit the held unit onto the body at the hovered spot. */
-export function handPlace(part: PaintPart, u: number, v: number): boolean {
+export function handPlace(part: PaintPart, u: number, v: number, map?: GearMap): boolean {
   if (!bay.held) return false;
   const look = myLook();
   if (look.paint.length >= PAINT.maxUnits) return false;
   const { kind, angle, len, wid } = bay.held;
   lastPose[kind] = { angle, len, wid };
   // A mark placed now is a fresh decal, whatever it was lifted as.
-  setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant: TRUE_SIZE }] });
+  const variant = TRUE_SIZE | (map?.key.startsWith('forge:') ? FORGE_ATLAS : 0);
+  setLook({ paint: [...look.paint, { ...bay.held, part, u, v, variant }] });
   bay.held = null;
   bay.version += 1;
   return true;
@@ -1212,7 +1243,11 @@ function bakeGear(look: Look, part: PaintPart, fill: string, map: GearMap): Imag
   const img = new ImageData(map.W, map.H);
   const [r, g, b] = rgbOf(parseInt(fill.replace('#', ''), 16) || 0);
   new Uint32Array(img.data.buffer).fill(((255 << 24) | (b << 16) | (g << 8) | r) >>> 0);
-  for (const p of look.paint) if (p.part === part) rasterGearUnit(img.data, map, p);
+  for (const p of look.paint) {
+    if (p.part !== part) continue;
+    const at = onMap(p, map);
+    if (at) rasterGearUnit(img.data, map, at);
+  }
   return img;
 }
 
@@ -1226,8 +1261,9 @@ function gearUnitAt(look: Look, part: PaintPart, u: number, v: number, map: Gear
   let best = -1;
   let bestD = 0.006;
   for (let i = look.paint.length - 1; i >= 0; i--) {
-    const p = look.paint[i];
-    if (p.part !== part) continue;
+    if (look.paint[i].part !== part) continue;
+    const p = onMap(look.paint[i], map);
+    if (!p) continue;
     let d = Infinity;
     if (p.variant & LEGACY_GEAR) {
       for (const [rx, ry, rw, rh] of map.rects) {
