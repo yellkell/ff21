@@ -19,6 +19,13 @@ has rejected before, on robots and armour:
   function (a hinge, a rim, a rivet line, a vent), not from extra plates.
 - shapes that read as primitives (a sphere for a dome, a cone for a
   spike, a torus for a bangle).
+- **timid pieces.** The first Forge pauldrons — neat hemispheres hugging
+  the shoulder caps — were rejected outright: "weird little cups, nobody
+  would want to wear that". Gear is a cosmetic people PAY for: bold,
+  readable silhouettes that change the wearer's outline from across a
+  room (premium Halo / Overwatch / Fortnite cosmetics), confident scale,
+  strong primary forms with crisp secondary detail. Something small and
+  careful sitting flush on the body reads as nothing in VR.
 - hands at 90° to the forearm, thumbs on the inner edge, backward elbows
   (titans — relevant to anything hand- or arm-like).
 
