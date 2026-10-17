@@ -1,1 +1,1 @@
-{"slot":"face","tris":7612,"tex":1024,"finishes":["shell","trim","glow"],"fit":{"s":[0.851,0.923,0.9],"y":0.008,"z":0.0125}}
+{"slot":"face","tris":7612,"tex":1024,"finishes":["shell","shell","shell","trim","glow","trim","glow","trim","glow"],"flops":{"ear_l":{"pivot":[-0.04,0.11,0.022],"dir":[-0.098,0.988,0.137],"len":0.205,"stiff":120,"damp":4.5,"swing":0.6},"ear_r":{"pivot":[0.04,0.11,0.022],"dir":[0.157,0.566,-0.809],"len":0.134,"stiff":160,"damp":6.0,"swing":0.5}},"fit":{"s":[0.851,0.923,0.9],"y":0.008,"z":0.0125}}

@@ -833,12 +833,13 @@ class Head:
     `parts(F, ctx)` (trim and glow laid on the shell's field)."""
 
     def __init__(self, pid, lo, hi, form, parts, cranium, shell_tris=6000, blur=1, keep=0.85, h_low=H_LOW,
-                 relax_iters=6, sharp=0.0, lows=None):
+                 relax_iters=6, sharp=0.0, lows=None, registry=None):
         self.pid, self.lo, self.hi = pid, lo, hi
         self.form, self.parts, self.cranium = form, parts, cranium
         self.shell_tris, self.blur_n, self.keep = shell_tris, blur, keep
         self.h_low, self.relax_iters, self.sharp = h_low, relax_iters, sharp
         self.lows = lows
+        self.registry = registry  # the PIECES dict the fit is written into
 
     def build(self, ref):
         # A worn head REPLACES the skull: the reference stays out of the
@@ -871,7 +872,7 @@ class Head:
             cf = Field(self.lo, self.hi, H_LOW, detail=False)
             centre = self.cranium(cf, ctx)
             cran = cf.mesh("cranium")
-            PIECES[self.pid]["fit"] = measure_fit(cran, centre)
+            (self.registry if self.registry is not None else PIECES)[self.pid]["fit"] = measure_fit(cran, centre)
             gk.delete(cran)
             return objs
         shell = low.mesh("shell")
@@ -900,7 +901,7 @@ class Head:
         cf = Field(self.lo, self.hi, H_LOW, detail=False)
         centre = self.cranium(cf, ctx)
         cran = cf.mesh("cranium")
-        PIECES[self.pid]["fit"] = measure_fit(cran, centre)
+        (self.registry if self.registry is not None else PIECES)[self.pid]["fit"] = measure_fit(cran, centre)
         gk.delete(cran)
         return objs
 
@@ -1331,6 +1332,32 @@ def slab(c, R, hx, hz, rad, thick, edge=0.0008):
         dy = np.abs(q1) - (thick - edge)
         return np.minimum(np.maximum(d2 + edge, dy), 0) + np.sqrt(np.maximum(d2 + edge, 0) ** 2 + np.maximum(dy, 0) ** 2) - edge
     return Prim(fn, c - ext, c + ext)
+
+
+def blended_shell(name, base, clips, extras, field_lo, field_hi, segs=36, rings=20, h=0.0015, relax_n=3):
+    """ONE continuous shell: an ellipsoid's clean mesh (base = (c, r),
+    flattened by clips) pulled out onto the smooth union of the base with
+    `extras` [(prim, k)] — so swells (jowls, a crown) are the same surface,
+    never an overlapping part that shades two-tone."""
+    ob = ellipsoid_mesh(name, *base, segs=segs, rings=rings, clips=clips)
+    T = Field(field_lo, field_hi, h, detail=False)
+    T.add(ellipsoid(*base))
+    for n, p0 in clips:
+        clip(T, n, p0, k=0.004)
+    for prim, k in extras:
+        T.add(prim, k)
+    T.blur(1)
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    G = np.stack([co[:, 0], co[:, 2], -co[:, 1]], 1)
+    G, _ = T.project(G, iters=10)
+    me.vertices.foreach_set("co", np.stack([G[:, 0], -G[:, 2], G[:, 1]], 1).astype(np.float32).ravel())
+    me.update()
+    if relax_n:
+        relax(ob, T, iters=relax_n, w=0.4)
+    return ob
 
 
 def mesh_part(name, V, Q, T, finish):
@@ -1973,6 +2000,11 @@ def _bunny_ear_segments(side):
             ([(0.058, 0.236, -0.05), (0.06, 0.212, -0.074), (0.061, 0.186, -0.086)], [0.03, 0.026, 0.012])]
 
 
+def _ear_flop(side):
+    """The ears are FLOPS: the upright (−x) ear "ear_l", the folded "ear_r"."""
+    return "ear_l" if side < 0 else "ear_r"
+
+
 def _bunny_knuckles():
     return [A(0.051, 0.206, 0.03), A(0.057, 0.242, -0.04)]
 
@@ -2011,7 +2043,7 @@ def bunny_form(F, ctx):
                                     0.0035, 0.0012, n=24, corner=3)), k=0.001)
     for side in (-1, 1):
         for path, wid in _bunny_ear_segments(side):
-            F.add(mesh_prim(*_bunny_ear(path, wid)), k=0.005)
+            F.add(mesh_prim(*_bunny_ear(path, wid)), k=0.0)  # (floppy: no fillet into the head)
     if "nose" not in ctx:
         ctx["nose"] = land(F, (0, -0.03, -0.4), (0, 0, 1))
         vents = []
@@ -2048,7 +2080,7 @@ def bunny_lows(F, ctx):
                                                      0.0035, 0.0012, n=16, corner=3)))
     for side in (-1, 1):
         for i, (path, wid) in enumerate(_bunny_ear_segments(side)):
-            out.append(np_mesh(f"ear{side}{i}", *_bunny_ear(path, wid, seg=14, sub=3)))
+            out.append(gk.flop(np_mesh(f"ear{side}{i}", *_bunny_ear(path, wid, seg=14, sub=3)), _ear_flop(side)))
     return out
 
 
@@ -2083,11 +2115,11 @@ def bunny_parts(F, ctx):
             Pp = [A(p) for p in path]
             V, Q, T = path_loft([p + A(0, 0, -0.0075) for p in Pp], [w * 0.62 for w in wid], 0.0022, (1, 0, 0.2),
                                 profile=profile_poly(EAR_PROF, corner=8), seg=10, sub=3, caps=(0.4, 0.9), cap_rings=2)
-            out.append(mesh_part(f"earpanel{side}{k}", V, Q, T, "trim"))
+            out.append(gk.flop(mesh_part(f"earpanel{side}{k}", V, Q, T, "trim"), _ear_flop(side)))
             edge = [p_ + A(-side * w * 0.93, 0, -0.002) for p_, w in zip(Pp, wid)]
-            out.append(gk.fin(gk.tube(f"led{side}{k}", [tuple(e) for e in edge], 0.0016, sides=5, step=0.007), "glow"))
+            out.append(gk.flop(gk.fin(gk.tube(f"led{side}{k}", [tuple(e) for e in edge], 0.0016, sides=5, step=0.007), "glow"), _ear_flop(side)))
     for i, kp in enumerate(_bunny_knuckles()):
-        out.append(gk.fin(cylinder_mesh(f"knuckle{i}", kp, (1, 0, 0), 0.0075, 0.016, segs=16), "trim"))
+        out.append(gk.flop(gk.fin(cylinder_mesh(f"knuckle{i}", kp, (1, 0, 0), 0.0075, 0.016, segs=16), "trim"), "ear_r"))
     return out
 
 
@@ -2300,6 +2332,8 @@ PIECES = {
     "frog": dict(slot="face", build=FROG.build, tex=1024, uv_angle=66,
                  fit=dict(s=(1.2, 0.846, 1.166), y=-0.0375, z=0.01)),
     "bunny": dict(slot="face", build=BUNNY.build, tex=1024, uv_angle=66,
+                  flops={"ear_l": dict(pivot=(-0.04, 0.11, 0.022), dir=(-0.098, 0.988, 0.137), len=0.205, stiff=120, damp=4.5, swing=0.6),
+                         "ear_r": dict(pivot=(0.04, 0.11, 0.022), dir=(0.157, 0.566, -0.809), len=0.134, stiff=160, damp=6.0, swing=0.5)},
                   fit=dict(s=(0.851, 0.923, 0.9), y=0.008, z=0.0125),
                   view=dict(target=(0, 0.08, -0.01), dist=1.3)),
 }
