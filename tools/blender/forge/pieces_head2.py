@@ -583,49 +583,108 @@ def _spline2(ctrl, sharp, per=5):
     return out
 
 
-def earfins(ref):
-    """EAR FINS — a winged helm's: at each temple a machined boss, and
-    swept back from it one great fin, three feathers deep, splayed out
-    from the skull as it runs back so it carries the wearer's outline
-    past the back of the head. The fin passes under a capped hub with a
-    lit ring."""
-    objs = []
-    base, n = skull_ray((1.0, 0.16, 0.06))
-    foot = base + n * 0.0015
-    # The boss under the fin, and the cap over it.
-    boss = gk.lathe("boss", [(0.0, 0.0065), (0.0222, 0.0065), (0.0252, 0.0046), (0.0270, 0.0016), (0.0270, 0.0), (0.0, 0.0)],
-                    segs=20, axis_origin=tuple(foot), axis=tuple(n), ref=(0, 1, 0))
-    gk.bevel(boss, 0.0007, segments=1, angle=30)
-    objs.append(gk.fin(boss, "trim"))
-    cap = gk.lathe("cap", [(0.0, 0.0182), (0.0066, 0.0182), (0.0076, 0.0172), (0.0082, 0.0164), (0.0124, 0.0164),
-                           (0.0130, 0.0170), (0.0160, 0.0168), (0.0176, 0.0150), (0.0182, 0.0118), (0.0182, 0.0100), (0.0, 0.0100)],
-                   segs=20, axis_origin=tuple(foot), axis=tuple(n), ref=(0, 1, 0))
-    gk.bevel(cap, 0.0005, segments=1, angle=30)
-    objs.append(gk.fin(cap, "trim"))
-    objs.append(gk.fin(gk.ring("hub", tuple(foot + n * 0.0166), tuple(n), 0.0103, 0.0017, segs=20, sides=5), "glow"))
+OUT_ROOT = 0.016
 
-    # The fin: local x runs back along the head, y up.
-    ctrl = [(-0.020, -0.010), (-0.024, 0.010), (-0.010, 0.030), (0.030, 0.056), (0.095, 0.092), (0.182, 0.128),  # leading edge to tip 1
-            (0.118, 0.072), (0.100, 0.062),  # notch
-            (0.170, 0.064),  # tip 2
-            (0.108, 0.034), (0.092, 0.026),  # notch
-            (0.148, 0.010),  # tip 3
-            (0.075, -0.010), (0.030, -0.022), (0.000, -0.024)]
-    sharp = {5, 7, 8, 10, 11}
-    outline = _spline2(ctrl, sharp, per=4)
-    splay, dihedral = math.radians(15), math.radians(-4)
-    xa = Vector((math.sin(splay), 0.0, math.cos(splay)))
-    ya = Vector((math.sin(dihedral), math.cos(dihedral), 0.0))
-    ya = (ya - xa * ya.dot(xa)).normalized()
-    o = foot + n * 0.0082
-    m = gk.frame_matrix(tuple(o), tuple(xa), tuple(ya))
-    fin = gk.extrude_outline("fin", outline, 0.0072, m, center=True)
-    gk.bevel(fin, 0.0016, segments=2, angle=30)
-    objs.append(gk.fin(fin, "shell"))
-    # A rolled steel cap along the leading edge, from the hub to tip 1.
-    lead = [o + xa * x + ya * y for (x, y) in outline[1 * 4:5 * 4 + 1]]
-    objs.append(gk.fin(gk.tube("edge", [tuple(p) for p in lead], lambda t: 0.0047 * (1 - t) ** 0.6 + 0.0010, sides=7,
-                               scale_xy=(1.0, 1.0), step=0.006), "trim"))
+
+def _feather(name, root, alpha, L, W, out_off, splay, bend, twist, camber=0.12, th0=0.0062, th1=0.0020, NS=11, NU=5):
+    """One feather plate (left side, game space): a spine from `root`
+    swept back (+z) and up by `alpha` (bending a further `bend` toward the
+    tip), splaying out (+x) by `splay`; a cambered section of real
+    thickness (domed outward, edges thinner than the keel) whose upper
+    edge twists outward by `twist` toward the tip. Pointed tip."""
+    o = Vector((1.0, 0.0, 0.0))
+    b = Vector((0.0, 0.0, 1.0))
+    u = Vector((0.0, 1.0, 0.0))
+
+    def spine(s):
+        a = alpha + bend * s * s
+        # integrate the bending direction along the length
+        p = Vector(root) + o * (OUT_ROOT + (out_off - OUT_ROOT) * smooth01(s * L / 0.045))
+        n = 16
+        for i in range(n):
+            ss = s * (i + 0.5) / n
+            aa = alpha + bend * ss * ss
+            d = (b * math.cos(aa) + u * math.sin(aa)) * math.cos(splay) + o * math.sin(splay)
+            p = p + d * (L * s / n)
+        return p, a
+
+    def width(t):
+        # a feather's blade: full from the root's quill out, then an
+        # elliptical run-out to a point
+        body = 0.45 + 0.55 * smooth01(t / 0.28)
+        end = math.sqrt(max(0.0, 1 - ((t - 0.5) / 0.5) ** 2)) if t > 0.5 else 1.0
+        return W * body * max(end, 0.0) * (1 - 0.12 * t)
+
+    secs = []
+    for i in range(NS + 1):
+        t = 1 - (1 - i / NS) ** 1.35  # denser toward the tip's run-out
+        c, a = spine(t)
+        c2, _ = spine(min(1.0, t + 0.01))
+        c1, _ = spine(max(0.0, t - 0.01))
+        T = (c2 - c1).normalized()
+        W0 = (b * -math.sin(a) + u * math.cos(a))
+        W0 = (W0 - T * W0.dot(T)).normalized()  # toward the feather's upper edge
+        N0 = T.cross(W0)
+        if N0.x < 0:
+            N0 = -N0
+        tau = -twist * t  # the upper edge rolls in, the face turns up to the light
+        Wd = W0 * math.cos(tau) + N0 * math.sin(tau)
+        Nd = N0 * math.cos(tau) - W0 * math.sin(tau)
+        if i == NS:
+            secs.append([c])
+            continue
+        w = width(t)
+        th = th0 + (th1 - th0) * t
+        top, bot = [], []
+        for k in range(NU + 1):
+            v = -1 + 2 * k / NU
+            dome = camber * w * (1 - v * v)
+            half = th * 0.5 * (1 - 0.55 * v * v)
+            top.append(c + Wd * (v * w) + Nd * (dome + half))
+            bot.append(c + Wd * (v * w) + Nd * (dome - half))
+        secs.append(top + list(reversed(bot))[1:-1])
+    ob = loft(name, secs)
+    gk.bevel(ob, 0.0007, segments=1, angle=40)
+    return ob
+
+
+def earfins(ref):
+    """EAR FINS — a winged helm's: at each temple a heavy machined hub,
+    and fanning out of it four feather plates, layered like shingles —
+    each cambered, thicker down its keel, twisting along its length — swept
+    back and up so the wing breaks the head's outline from the front as
+    well as the side. The hub's cap carries a lit ring."""
+    objs = []
+    base, n = skull_ray((1.0, 0.16, 0.05))
+    foot = base + n * 0.0015
+    # The hub: a flange screwed to the temple, a drum the feathers are
+    # socketed into, a capped face with a lit ring and a centre bolt.
+    hub = gk.lathe("hub", [(0.0, 0.0315), (0.0090, 0.0315), (0.0098, 0.0305), (0.0104, 0.0296), (0.0168, 0.0296),
+                           (0.0174, 0.0305), (0.0215, 0.0303), (0.0238, 0.0285), (0.0246, 0.0250), (0.0246, 0.0105),
+                           (0.0290, 0.0085), (0.0336, 0.0058), (0.0350, 0.0022), (0.0350, 0.0), (0.0, 0.0)],
+                   segs=18, axis_origin=tuple(foot), axis=tuple(n), ref=(0, 1, 0))
+    gk.bevel(hub, 0.0006, segments=1, angle=30)
+    objs.append(gk.fin(hub, "trim"))
+    objs.append(gk.fin(gk.ring("ring", tuple(foot + n * 0.0298), tuple(n), 0.0136, 0.0021, segs=20, sides=5), "glow"))
+    objs.append(gk.fin(gk.rivet("bolt", tuple(foot + n * 0.0310), tuple(n), r=0.0062, h=0.0030, segs=10), "trim"))
+    a, f, s = gk.dome_frame(n)
+    for i in range(4):
+        ang = math.pi / 4 + i * math.pi / 2
+        d = f * math.cos(ang) + s * math.sin(ang)
+        q = foot + d * 0.0300 + n * 0.0068
+        objs.append(gk.fin(gk.rivet(f"screw{i}", tuple(q), tuple((n * 0.85 + d * 0.5).normalized()), r=0.0026, h=0.0015, segs=8), "trim"))
+
+    # Four feathers, top to bottom; each lower one lies a step further out
+    # so it shingles over the edge of the one above.
+    hubc = foot + n * 0.0
+    feathers = [  # alpha, length, half-width, out, bend, twist
+        (math.radians(58), 0.290, 0.0340, 0.0100, math.radians(16), math.radians(12)),
+        (math.radians(42), 0.255, 0.0320, 0.0185, math.radians(14), math.radians(11)),
+        (math.radians(27), 0.215, 0.0300, 0.0270, math.radians(12), math.radians(10)),
+        (math.radians(12), 0.170, 0.0270, 0.0355, math.radians(10), math.radians(8)),
+    ]
+    for k, (al, L, W, off, bend, tw) in enumerate(feathers):
+        objs.append(gk.fin(_feather(f"feather{k}", hubc, al, L, W, off, math.radians(20), bend, tw), "shell"))
 
     out = []
     for ob in objs:
@@ -638,6 +697,6 @@ PIECES = {
     "visorband": dict(slot="head", build=visorband, tex=512, view=dict(target=(0, 0.012, 0), dist=0.98, pitch=6)),
     "crown": dict(slot="head", build=crown, tex=512, view=dict(target=(0, 0.065, 0), dist=1.02, pitch=14)),
     "vcrest": dict(slot="head", build=vcrest, tex=512, view=dict(target=(0, 0.115, 0), dist=1.38, pitch=8)),
-    "earfins": dict(slot="head", build=earfins, tex=512, view=dict(target=(0, 0.05, 0.04), dist=1.5, pitch=10)),
+    "earfins": dict(slot="head", build=earfins, tex=512, view=dict(target=(-0.03, 0.09, 0.05), dist=1.5, pitch=10)),
     "antlers": dict(slot="head", build=antlers, tex=512, view=dict(target=(0, 0.14, 0), dist=1.38, pitch=10)),
 }
