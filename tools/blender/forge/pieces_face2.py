@@ -1563,28 +1563,17 @@ def wolf_parts(F, ctx):
     for side in (-1, 1):
         for j, (p, n) in enumerate(ctx["vents"][(side + 1) // 2]):
             out.append(slot_insert(f"vent{side}{j}", p - n * 0.0026, basis(x=(0, 0, -1), y=n), (0.012, 0.0016, 0.0015), "trim"))
-        # Ear pod: a machined drum the fin stands on, a lit ring round it.
-        p, ax = _wolf_pod(side)
-        q, nq = land(F, p + ax * 0.1, -ax)
-        out.append(gk.fin(cylinder_mesh(f"pod{side}", q + nq * 0.004, nq, 0.017, 0.006, segs=24), "trim"))
-        out.append(gk.fin(torus_mesh(f"podring{side}", q + nq * 0.0102, nq, 0.0125, 0.0014, segs=24, sides=4), "glow"))
         # Ear inner panel (steel).
         path = _wolf_ear_path(side)
         V, Q, T = path_loft([A(pp) + A(0, 0.004, -0.009) for pp in path[:3]], [0.022, 0.019, 0.008], [0.004, 0.0035, 0.002],
                             (1, 0, 0.25), profile=lens_profile(), caps=(0.2, 0.4), seg=12, sub=3, cap_rings=3)
         out.append(mesh_part(f"earpanel{side}", V, Q, T, "trim"))
-    # Mounts: a bolt at each end of every plate, and a steel hinge drum
-    # at the jaw hinge pinning both plates.
+    # Mounts: a bolt at each end of every plate.
     for i, (path, w, side, N) in enumerate(ctx["plates"]):
         for j in (3, int(len(path) * 0.62)):
             p = path[j]
             n = F.grad([p])[0]
             out.append(gk.fin(gk.rivet(f"bolt{i}{j}", tuple(p + n * 0.0034), tuple(n), r=0.0042, h=0.0028, segs=10), "trim"))
-    for side in (-1, 1):
-        th = side * 1.62
-        q = drape_ring(F, [-0.027], [th], 0.02, r_out=0.35)[0]
-        n = F.grad([q])[0]
-        out.append(gk.fin(cylinder_mesh(f"hinge{side}", q + n * 0.0075, n, 0.015, 0.004, segs=20), "trim"))
     cap = [with_k(mesh_prim(*_wolf_nosecap()), 0.0)]
     tip = A(0, -0.034, -0.246)
     for side in (-1, 1):
@@ -1625,7 +1614,8 @@ FROG_JAW = ((0, -0.034, 0.004), (0.144, 0.078, 0.14))
 FROG_SPLIT = -0.044
 # The top shell's facets: a flat deck between the turrets, a sloped snout
 # face (the nostrils sit on it), and the split plane under it.
-FROG_FACETS = [((0, 1, 0), (0, 0.066, 0)), ((0, 0.72, -0.69), (0, 0.004, -0.122)), ((0, -1, 0), (0, FROG_SPLIT, 0)),
+FROG_BRIDGE = ((0, 0.044, -0.035), (0.098, 0.04, 0.07))
+FROG_FACETS = [((0, 0.72, -0.69), (0, 0.004, -0.122)), ((0, -1, 0), (0, FROG_SPLIT, 0)),
                ((0.94, 0.34, 0), (0.136, 0.0, 0)), ((-0.94, 0.34, 0), (-0.136, 0.0, 0)), ((0, 0.45, 0.89), (0, 0.025, 0.128))]
 
 
@@ -1762,11 +1752,12 @@ def frog_form(F, ctx):
             n, p0 = unit(n), A(p0)
             d = smax(d, ((X - p0[0]) * n[0] + (Y - p0[1]) * n[1] + (Z - p0[2]) * n[2]).astype(np.float32), 0.002)
         F.D[sl] = np.minimum(F.D[sl], d)
-    # The armoured brow plate on the deck between the turrets.
-    F.add(mesh_prim(*_frog_brow()), k=0.0015)
+    # The crown between and behind the eyes: one rounded swell flowing
+    # up into both turrets (no flat deck between them).
+    F.add(ellipsoid(*FROG_BRIDGE), k=0.025)
     for side in (-1, 1):
         base, ax, Rl = _frog_turret(side)
-        F.add(cylinder(base - ax * 0.008, ax, Rl + 0.014, 0.012, 0.004), k=0.008)
+        F.add(cylinder(base - ax * 0.008, ax, Rl + 0.014, 0.012, 0.004), k=0.016)
         lc = base + ax * 0.014
         F.add(_frog_lid_fn(lc, ax, Rl + 0.009, 0.005, side=side), k=0.0)
     if "smile" not in ctx:
@@ -1775,32 +1766,21 @@ def frog_form(F, ctx):
         ys = FROG_SPLIT + 0.022 * smoothstep(0.7, 1.0, a)
         P = drape_ring(F, ys, th, 0.0, r_out=0.35)
         ctx["smile"] = surface_path(F, P, 2)
-        ctx["drum"] = [land(F, (s * 0.4, -0.005, 0.055), (-s, 0, 0)) for s in (-1, 1)]
         ctx["nos"] = [land(F, (s * 0.022, 0.25, -0.36), unit((0, -0.72, 0.69))) for s in (-1, 1)]
         # The dorsal ridge down the back, and a vent cluster each side.
-        ridge = [land(F, (0, 0.3, z), (0, -1, 0))[0] for z in (0.0, 0.04, 0.08, 0.11)]
+        ridge = [land(F, (0, 0.3, z), (0, -1, 0))[0] for z in (0.045, 0.07, 0.095, 0.115)]
         ridge.append(land(F, (0, 0.03, 0.4), (0, 0, -1))[0])
         ctx["ridge"] = surface_path(F, A(ridge), 2)
         ctx["vents"] = [[land(F, (s * 0.03, 0.035 - 0.009 * j, 0.4), (0, 0, -1)) for j in range(3)] for s in (-1, 1)]
-        # Cheek panels: a seam frame round each tympanum pod, and a seam
-        # from the turret down to the smile.
+        # Cheek panels: a seam from the turret down to the smile.
         panels = []
         for s in (-1, 1):
-            loop = []
-            for t in np.linspace(0, 2 * math.pi, 41):
-                y = -0.006 + 0.03 * math.sin(t)
-                z = 0.05 + 0.055 * math.cos(t)
-                loop.append(land(F, (s * 0.4, y, z), (-s, 0, 0))[0])
-            panels.append(surface_path(F, A(loop), 2))
             panels.append(seam_path(F, [(s * 0.3, 0.035, -0.03), (s * 0.3, 0.0, -0.035), (s * 0.3, -0.03, -0.04)], 16))
         ctx["panels"] = panels
     P, N = ctx["smile"]
     F.cut(sweep(P, 0.0042), k=0.0015)
     rP, rN = ctx["ridge"]
     F.add(mesh_prim(*_frog_ridge(rP, rN)), k=0.002)
-    for p, n in ctx["drum"]:
-        F.cut(cylinder(p, n, 0.03, 0.0016, 0.0005), k=0.0008)
-        F.add(cylinder(p - n * 0.002, n, 0.025, 0.003, 0.0012), k=0.0)
     for p, n in ctx["nos"]:
         F.cut(rounded_box(p, (0.0022, 0.004, 0.009), 0.0012, basis(x=(1, 0, 0), y=n)), k=0.0008)
     for side in (-1, 1):
@@ -1820,9 +1800,9 @@ def frog_form(F, ctx):
 def frog_lows(F, ctx):
     c, r = FROG_TOP
     cj, rj = FROG_JAW
-    out = [ellipsoid_mesh("top", c, r, segs=32, rings=16, clips=FROG_FACETS),
+    out = [ellipsoid_mesh("top", c, r, segs=30, rings=16, clips=FROG_FACETS),
            ellipsoid_mesh("jaw", cj, rj, segs=28, rings=12, clips=_frog_jaw_clips()),
-           np_mesh("brow", *_frog_brow())]
+           ellipsoid_mesh("crown", *FROG_BRIDGE, segs=22, rings=10)]
     rP, rN = ctx["ridge"]
     out.append(np_mesh("ridge", *_frog_ridge(rP, rN, seg=10, sub=3, cap_rings=2)))
     for side in (-1, 1):
@@ -1830,8 +1810,6 @@ def frog_lows(F, ctx):
         out.append(cylinder_mesh(f"boss{side}", base - ax * 0.008, ax, Rl + 0.014, 0.012, segs=28))
         lc = base + ax * 0.014
         out.append(_frog_lid_mesh(f"lid{side}", lc, ax, Rl + 0.009, 0.005, side=side))
-    for i, (p, n) in enumerate(ctx["drum"]):
-        out.append(cylinder_mesh(f"drum{i}", p - n * 0.002, n, 0.025, 0.003, segs=24))
     return out
 
 
@@ -1852,8 +1830,6 @@ def frog_parts(F, ctx):
         out.append(gk.fin(ellipsoid_mesh(f"lens{side}", lc, (Rl, Rl, Rl), R=frame_look(ax), segs=16, rings=8), "glow"))
         for k, (pp, axp) in enumerate(_frog_lid_pins(lc, ax, Rl + 0.009, side=side)):
             out.append(gk.fin(cylinder_mesh(f"pin{side}{k}", pp, axp, 0.0045, 0.0035, segs=12), "trim"))
-    for i, (p, n) in enumerate(ctx["drum"]):
-        out.append(gk.fin(torus_mesh(f"drumrim{i}", p + n * 0.0008, n, 0.0275, 0.0019, segs=24, sides=4), "trim"))
     for i, (p, n) in enumerate(ctx["nos"]):
         out.append(slot_insert(f"nos{i}", p - n * 0.0024, basis(x=(1, 0, 0), y=n), (0.0016, 0.0015, 0.0078), "trim"))
     for side in (-1, 1):
@@ -2030,10 +2006,13 @@ def bunny_form(F, ctx):
         th = np.linspace(-0.55, 0.55, 17)
         ctx["mouth"] = surface_path(F, drape_ring(F, -0.079 + 0.004 * (th / 0.55) ** 2, th, -0.06, r_out=0.3), 1)
         ctx["crown"] = seam_path(F, [(0, 0.3, -0.04), (0, 0.3, 0.02), (0, 0.3, 0.07), (0, 0.1, 0.16), (0, -0.02, 0.17)], 40)
-    # Lens wells in the faceplate.
-    for side in (-1, 1):
-        p, n, R = _bunny_lens(side)
-        F.cut(slab(p, R, 0.025, 0.023, 0.011, 0.0026), k=0.0008)
+        # The bandit band: dark visor glass across the eyes, over the
+        # faceplate, temple to temple.
+        th = np.linspace(-1.25, 1.25, 31)
+        ys = BUNNY_EYE[0][1] + 0.01 * (th / 1.25) ** 2
+        ctx["visor"] = surface_path(F, drape_ring(F, ys, th, 0.0, r_out=0.35), 2)
+    P, N = ctx["visor"]
+    F.cut(sweep((P + N * 0.002)[2:-2], 0.0245), k=0.002)
     for side in (-1, 1):
         for p, n in ctx["vents"][(side + 1) // 2]:
             F.cut(rounded_box(p, (0.011, 0.004, 0.0018), 0.001, basis(x=unit(np.cross(n, (0, 1, 0))), y=n)), k=0.0006)
@@ -2058,13 +2037,19 @@ def bunny_lows(F, ctx):
 
 def bunny_parts(F, ctx):
     out = []
-    # The lenses: dark glass set into the faceplate, the lit lens in it.
+    # The bandit band: dark glass across the eyes, the two big rounded
+    # lenses lit in it.
+    P, N = ctx["visor"]
+    V, Q, T = path_loft(P + N * 0.0012, 0.023, 0.0034, lambda t: A(0, 1, 0), profile=profile_poly(EAR_PROF, corner=6),
+                        seg=8, sub=1, caps=(0.3, 0.3), cap_rings=2)
+    out.append(mesh_part("visor", V, Q, T, "trim"))
+    n_ = len(P)
     for side in (-1, 1):
-        p, n, R = _bunny_lens(side)
-        out.append(sdf_part(f"glass{side}", [with_k(slab(p - n * 0.0012, R, 0.024, 0.022, 0.0105, 0.0016), 0.0)],
-                            "trim", tris=160, h=0.0007))
-        out.append(sdf_part(f"lens{side}", [with_k(slab(p + n * 0.0006, R, 0.0185, 0.0165, 0.0075, 0.0011), 0.0)],
-                            "glow", tris=140, h=0.0006))
+        i = int(round((n_ - 1) / 2 + side * 0.33 * (n_ - 1) / 2))
+        p, nn = P[i], N[i]
+        out.append(sdf_part(f"lens{side}", [with_k(slab(p + nn * 0.005, basis(x=unit(np.cross((0, 1, 0), nn)), y=nn),
+                                                         0.0205, 0.0185, 0.009, 0.0017), 0.0)],
+                            "glow", tris=200, h=0.0007))
     # The teeth's steel mount strip, across their roots under the muzzle.
     out.append(sdf_part("toothbar", [with_k(rounded_box(A(0, -0.0662, -0.1135), (0.0145, 0.0018, 0.004), 0.0012), 0.0)],
                         "trim", tris=60, h=0.0006))
@@ -2076,14 +2061,7 @@ def bunny_parts(F, ctx):
         for j, (p, n_) in enumerate(ctx["vents"][(side + 1) // 2]):
             out.append(slot_insert(f"vent{side}{j}", p - n_ * 0.0025, basis(x=unit(np.cross(n_, (0, 1, 0))), y=n_),
                                    (0.0102, 0.0016, 0.0012), "trim"))
-        # The ear's hinge: a big machined drum on the side of the crown,
-        # a lit ring round its cap.
         segs = _bunny_ear_segments(side)
-        root = A(segs[0][0][0])
-        pc, pn = land(F, root + A(side * 0.15, -0.006, 0.0), (-side, 0, 0))
-        out.append(gk.fin(cylinder_mesh(f"pod{side}", pc + pn * 0.006, pn, 0.021, 0.0065, segs=24), "trim"))
-        out.append(gk.fin(cylinder_mesh(f"podcap{side}", pc + pn * 0.0128, pn, 0.011, 0.0012, segs=16), "trim"))
-        out.append(gk.fin(torus_mesh(f"podring{side}", pc + pn * 0.0128, pn, 0.0158, 0.0014, segs=24, sides=4), "glow"))
         for k, (path, wid) in enumerate(segs):
             Pp = [A(p) for p in path]
             V, Q, T = path_loft([p + A(0, 0, -0.0075) for p in Pp], [w * 0.62 for w in wid], 0.0022, (1, 0, 0.2),
@@ -2303,7 +2281,7 @@ PIECES = {
                  fit=dict(s=(0.851, 0.861, 0.936), y=0.0064, z=0.03),
                  view=dict(target=(0, 0.0, -0.03), dist=1.1)),
     "frog": dict(slot="face", build=FROG.build, tex=1024, uv_angle=66,
-                 fit=dict(s=(1.2, 0.754, 1.284), y=-0.0369, z=0.0075)),
+                 fit=dict(s=(1.2, 0.846, 1.166), y=-0.0375, z=0.01)),
     "bunny": dict(slot="face", build=BUNNY.build, tex=1024, uv_angle=66,
                   fit=dict(s=(0.851, 0.923, 0.9), y=0.008, z=0.0125),
                   view=dict(target=(0, 0.08, -0.01), dist=1.3)),
