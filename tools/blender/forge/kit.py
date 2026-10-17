@@ -406,16 +406,20 @@ def studio(scn, bg=(0.05, 0.05, 0.06), strength=1.0, transparent=False):
         ld.color = color
         lo = bpy.data.objects.new(name, ld)
         lo.location = loc
-        lo.rotation_euler = rot
+        # Aimed AT the subject (an area light shines down its own −Z): the
+        # hand-set rotations pointed the key and fill off into the room,
+        # so every front face rendered a flat mid-grey.
+        aim = Vector((0.0, 0.0, 0.2)) - Vector(loc)
+        lo.rotation_euler = aim.to_track_quat("-Z", "Y").to_euler()
         link(lo)
         return lo
 
     # Key high front-left, a cool rim behind right, a soft fill low front.
     # (Blender frame: the game's front −z is Blender +Y.)
-    area("key", (-1.6, 2.4, 2.6), (math.radians(-50), 0, math.radians(-150)), 1.6, 420)
-    area("rim", (1.8, -2.0, 2.2), (math.radians(55), 0, math.radians(40)), 1.2, 380, (0.75, 0.85, 1.0))
-    area("fill", (1.8, 2.2, 0.9), (math.radians(-75), 0, math.radians(140)), 2.4, 120)
-    area("top", (0, 0, 3.4), (0, 0, 0), 2.0, 140)
+    area("key", (-1.6, 2.4, 2.6), (math.radians(-50), 0, math.radians(-150)), 1.6, 150)
+    area("rim", (1.8, -2.0, 2.2), (math.radians(55), 0, math.radians(40)), 1.2, 220, (0.75, 0.85, 1.0))
+    area("fill", (1.8, 2.2, 0.9), (math.radians(-75), 0, math.radians(140)), 2.4, 45)
+    area("top", (0, 0, 3.4), (0, 0, 0), 2.0, 60)
 
 
 def camera(scn, target_game, dist, yaw_deg, pitch_deg=8.0, lens=85.0, name="cam"):

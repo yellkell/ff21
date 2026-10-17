@@ -221,8 +221,8 @@ def ref_material(ref, slot):
         b.inputs["Roughness"].default_value = 0.32
         b.inputs["Metallic"].default_value = 0.85
     else:
-        b.inputs["Base Color"].default_value = (0.32, 0.33, 0.36, 1)
-        b.inputs["Roughness"].default_value = 0.6
+        b.inputs["Base Color"].default_value = (0.11, 0.115, 0.13, 1)
+        b.inputs["Roughness"].default_value = 0.55
     ref.data.materials.clear()
     ref.data.materials.append(m)
 
