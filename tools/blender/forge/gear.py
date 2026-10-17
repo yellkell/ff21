@@ -48,13 +48,20 @@ BUDGET = {"head": 5000, "shoulders": 9000, "body": 7000, "hands": 3000, "face": 
 
 
 def catalogue():
+    """Every piece from every pieces file. A file that is missing, mid-edit
+    or broken is skipped with a note — one slot's work in progress never
+    stops another slot's build."""
     out = {}
     for m in MODULES:
         try:
             mod = importlib.import_module(m)
+            pieces = mod.PIECES
         except ModuleNotFoundError:
             continue
-        for pid, spec in mod.PIECES.items():
+        except Exception as e:  # noqa: BLE001
+            print(f"skipping {m}: {e!r}", flush=True)
+            continue
+        for pid, spec in pieces.items():
             out[pid] = spec
     return out
 
@@ -99,6 +106,7 @@ def finish_mat(finish):
 
 def build_piece(pid, spec):
     kit.reset()
+    MATS.clear()  # the reset removed the last piece's materials
     scn = bpy.context.scene
     kit.set_gpu(scn)
     ref = gk.reference(spec["slot"])
