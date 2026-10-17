@@ -1344,10 +1344,10 @@ def _ty(y):
 
 PIECES = {
     "tabard": dict(slot="body", build=tabard, tex=1024, view=dict(target=(0, 0.10, 0), dist=2.4, yaw=-30, pitch=8)),
-    "cape": dict(slot="body", build=cape, tex=1024, view=dict(target=(0, 0.12, 0), dist=2.6, yaw=150, pitch=10)),
+    "cape": dict(slot="body", build=cape, tex=1024, view=dict(target=(0, 0.1, 0), dist=3.2, yaw=150, pitch=10)),
     "thrusters": dict(slot="body", build=thrusters, tex=512, view=dict(target=(0, 0.29, 0), dist=2.3, yaw=145, pitch=12)),
     "wings": dict(slot="body", build=wings, tex=1024, view=dict(target=(0, 0.45, 0), dist=3.6, yaw=155, pitch=12)),
     "tail": dict(slot="body", build=tail, tex=512, view=dict(target=(-0.16, 0.05, -0.11), dist=3.0, yaw=-125, pitch=8)),
     "belt": dict(slot="body", build=belt, tex=512, view=dict(target=(0, 0.1, 0), dist=1.9, yaw=-30, pitch=10)),
-    "chestplate": dict(slot="body", build=chestplate, tex=512, view=dict(target=(0, 0.31, 0), dist=1.15, yaw=-30, pitch=8)),
+    "chestplate": dict(slot="body", build=chestplate, tex=512, view=dict(target=(0, 0.28, 0), dist=1.6, yaw=-30, pitch=8)),
 }
