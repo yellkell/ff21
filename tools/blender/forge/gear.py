@@ -209,12 +209,20 @@ VIEW = {
 }
 
 
-def ref_material(ref):
+def ref_material(ref, slot):
+    """What the piece is shown on: the body and skull a neutral grey; the
+    hand in the game's own dark machined steel, so a white piece on it
+    reads at a glance (as it does in the headset)."""
     m = bpy.data.materials.new("ref")
     m.use_nodes = True
     b = m.node_tree.nodes["Principled BSDF"]
-    b.inputs["Base Color"].default_value = (0.32, 0.33, 0.36, 1)
-    b.inputs["Roughness"].default_value = 0.6
+    if slot == "hands":
+        b.inputs["Base Color"].default_value = (0.018, 0.02, 0.025, 1)
+        b.inputs["Roughness"].default_value = 0.32
+        b.inputs["Metallic"].default_value = 0.85
+    else:
+        b.inputs["Base Color"].default_value = (0.32, 0.33, 0.36, 1)
+        b.inputs["Roughness"].default_value = 0.6
     ref.data.materials.clear()
     ref.data.materials.append(m)
 
@@ -222,7 +230,7 @@ def ref_material(ref):
 def views(pid, spec, ref, finals):
     scn = bpy.context.scene
     v = dict(VIEW[spec["slot"]], **spec.get("view", {}))
-    ref_material(ref)
+    ref_material(ref, spec["slot"])
     piv = bpy.data.objects.new("piv", None)
     kit.link(piv)
     for o in [ref, *finals]:
