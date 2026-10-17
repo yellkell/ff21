@@ -528,7 +528,8 @@ check('CLOSE folds it', !(await wrap(`visible('profilecard')`)));
     window.__ff2.gear.equip('crest');
     window.__ff2.gear.equip('pauldrons');
   });
-  await page.waitForTimeout(400); // applyOwnSkins dresses on the next frame
+  await page.evaluate(() => window.__ff2.forge?.ready?.()); // Forge kits load on first wear
+  await page.waitForTimeout(600);
   const worn = await page.evaluate(() => window.__ff2.podium.gear());
   const wire = await page.evaluate(() => ({
     packed: window.__ff2.gear.pack(),
@@ -548,7 +549,8 @@ check('CLOSE folds it', !(await wrap(`visible('profilecard')`)));
     window.__ff2.gear.equip('crest');
     window.__ff2.gear.equip('bear');
   });
-  await page.waitForTimeout(400);
+  await page.evaluate(() => window.__ff2.forge?.ready?.()); // Forge kits load on first wear
+  await page.waitForTimeout(600);
   const withHead = await page.evaluate(() => ({ worn: window.__ff2.podium.gear(), packed: window.__ff2.gear.pack() }));
   await page.evaluate(() => {
     window.__ff2.gear.clear('face');
@@ -571,7 +573,8 @@ await page.evaluate(() => window.__ff2.gear.equip('cuffs'));
 // pain to paint on the horns"), the MOHAWK's spikes.
 await page.evaluate(() => window.__ff2.gear.equip('horns'));
 await wrap(`act('open-paintbay')`);
-await page.waitForTimeout(500);
+await page.evaluate(() => window.__ff2.forge?.ready?.()); // Forge kits load on first wear
+await page.waitForTimeout(600);
 const aimCuffs = await page.evaluate(() => window.__ff2.bayAim?.('gearHands', 1.0) ?? null);
 check('a finger off the cuffs, the bay paints the cuffs', (aimCuffs ?? '').startsWith('gearHands'), String(aimCuffs));
 const aimHorns = await page.evaluate(() => window.__ff2.bayAim?.('gearHead', 1.0) ?? null);
@@ -582,7 +585,8 @@ await wrap(`act('paintbay-close')`);
 await page.waitForTimeout(300);
 await page.evaluate(() => window.__ff2.gear.equip('mohawk'));
 await wrap(`act('open-paintbay')`);
-await page.waitForTimeout(500);
+await page.evaluate(() => window.__ff2.forge?.ready?.()); // Forge kits load on first wear
+await page.waitForTimeout(600);
 const aimSpike = await page.evaluate(() => window.__ff2.bayAim?.('gearHead', 1.0) ?? null);
 check('a finger off a MOHAWK spike, the bay paints the spike', (aimSpike ?? '').startsWith('gearHead'), String(aimSpike));
 await wrap(`act('paintbay-close')`);
