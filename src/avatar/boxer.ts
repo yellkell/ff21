@@ -24,7 +24,7 @@ import {
   Vector3,
 } from 'three';
 import { HEAD_SCALE, buildMannequinBody, buildMannequinHead } from './mannequin.js';
-import { DEFAULT_FRAME, dressFrame } from './forge.js';
+import { DEFAULT_FRAME, dressFrame, dressHead } from './forge.js';
 import { BODY_IK, PALETTE, teamColor } from '../config.js';
 import { collapseStatic } from '../arena/merge.js';
 import { buildHand } from './hands.js';
@@ -331,6 +331,7 @@ export function buildBoxer(team: number, skinId?: string): BoxerRig {
   const head = new Group();
   head.name = 'opponent-head';
   for (const id of ids) head.add(buildCollapsed(HEAD_BUILDERS[id]));
+  dressHead(head); // THE FORGE's face on the bare skull (avatar/forge.ts)
 
   // --- Body: ONE surface per built tone, neck to tip. Same silhouette
   //     envelope and BODY_IK hitbox spheres, equally hittable. ---

@@ -17,7 +17,7 @@
  * the surface (avatar/paint.ts), and to the gear fit (avatar/gear.ts).
  */
 
-import { type BufferGeometry, type Mesh, type MeshStandardMaterial, type Object3D, type Texture, TextureLoader, Vector2 } from 'three';
+import { type BufferGeometry, Mesh, MeshStandardMaterial, type Object3D, type Texture, TextureLoader, Vector2 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { registerFrameChart, rebakeMesh } from './paint.js';
 
@@ -307,4 +307,115 @@ export function forgeFaceFit(id: string): { s: [number, number, number]; y: numb
   if (!gearKits.has(id)) return null;
   const f = (gearList?.[id] as { fit?: { s: [number, number, number]; y: number; z: number } } | undefined)?.fit;
   return f ?? null;
+}
+
+/* ── THE HEAD ─────────────────────────────────────────────────────────── */
+//
+// THE BLANK's own face (tools/blender/forge/head.py): the skull's shell is
+// a grid over the very same sphere unwrap on the very same ellipsoid, so
+// head paint lands where it always did; on it a visor band from ear to
+// ear, two lit eye slits, machined ear pods and a mouth vent. The skull is
+// built as the old sphere and swapped onto the head kit when it lands.
+// The visor, pods and vent ride the skull as children (trim, and the eyes
+// lit in the wearer's accent), so a worn head that hides the skull hides
+// them too.
+
+interface HeadKit {
+  shell: BufferGeometry;
+  trim: BufferGeometry | null;
+  glow: BufferGeometry | null;
+  nrm: Texture;
+  orm: Texture;
+}
+
+let headKit: HeadKit | null = null;
+let headLoading: Promise<HeadKit | null> | null = null;
+
+function loadHead(): Promise<HeadKit | null> {
+  headLoading ??= Promise.all([
+    new GLTFLoader().loadAsync(`${BASE}head/head.glb`),
+    loadTex('head/head_nrm.webp'),
+    loadTex('head/head_orm.webp'),
+  ])
+    .then(([gltf, nrm, orm]) => {
+      const geo: Record<string, BufferGeometry> = {};
+      gltf.scene.traverse((o) => {
+        const m = o as Mesh;
+        if (!m.isMesh) return;
+        m.updateWorldMatrix(true, false);
+        const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+        g.computeBoundingSphere();
+        (m.material as MeshStandardMaterial).dispose();
+        const finish = (['shell', 'trim', 'glow'] as const).find((f) => m.name.startsWith(f));
+        if (finish) geo[finish] = g;
+      });
+      if (!geo.shell) return null;
+      headKit = { shell: geo.shell, trim: geo.trim ?? null, glow: geo.glow ?? null, nrm, orm };
+      return headKit;
+    })
+    .catch((err) => {
+      console.warn('[forge] head failed to load; keeping the bare skull', err);
+      return null;
+    });
+  return headLoading;
+}
+
+/** The accent a rig piece (or any ancestor) was last lit in. */
+function accentAbove(o: Object3D): number | null {
+  for (let p: Object3D | null = o; p; p = p.parent) {
+    if (typeof p.userData.accentColor === 'number') return p.userData.accentColor as number;
+  }
+  return null;
+}
+
+function wearHead(skull: Mesh, kit: HeadKit): void {
+  if (skull.userData.headWorn) return;
+  skull.userData.headWorn = true;
+  // The kit is authored in the head group's own space (ellipsoid, seat and
+  // all), where the sphere stand-in carried its shape on its transform.
+  skull.geometry = kit.shell;
+  skull.scale.set(1, 1, 1);
+  skull.position.set(0, 0, 0);
+  const mat = skull.material as MeshStandardMaterial;
+  mat.normalMap = kit.nrm;
+  mat.normalScale.copy(NORMAL_SCALE);
+  mat.aoMap = kit.orm;
+  mat.roughnessMap = kit.orm;
+  mat.needsUpdate = true;
+  const tone = (skull.userData.paintTone as string) ?? 'white';
+  if (kit.trim) {
+    const trim = new MeshStandardMaterial(
+      tone === 'onyx' ? { color: 0x0b0c0f, roughness: 0.12, metalness: 0.4 } : { color: 0x101216, roughness: 0.14, metalness: 0.35 },
+    );
+    const m = new Mesh(kit.trim, trim);
+    m.name = 'head-trim';
+    m.userData.forged = true;
+    skull.add(m);
+  }
+  if (kit.glow) {
+    const accent = accentAbove(skull) ?? 0xff7a18;
+    const glow = new MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 1.4, roughness: 0.35, metalness: 0 });
+    glow.userData.accent = 'glow'; // setAvatarAccent lights it with the rig
+    const m = new Mesh(kit.glow, glow);
+    m.name = 'head-glow';
+    m.userData.forged = true;
+    skull.add(m);
+  }
+  rebakeMesh(skull);
+}
+
+/** Put every bare skull under `root` on THE BLANK's forged face. */
+export function dressHead(root: Object3D): void {
+  const skulls: Mesh[] = [];
+  root.traverse((o) => {
+    if (o.userData?.paintPart === 'head' && (o as Mesh).isMesh) skulls.push(o as Mesh);
+  });
+  if (!skulls.length) return;
+  if (headKit) {
+    for (const s of skulls) wearHead(s, headKit);
+    return;
+  }
+  void loadHead().then((k) => {
+    if (k) for (const s of skulls) wearHead(s, k);
+  });
 }
