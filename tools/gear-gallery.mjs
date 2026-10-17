@@ -98,6 +98,12 @@ const sheet = await page.evaluate(async ([only, accent]) => {
     // …and the hands their machined kit (avatar/hands.ts), so hand gear is
     // shot on the hands it is worn on, not the stand-in boxes.
     for (let t = 0; t < 60 && !fig.getObjectByName('HAND_FRAME'); t++) await new Promise((r) => setTimeout(r, 50));
+    // …and the piece itself, if it is forged: its kit may land a beat later.
+    if (F.forgeGearState(id) !== 'none') {
+      const on = () => { let n = 0; fig.traverse((o) => { if (o.userData?.forged) n++; }); return n; };
+      for (let t = 0; t < 80 && !on(); t++) await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 150));
+    }
     scene.add(fig);
     // Frame the slot: head pieces close on the head, hand pieces on the hands.
     // [x, y, z] to orbit, distance, the two yaws (0 = from the front).
