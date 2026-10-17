@@ -36,6 +36,19 @@ cable runs); a little GLOW (the wearer's accent colour) used sparingly
 and functionally (a slit, a vent, an eye, a seam). Bevels everywhere —
 nothing razor-sharp; the bake turns every bevel into a highlight line.
 
+## The heads: clean cyberpunk, not FF1 remakes
+
+The first Forge animal heads were faithful, plush remakes of the FF1
+animals (fur tufts, glossy eyeballs with pupils, cartoon cheeks) and the
+user rejected them: "stuck too close to their original counterparts …
+we have to think about our clean cyberpunk setting". The heads are CLEAN
+CYBERPUNK animal helmets: hard-surface, sleek ceramic panels with crisp
+seams, the animal carried by silhouette and a few strong planes; eyes as
+lit visor slits, LED strips or lenses (never eyeballs); fur and feathers
+as a few bold engineered blade-plates; noses and mouths as machined trim
+(grilles, vents, jaw seams); ears as engineered fins. (The STALLION was
+"okay" — the most organic the set may go.)
+
 ## Finishes (tag every object with `gk.fin(obj, finish)`)
 
 - `shell` — the PAINT surface. Players paint stripes and dots on it, so
