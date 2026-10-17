@@ -49,6 +49,13 @@ as a few bold engineered blade-plates; noses and mouths as machined trim
 (grilles, vents, jaw seams); ears as engineered fins. (The STALLION was
 "okay" — the most organic the set may go.)
 
+What the user liked and didn't, on the first cyber helmets: a black visor
+stripe across the eyes like a thief's mask (liked); hardware stuck ON the
+head — hinge drums at the jaw, drum pods where ears attach — read as
+"floating black circles" (disliked: ears, ruffs and plates grow from or
+mount flush to the head); a flat trough between two eyes (disliked: keep
+the forms between the eyes continuous and rounded).
+
 ## Finishes (tag every object with `gk.fin(obj, finish)`)
 
 - `shell` — the PAINT surface. Players paint stripes and dots on it, so
