@@ -1808,8 +1808,10 @@ def frog_form(F, ctx):
     F.cut(sweep(P, 0.0042), k=0.0015)
     rP, rN = ctx["ridge"]
     F.add(mesh_prim(*_frog_ridge(rP, rN)), k=0.002)
+    # The nostrils: two thin line slits, the steel laid in flush (the
+    # snout itself stays smooth — no recess, no bumps).
     for p, n in ctx["nos"]:
-        F.cut(rounded_box(p, (0.0022, 0.004, 0.009), 0.0012, basis(x=(1, 0, 0), y=n)), k=0.0008)
+        F.cut(rounded_box(p, (0.0013, 0.003, 0.0076), 0.0006, basis(x=(1, 0, 0), y=n)), k=0.0)
     for side in (-1, 1):
         for p, n in ctx["vents"][(side + 1) // 2]:
             F.cut(rounded_box(p, (0.012, 0.004, 0.0019), 0.001, basis(x=(1, 0, 0), y=n)), k=0.0006)
@@ -1875,7 +1877,8 @@ def frog_parts(F, ctx):
         for k, (pp, axp) in enumerate(_frog_lid_pins(lc, ax, Rl + 0.009, side=side)):
             out.append(gk.fin(cylinder_mesh(f"pin{side}{k}", pp, axp, 0.0045, 0.0035, segs=12), "trim"))
     for i, (p, n) in enumerate(ctx["nos"]):
-        out.append(slot_insert(f"nos{i}", p - n * 0.0024, basis(x=(1, 0, 0), y=n), (0.0016, 0.0015, 0.0078), "trim"))
+        # a thin steel line inlay, flush in its slit
+        out.append(slot_insert(f"nos{i}", p - n * 0.0008, basis(x=(1, 0, 0), y=n), (0.0012, 0.0012, 0.0074), "trim"))
     for side in (-1, 1):
         for j, (p, n) in enumerate(ctx["vents"][(side + 1) // 2]):
             out.append(slot_insert(f"vent{side}{j}", p - n * 0.0025, basis(x=(1, 0, 0), y=n), (0.011, 0.0016, 0.0013), "trim"))
