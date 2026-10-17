@@ -392,6 +392,15 @@ one chart, every deck.
 
 The FF1 skins system (preset avatars + hue sliders) retires. FF2's fighter:
 
+> **THE FORGE** (`docs/forge.md`) rebuilt every shape below in Blender:
+> four FRAMES (STANDARD, LEAN, HEAVY, CURVED — one hitbox, one unwrap,
+> picked free on the locker's BODY board and carried on the gear wire as
+> a sixth slot) and the whole gear catalogue, same ids, baked and shipped
+> as GLBs (`tools/blender/forge/`, `public/forge/`, `src/avatar/forge.ts`).
+> The procedural builders described below remain as the fallback while a
+> piece's kit loads or if it fails, and as the source the paint of an old
+> gear mark is carried over from.
+
 ### 5.1 The blank
 
 One **bland humanoid mannequin** — matte, colourless, primer-grey — sized

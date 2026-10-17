@@ -82,3 +82,19 @@ glyph. The icons load lazily and the panel repaints when they land.
 - Textures 512² per piece (1024² for frames, heads, capes and wings),
   WebP, loaded only when someone in the room wears the piece.
 - Two to three draw calls per worn piece (one per finish).
+
+## 6 · Working on the Forge
+
+- Frames: `tools/blender/forge/frames.py` (`--render` for a lineup,
+  `--icons` for the BODY tiles).
+- Gear: `tools/blender/forge/gear.py -- --only <ids> [--review]`; the
+  modelling brief is `tools/blender/forge/BRIEF.md`; pieces live in
+  `pieces_<slot>.py`.
+- In the browser: `forge-preview.html?gear=<ids>&frames=…&paint=1` (the
+  real rig, every frame side by side); `npm run gear:gallery` (every
+  piece worn, front and back); `npm run check:forge` (the BODY board, a
+  frame on the wire, a forged piece on the mirror, store renders, the bay
+  aiming at forged gear).
+- Paint: a mark placed on a forged piece carries the FORGE_ATLAS variant
+  bit; an older gear mark is carried onto the forged piece by where it sat
+  in 3D on the old shape (`setGearRemap`, gear.ts).
