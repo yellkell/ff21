@@ -1698,7 +1698,7 @@
       /* ── THE PROFILE ─────────────────────────────────────────────────────
          A player's service record, the way the headset's card lays it out:
          the painting behind the name, rank and points, honours and
-         achievements, the note — then everything they have done. */
+         belts, the note — then everything they have done. */
       .who-link {
         appearance: none;
         border: 0;
@@ -1854,43 +1854,62 @@
         letter-spacing: 0.14em;
         box-shadow: 0 0 10px color-mix(in srgb, currentColor 30%, transparent);
       }
-      .feat {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding: 6px 14px 6px 8px;
-        border-radius: 12px;
-        border: 2px solid currentColor;
-        background: rgba(0, 0, 0, 0.35);
-        box-shadow: 0 0 10px color-mix(in srgb, currentColor 25%, transparent);
+      /* THE BELT RACK, simplified: the game's rack (menu/campaignFace.ts)
+         row for row, each belt a little neon strap, side plates and centre
+         plate (campaign/belts.ts colours). Lit when the record proves it. */
+      .belts .chips-row .count {
+        margin-left: auto;
+        font: 700 14px/1 var(--mono);
+        letter-spacing: 0.14em;
+        color: var(--accent);
       }
-      .feat .medal {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        background: rgba(0, 0, 0, 0.45);
-        border: 1.5px solid currentColor;
-        display: grid;
-        place-items: center;
-        flex: none;
-      }
-      .feat .medal svg {
-        width: 18px;
-        height: 18px;
-        fill: currentColor;
-      }
-      .feat b {
-        display: block;
-        color: var(--text);
+      .belt-best {
         font-weight: 700;
         font-size: 15px;
         letter-spacing: 0.12em;
       }
-      .feat small {
-        display: block;
-        font-weight: 600;
+      .belt-best small {
+        margin-left: 8px;
         font-size: 12px;
         letter-spacing: 0.18em;
+        color: var(--faint);
+      }
+      .rack {
+        margin-top: 12px;
+        padding: 12px 14px 14px;
+        border-radius: 14px;
+        background: var(--well);
+        border: 2px solid var(--line-faint);
+        display: grid;
+        gap: 10px;
+      }
+      .rack-row .label {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .rack-row .slots {
+        margin-top: 4px;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .rack .belt {
+        display: block;
+        border-radius: 10px;
+        padding: 2px;
+        transition: background 0.18s linear;
+      }
+      .rack .belt:hover { background: rgba(var(--cyan-rgb), 0.08); }
+      .rack .belt svg { display: block; width: 100%; height: auto; overflow: visible; }
+      .rack .belt.held svg { filter: drop-shadow(0 0 3px var(--glow)); }
+      .rack .belt.ghost svg { opacity: 0.2; filter: grayscale(1); }
+      .rack-foot {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        color: var(--disabled);
       }
       .note {
         margin-top: 16px;
@@ -1959,6 +1978,9 @@
         .record .row .rank { width: 40px; }
         .record .row .score { min-width: 84px; }
         .chips-row .cap { width: 100%; }
+        .belts .chips-row .cap { width: auto; }
+        .rack { padding: 10px; }
+        .rack-row .slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .tape-row { flex-wrap: wrap; gap: 4px 10px; }
         .tape-row .who { order: -1; flex-basis: 100%; }
         .tape-row .when { width: auto; }
@@ -2129,7 +2151,10 @@
             <div class="xpbar"><i id="profile-xp" style="width: 0%"></i></div>
             <div class="record-line"><span id="profile-lp"></span><span id="profile-next"></span></div>
             <div class="chips-row"><span class="cap">Honours</span><span id="profile-honours"></span></div>
-            <div class="chips-row"><span class="cap">Achievements</span><span id="profile-feats"></span></div>
+            <div class="belts">
+              <div class="chips-row"><span class="cap">Belts</span><span id="profile-belt-best"></span><span class="count" id="profile-belt-count"></span></div>
+              <div class="rack" id="profile-rack"></div>
+            </div>
             <div class="note empty" id="profile-note">no note</div>
             <div class="kit-line" id="profile-kit"></div>
           </section>
@@ -4097,11 +4122,116 @@
         ['third', '3RD', '#c97a1e', 'finished a ranked season 3rd'], ['top10', 'TOP 10', 'var(--accent)', 'top 10 ranked season finish'],
         ['top25', 'TOP 25', 'var(--dim)', 'top 25 ranked season finish'],
       ];
-      const GLYPH = {
-        star: '<svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.7-5.4 4.8 1.6 7L12 17.5 5.8 21l1.6-7L2 9.3l7.1-.7z"/></svg>',
-        shield: '<svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5.2-3.4 9.6-8 11-4.6-1.4-8-5.8-8-11V5z"/></svg>',
-        drop: '<svg viewBox="0 0 24 24"><path d="M12 2c3.5 5 7 8.4 7 12.5A7 7 0 0 1 5 14.5C5 10.4 8.5 7 12 2z"/></svg>',
-      };
+      /* THE BELTS (campaign/belts.ts), as much of them as the rack needs:
+         rank, name, the neon (strap · plate metal · stone), the centre
+         plate's shape, the flames — and how each is won. */
+      const BELTS = (() => {
+        const CYAN = '#19f0ff', EMBER = '#ff7a1a', MAGENTA = '#ff2bd6', RED = '#ff2b4e', GOLD = '#ffc84a', SILVER = '#cfe6ff',
+          LIME = '#7cff4a', VIOLET = '#b26bff', BLUE = '#4a6bff', GOO = '#36e05a', TEAL = '#2fe0d0', WHITE = '#ffffff',
+          AMBER = '#ffb000', MOLTEN = '#ff9a3c';
+        const career = (id, name, rank, plate, strap, metal, gem, who, bout) =>
+          ({ id, rank, name, plate, strap, metal, gem, flames: false, how: `DEFEAT ${who} IN THE ${bout}` });
+        const FAMILY = {
+          gauntlet: ['GAUNTLET', 'RUN THE GAUNTLET', CYAN, WHITE, false],
+          hardcore: ['HARDCORE', 'SURVIVE HARDCORE', RED, AMBER, true],
+          raid: ['TITAN RAID', 'BEAT THE TITAN RAID', VIOLET, CYAN, false],
+          raidhc: ['HARDCORE RAID', 'BEAT THE HARDCORE RAID', MAGENTA, GOLD, true],
+          goopraid: ['GOOPLIATH RAID', 'BEAT THE GOOPLIATH RAID', GOO, LIME, false],
+          goopliath: ['GOOPLIATH', 'DEFEAT GOOPLIATH', TEAL, GOO, false],
+        };
+        const PLATE = { normal: 'octagon', hard: 'crest', blazing: 'sun' };
+        const METAL = { normal: SILVER, hard: GOLD, blazing: MOLTEN };
+        const tier = (family, t, rank) => {
+          const [label, win, strap, gem, flames] = FAMILY[family];
+          return { id: `${family}-${t}`, rank, name: `${t.toUpperCase()} ${label}`, plate: PLATE[t], strap, metal: METAL[t], gem, flames, how: `${win} ON ${t.toUpperCase()}` };
+        };
+        const list = [
+          career('amateur', 'AMATEUR', 1, 'octagon', CYAN, SILVER, WHITE, 'CHROMEHOOK', 'AMATEUR BOUT'),
+          career('local', 'LOCAL', 2, 'octagon', LIME, SILVER, AMBER, 'PISTONKAISER', 'LOCAL CHAMPIONSHIP'),
+          career('national', 'NATIONAL', 3, 'crest', EMBER, GOLD, RED, 'VULTURE', 'NATIONAL CHAMPIONSHIP'),
+          career('intercontinental', 'INTERCONTINENTAL', 4, 'crest', MAGENTA, GOLD, CYAN, 'JUGGERNAUT', 'INTERCONTINENTAL TITLE'),
+          career('world', 'WORLD', 5, 'sun', BLUE, GOLD, RED, 'GOLIATH', 'WORLD CHAMPIONSHIP'),
+          { id: 'goopliath', rank: 6, name: 'GOOPLIATH', plate: 'octagon', strap: GOO, metal: SILVER, gem: GOO, flames: false, how: 'DEFEAT GOOPLIATH' },
+        ];
+        let rank = 7;
+        for (const t of ['normal', 'hard', 'blazing']) {
+          if (t !== 'normal') list.push(tier('goopliath', t, rank++));
+          for (const f of ['gauntlet', 'hardcore', 'raid', 'raidhc', 'goopraid']) list.push(tier(f, t, rank++));
+        }
+        return list;
+      })();
+      const beltById = (id) => BELTS.find((b) => b.id === id);
+      /** The game's rack, row for row. */
+      const RACK_ROWS = [
+        ['The career', ['amateur', 'local', 'national', 'intercontinental', 'world', 'goopliath']],
+        ['The runs', ['gauntlet-normal', 'hardcore-normal', 'gauntlet-hard', 'hardcore-hard', 'gauntlet-blazing', 'hardcore-blazing']],
+        ['The raids', ['raid-normal', 'raidhc-normal', 'raid-hard', 'raidhc-hard', 'raid-blazing', 'raidhc-blazing']],
+        ['Goopliath', ['goopliath-hard', 'goopliath-blazing', 'goopraid-normal', 'goopraid-hard', 'goopraid-blazing']],
+      ];
+
+      /**
+       * The belts a player doc PROVES. The page sees only what the game
+       * syncs: the best belt's rank and the clear tiers (0 none … 3 blazing).
+       * The plain tier is raised by every clear, the hardcore tier by
+       * hardcore clears alone, so a plain tier above the hardcore one is a
+       * plain clear. The career is one line, each bout opening on the last,
+       * so a title proves every title before it — and the gauntlet and
+       * GOOPLIATH open only once all five titans have fallen.
+       */
+      function provenBelts(pd) {
+        const held = new Set();
+        const n = (v) => Math.max(0, Math.min(3, Number(v) | 0));
+        const TIER = [null, 'normal', 'hard', 'blazing'];
+        const best = BELTS.find((b) => b.rank === (Number(pd.beltBest) || 0));
+        if (best) held.add(best.id);
+        const pair = (plain, hard, t, hc) => {
+          if (n(hc)) held.add(`${hard}-${TIER[n(hc)]}`);
+          if (n(t) > n(hc)) held.add(`${plain}-${TIER[n(t)]}`);
+        };
+        pair('gauntlet', 'hardcore', pd.gauntletBest, pd.gauntletBestHc);
+        pair('raid', 'raidhc', pd.raidBest, pd.raidBestHc);
+        if (n(pd.goopBest)) held.add(`goopraid-${TIER[n(pd.goopBest)]}`);
+        if (held.has('goopliath-hard') || held.has('goopliath-blazing')) held.add('goopliath');
+        const career = RACK_ROWS[0][1].slice(0, 5);
+        const allTitans = n(pd.gauntletBest) > 0 || held.has('goopliath');
+        const top = allTitans ? career.length : career.reduce((top, id, i) => (held.has(id) ? i + 1 : top), 0);
+        career.slice(0, top).forEach((id) => held.add(id));
+        return held;
+      }
+
+      /** One belt, simplified from ui/beltArt.ts: a glass strap edged in
+       *  its neon with a stitch line, four side plates, the centre plate
+       *  (octagon · crest · sunburst) with the stone, flames on a Hardcore. */
+      function beltSvg(b) {
+        const glass = 'rgba(6,14,24,0.82)';
+        const pts = (k, r, start) => Array.from({ length: k }, (_, i) => {
+          const a = start + (i / k) * Math.PI * 2;
+          return `${(100 + r * Math.cos(a)).toFixed(1)},${(60 + r * Math.sin(a)).toFixed(1)}`;
+        }).join(' ');
+        const star = Array.from({ length: 24 }, (_, i) => {
+          const a = -Math.PI / 2 + (i / 24) * Math.PI * 2, r = i % 2 ? 31 : 41;
+          return `${(100 + r * Math.cos(a)).toFixed(1)},${(60 + r * Math.sin(a)).toFixed(1)}`;
+        }).join(' ');
+        const plate = b.plate === 'octagon'
+          ? `<polygon points="${pts(8, 38, Math.PI / 8)}"/>`
+          : b.plate === 'crest'
+            ? '<path d="M100 20 L136 30 L136 60 C136 80 120 94 100 100 C80 94 64 80 64 60 L64 30 Z"/>'
+            : `<polygon points="${star}"/>`;
+        const flames = b.flames
+          ? `<g fill="none" stroke="${b.strap}" stroke-width="2" stroke-linejoin="round" opacity="0.85">` +
+            '<path d="M70 52 Q58 30 72 8 Q72 28 84 30"/><path d="M130 52 Q142 30 128 8 Q128 28 116 30"/><path d="M92 26 Q96 6 100 0 Q104 6 108 26"/></g>'
+          : '';
+        const side = (x, rx, ry) => `<ellipse cx="${x}" cy="60" rx="${rx}" ry="${ry}"/>`;
+        return `<svg viewBox="0 0 200 110" aria-hidden="true">${flames}` +
+          `<path d="M4 46 H178 L196 52 V68 L178 74 H4 Z" fill="${glass}" stroke="${b.strap}" stroke-width="3" stroke-linejoin="round"/>` +
+          `<path d="M10 51 H176 M10 69 H176" stroke="${b.strap}" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.6"/>` +
+          `<rect x="14" y="42" width="10" height="36" rx="3" fill="${glass}" stroke="${b.strap}" stroke-width="2"/>` +
+          `<g fill="${glass}" stroke="${b.metal}" stroke-width="2">${side(36, 9, 11)}${side(56, 12, 15)}${side(144, 12, 15)}${side(164, 9, 11)}</g>` +
+          `<g fill="${glass}" stroke="${b.metal}" stroke-width="3" stroke-linejoin="round">${plate}</g>` +
+          `<circle cx="100" cy="60" r="20" fill="none" stroke="${b.strap}" stroke-width="2"/>` +
+          `<circle cx="100" cy="60" r="8" fill="${b.gem}"/>` +
+          `<circle cx="100" cy="60" r="12" fill="none" stroke="${b.gem}" stroke-width="1.2" opacity="0.6"/></svg>`;
+      }
       const GEAR_NAMES = {
         crest: 'CREST', antennae: 'ANTENNAE', horns: 'HORNS', halo: 'HALO', mohawk: 'MOHAWK', visorband: 'VISOR BAND',
         pauldrons: 'PAULDRONS', chestplate: 'CHESTPLATE', ridge: 'RIDGE', belt: 'BELT', cuffs: 'CUFFS', knuckles: 'KNUCKLES', gauntlets: 'GAUNTLETS',
@@ -4304,17 +4434,21 @@
           });
         document.getElementById('profile-honours').innerHTML = honours.length ? honours.join('') : '<span class="none">none yet</span>';
 
-        const tierName = (t) => (t >= 3 ? 'BLAZING' : t === 2 ? 'HARD' : 'NORMAL');
-        const feats = [
-          ['star', 'SPEEDRUN', Number(pd.gauntletBest) || 0, Number(pd.gauntletBestHc) || 0],
-          ['shield', 'RAID', Number(pd.raidBest) || 0, Number(pd.raidBestHc) || 0],
-          ['drop', 'GOOPLIATH', Number(pd.goopBest) || 0, 0],
-        ].filter(([, , t]) => t > 0).map(([glyph, label, t, hc]) => {
-          const hardcore = hc >= t;
-          const colour = hardcore ? 'var(--danger)' : t >= 3 ? '#ff5a1f' : t === 2 ? 'var(--accent)' : 'var(--dim)';
-          return `<span class="feat" style="color:${colour}"><span class="medal">${GLYPH[glyph]}</span><span><b>${label}</b><small>${tierName(t)}${hardcore ? ' · HC' : ''}</small></span></span>`;
-        });
-        document.getElementById('profile-feats').innerHTML = feats.length ? feats.join('') : '<span class="none">none yet</span>';
+        // THE BELT RACK: every belt, lit when this record proves it.
+        const held = provenBelts(pd);
+        const top = BELTS.filter((b) => held.has(b.id)).sort((a, b) => b.rank - a.rank)[0];
+        document.getElementById('profile-belt-best').innerHTML = top
+          ? `<span class="belt-best" style="color:${top.strap}">THE ${esc(top.name)} BELT<small>BEST</small></span>`
+          : '<span class="none">none yet</span>';
+        document.getElementById('profile-belt-count').textContent = `${held.size} / ${BELTS.length}`;
+        document.getElementById('profile-rack').innerHTML =
+          RACK_ROWS.map(([label, ids]) => `<div class="rack-row"><div class="label">${label}</div><div class="slots">` +
+            ids.map((id) => {
+              const b = beltById(id), mine = held.has(id);
+              const tip = `THE ${b.name} BELT · ${mine ? 'WON' : b.how + ' TO WIN IT'}`;
+              return `<span class="belt ${mine ? 'held' : 'ghost'}" style="--glow:${b.strap}" title="${esc(tip)}" role="img" aria-label="${esc(tip)}">${beltSvg(b)}</span>`;
+            }).join('') + '</div></div>').join('') +
+          '<div class="rack-foot">lit belts are the ones this record proves · the rest are in the game</div>';
 
         const noteEl = document.getElementById('profile-note');
         noteEl.textContent = pd.note ? String(pd.note).slice(0, 96) : 'no note';
