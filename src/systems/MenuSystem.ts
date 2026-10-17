@@ -96,7 +96,8 @@ import {
   setAvatarColor,
   setAvatarSkin,
   setPlatformSkin,
-  setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setGear, toggleGear } from '../menu/customization.js';
+  setShopPreview, gearOwned, gearWith, myGear, myPackedGear, ownGear, setFrame, setGear, toggleGear } from '../menu/customization.js';
+import { frameDef } from '../avatar/forge.js';
 import { canAfford, coins, spendCoins } from '../menu/wallet.js';
 import { playCash, preloadCash } from '../audio/cash.js';
 import { setMenuMusicActive, toggleMusicMuted } from '../audio/menuMusic.js';
@@ -1613,6 +1614,13 @@ export class MenuSystem extends createSystem({}) {
         // hitTest only returns unlocked tiers, so no re-check is needed.
         // shelf-<material>: the PLATFORMS board's shelf.
         // badge-belt-<id>: a belt on THE BELT RACK — hold it up.
+        // frame-<id>: THE FORGE's body shapes (avatar/forge.ts) — free, so a
+        // tap wears it at once.
+        if (action.startsWith('frame-')) {
+          const id = action.slice('frame-'.length);
+          if (frameDef(id)) setFrame(id);
+          break;
+        }
         if (action.startsWith('badge-belt-')) {
           this.showBelt(action.slice('badge-belt-'.length));
           break;

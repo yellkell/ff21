@@ -42,6 +42,7 @@ import { BODY_IK, PAINT } from '../config.js';
 import { BODY_RINGS, EGG_SCALE, HEAD_SCALE, type BlankTone } from './mannequin.js';
 import { atlasGear, mergePiece } from './gearAtlas.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
+import { DEFAULT_FRAME, FRAMES, dressFrame, frameRing } from './forge.js';
 
 /** 'face' is THE HEADS (avatar/heads.ts): a whole head worn in place of
  *  the bare skull. It came after the other three, so it packs after them —
@@ -50,8 +51,12 @@ import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
  *  so a pair of pauldrons and a cape could never be worn together. They
  *  are their own slot now, packed last; an older reader still takes a
  *  pauldron as its body piece (it knows the id), and drops the rest. */
-export type GearSlot = 'head' | 'body' | 'hands' | 'face' | 'shoulders';
-export const GEAR_SLOTS: readonly GearSlot[] = ['head', 'body', 'hands', 'face', 'shoulders'];
+export type GearSlot = 'head' | 'body' | 'hands' | 'face' | 'shoulders' | 'frame';
+/** 'frame' is THE FORGE's body shape (avatar/forge.ts) — not a piece but
+ *  the body itself, free to pick, riding the gear wire so every room that
+ *  carries your gear carries your build. It packs LAST: a reader from
+ *  before it drops the id and sees STANDARD, which is the empty slot. */
+export const GEAR_SLOTS: readonly GearSlot[] = ['head', 'body', 'hands', 'face', 'shoulders', 'frame'];
 
 export interface GearDef {
   id: string;
@@ -118,6 +123,9 @@ export const GEAR: GearDef[] = [
   { id: 'tabard', name: 'TABARD', slot: 'body', price: 200, blurb: 'a panel front and back, cinched' },
   // ── the sixth wave ──
   { id: 'bastion', name: 'BASTION', slot: 'shoulders', price: 280, blurb: 'great smooth domes, a ridge, two tiers' },
+  // ── THE FRAMES (avatar/forge.ts): body shapes, free, never sold. STANDARD
+  // is the empty slot, so it has no entry. ──
+  ...FRAMES.filter((f) => f.id !== DEFAULT_FRAME).map((f): GearDef => ({ id: f.id, name: f.name, slot: 'frame', price: 0, blurb: f.blurb })),
 ];
 
 export function gearDef(id: string): GearDef | undefined {
@@ -1899,7 +1907,8 @@ for (const [id, build] of Object.entries(HEAD_PIECES)) BUILDERS[id] = (mat, _sid
  *  the head carries two slots: its GEAR (horns, crest…) and its FACE. */
 const SLOTS_OF_NAME: Record<string, readonly GearSlot[]> = {
   'opponent-head': ['face', 'head'],
-  'opponent-body': ['body', 'shoulders'],
+  // The frame first: the body and shoulder pieces are fitted to it.
+  'opponent-body': ['frame', 'body', 'shoulders'],
   'opponent-glove-left': ['hands'],
   'opponent-glove-right': ['hands'],
 };
@@ -1949,10 +1958,21 @@ export function applyGear(root: Object3D, ids: readonly string[], tone: BlankTon
 
 /** Build (or keep) one slot's piece under a rig group. */
 function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, face: string): void {
+  // THE FRAME is the body itself, not a piece on it (avatar/forge.ts).
+  if (slot === 'frame') {
+    const frame = id || DEFAULT_FRAME;
+    o.userData.frameId = frame;
+    if (o.userData.frameKey !== frame) {
+      o.userData.frameKey = frame;
+      dressFrame(o, frame);
+    }
+    return;
+  }
   const keyName = slot === 'face' ? 'faceKey' : slot === 'shoulders' ? 'shouldersKey' : 'gearKey';
-  // The head gear is fitted to whatever face it sits on, so a new face is
-  // a new fit.
-  const key = slot === 'head' ? `${id}|${tone}|${face}` : `${id}|${tone}`;
+  // The head gear is fitted to whatever face it sits on, and the body's
+  // pieces to whatever frame they hang on, so either is a new fit.
+  const frame = (o.userData.frameId as string | undefined) ?? DEFAULT_FRAME;
+  const key = slot === 'head' ? `${id}|${tone}|${face}` : slot === 'body' || slot === 'shoulders' ? `${id}|${tone}|${frame}|${frameRing(frame, 0.3) ? 1 : 0}` : `${id}|${tone}`;
   if (o.userData[keyName] === key) return;
   o.userData[keyName] = key;
   const old = o.getObjectByName(childName(slot));
@@ -2030,7 +2050,17 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
   // frame and kept per piece, so it must be the same map whatever face the
   // piece first met — the mark rides out with the horn, the same mark on
   // every headset.
-  const fit = slot === 'head' && !variant && HEAD_FIT[face] ? { rx: 0, ...HEAD_FIT[face], ...PIECE_FIT[face]?.[id] } : undefined;
+  // …and the body's pieces onto the FRAME they hang on (avatar/forge.ts):
+  // every piece is made for STANDARD, and carried onto another frame by
+  // the ratio of that frame's ring to STANDARD's at the piece's ANCHOR —
+  // the shoulder line for pads, the waist for a belt — per axis, after the
+  // atlas for the same reason as the heads.
+  const fit =
+    slot === 'head' && !variant && HEAD_FIT[face]
+      ? { rx: 0, ...HEAD_FIT[face], ...PIECE_FIT[face]?.[id] }
+      : slot === 'body' || slot === 'shoulders'
+        ? frameFit(frame, slot === 'shoulders' ? SHOULDER_ANCHOR : (BODY_ANCHOR[id] ?? 0.29))
+        : undefined;
   if (fit) {
     const w = new Group();
     w.name = g.name;
@@ -2047,11 +2077,36 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
   o.add(g);
 }
 
+/** Where each body piece takes its fit from (hip-local y): the ring it
+ *  hangs on. Shoulder pieces all take the shoulder line. */
+const SHOULDER_ANCHOR = 0.39;
+const BODY_ANCHOR: Record<string, number> = {
+  chestplate: 0.3,
+  belt: 0.13,
+  tail: -0.04,
+  wings: 0.33,
+  thrusters: 0.3,
+  cape: 0.37,
+  tabard: 0.22,
+};
+
+/** A body piece's fit onto `frame` at height `y`: the frame's ring over
+ *  STANDARD's, per axis (height kept), and the shift of the ring's centre. */
+function frameFit(frame: string, y: number): { s: [number, number, number]; y: number; z: number; rx: number } | undefined {
+  if (frame === DEFAULT_FRAME) return undefined;
+  const std = frameRing(DEFAULT_FRAME, y);
+  const f = frameRing(frame, y);
+  if (!std || !f) return undefined;
+  return { s: [f[0] / std[0], 1, f[1] / std[1]], y: 0, z: f[2] - std[2], rx: 0 };
+}
+
 /** The gear a subtree is wearing right now (dev hooks / probes). */
 export function wornGear(root: Object3D): string[] {
   const out: string[] = [];
   root.traverse((o) => {
     if ((o.name === 'gear' || o.name === 'gear-face' || o.name === 'gear-shoulders') && typeof o.userData.gear === 'string') out.push(o.userData.gear);
+    // The frame is the body, not a child piece: read off the body group.
+    if (typeof o.userData.frameKey === 'string' && o.userData.frameKey !== DEFAULT_FRAME) out.push(o.userData.frameKey);
   });
   return out;
 }

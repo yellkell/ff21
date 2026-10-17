@@ -24,6 +24,7 @@ import {
   Vector3,
 } from 'three';
 import { HEAD_SCALE, buildMannequinBody, buildMannequinHead } from './mannequin.js';
+import { DEFAULT_FRAME, dressFrame } from './forge.js';
 import { BODY_IK, PALETTE, teamColor } from '../config.js';
 import { collapseStatic } from '../arena/merge.js';
 import { buildHand } from './hands.js';
@@ -336,6 +337,10 @@ export function buildBoxer(team: number, skinId?: string): BoxerRig {
   const body = new Group();
   body.name = 'opponent-body';
   for (const id of ids) body.add(buildCollapsed(BODY_BUILDERS[id]));
+  // THE FORGE: every body stands on a Blender FRAME (avatar/forge.ts) —
+  // STANDARD until applyGear says otherwise; the loft above is only what
+  // shows for the moment before the frame's kit lands.
+  dressFrame(body, DEFAULT_FRAME);
 
   const torso = new Group();
   torso.name = 'opponent-torso';

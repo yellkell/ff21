@@ -76,3 +76,4 @@ Voice Lines/
 
 # headless probe screenshots (npm run check:* --shots)
 tools/*.png
+__pycache__/
