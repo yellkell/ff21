@@ -13,6 +13,12 @@ beautiful dark desert, link/Discord match joins, and the web leaderboard.
 
 ## What's here now
 
+- **THE STATS PAGE WEARS THE RANK EMBLEMS.** `stats.html` shows the
+  game's Bronze→Overlord badge art: large on a player's profile banner
+  beside the callsign, and small in front of every name whose XP the page
+  has read (the boards, the strip, the bout log). The emblems ride as
+  160 px WebP copies in `public/ranks/`, referenced relatively so the
+  Pages subpath serves them too.
 - **PAINT SITS RIGHT ON THE SHOULDERS, AND HEADS SWAP WITHOUT A STALL.**
   A mark placed on shoulder gear is now the same size in metres as on
   the body, as the head's already were; shoulder marks placed before

@@ -1762,6 +1762,25 @@
         z-index: 1;
         min-width: 0;
       }
+      /* THE RANK EMBLEM: the game's own badge art (src/assets/ranks, shrunk
+         into public/ranks), large on the banner beside the callsign and
+         small in front of every name the page knows the XP of. */
+      .banner-wrap > .emblem-big {
+        position: relative;
+        z-index: 1;
+        flex: none;
+        width: clamp(64px, 9vw, 96px);
+        height: clamp(64px, 9vw, 96px);
+        margin-right: clamp(12px, 1.6vw, 18px);
+        filter: drop-shadow(0 0 12px var(--tier-glow, rgba(0, 0, 0, 0))) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
+      }
+      .emblem {
+        width: 1.4em;
+        height: 1.4em;
+        margin-right: 0.4em;
+        vertical-align: -0.38em;
+        filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));
+      }
       .banner-wrap .callsign {
         margin: 0;
         font-weight: 700;
@@ -2143,6 +2162,7 @@
             <i class="halo"></i><span class="sheen"></span>
             <div class="banner-wrap" id="profile-banner">
               <canvas id="profile-paint" width="800" height="216"></canvas>
+              <img class="emblem-big" id="profile-emblem" alt="" width="96" height="96" hidden />
               <div class="id">
                 <h2 class="callsign" id="profile-name">—</h2>
                 <div class="rank" id="profile-rank"></div>
@@ -2307,10 +2327,12 @@
           if (!res.ok) throw new Error(`firestore ${res.status}`);
           const parts = await res.json();
           if (!Array.isArray(parts)) throw new Error('firestore: unexpected shape');
-          return parts.filter((p) => p.document).map((p) => ({
+          const docs = parts.filter((p) => p.document).map((p) => ({
             id: p.document.name.split('/').pop(),
             data: decodeFields(p.document.fields || {}),
           }));
+          if (collectionId === 'players' && !opts.parent) noteXp(docs);
+          return docs;
         } finally {
           clearTimeout(timer);
         }
@@ -4260,9 +4282,25 @@
       const profileTape = { open: null };
       window.__ffProfile = { open: (uid, name) => openProfile(uid, name), state: () => profile };
 
-      /** A name, as a link to its owner. */
+      /** Every player's XP the page has read off a players/ doc — so a name
+       *  can wear its rank emblem wherever it is drawn. */
+      const xpOf = new Map();
+      const noteXp = (docs) => {
+        for (const d of docs) if (d && d.id) xpOf.set(d.id, Number(d.data && d.data.xp) || 0);
+      };
+      /** The rank emblem for an XP total (relative path: Pages serves /ff2/). */
+      const EMBLEMS = ['00-bronze', '01-silver', '02-gold', '03-platinum', '04-diamond', '05-master', '06-legendary', '07-overlord'];
+      const emblemSrc = (tier) => `ranks/${EMBLEMS[tier.index]}.webp`;
+      const emblem = (xp) => {
+        const t = tierForXp(xp);
+        return `<img class="emblem" src="${emblemSrc(t)}" alt="${t.name}" title="${t.name}" width="20" height="20" loading="lazy" decoding="async" />`;
+      };
+
+      /** A name, as a link to its owner — behind its rank emblem, once known. */
       const who = (uid, name) =>
-        uid ? `<button class="who-link" type="button" data-uid="${esc(uid)}" data-name="${esc(name)}">${esc(name)}</button>` : esc(name);
+        uid
+          ? `<button class="who-link" type="button" data-uid="${esc(uid)}" data-name="${esc(name)}">${xpOf.has(uid) ? emblem(xpOf.get(uid)) : ''}${esc(name)}</button>`
+          : esc(name);
 
       /** One document by path, or null when it isn't there. */
       async function getDoc(path) {
@@ -4270,7 +4308,9 @@
         if (res.status === 404) return null;
         if (!res.ok) throw new Error(`firestore ${res.status}`);
         const doc = await res.json();
-        return { id: doc.name.split('/').pop(), data: decodeFields(doc.fields || {}) };
+        const out = { id: doc.name.split('/').pop(), data: decodeFields(doc.fields || {}) };
+        if (path.startsWith('players/')) noteXp([out]);
+        return out;
       }
       /** Many documents by path in one round trip; a Map of path → data | null. */
       async function batchGet(paths) {
@@ -4418,6 +4458,11 @@
         const rankEl = document.getElementById('profile-rank');
         rankEl.style.color = tier.colour;
         rankEl.innerHTML = `${esc(tier.name)}<small>${num(xp)} XP</small>`;
+        const emblemEl = document.getElementById('profile-emblem');
+        emblemEl.src = emblemSrc(tier);
+        emblemEl.alt = `${tier.name} rank emblem`;
+        emblemEl.style.setProperty('--tier-glow', `${tier.colour}88`);
+        emblemEl.hidden = false;
         const span = tier.next ? tier.next - tier.from : 1;
         document.getElementById('profile-xp').style.width = `${tier.next ? Math.min(100, ((xp - tier.from) / span) * 100) : 100}%`;
         const lp = Number(pd[`score_s${seasonIndex()}`]) || 0;
