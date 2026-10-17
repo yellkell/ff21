@@ -1882,6 +1882,26 @@
         letter-spacing: 0.14em;
         color: var(--accent);
       }
+      /* The rack folds away under its header row; closed until asked for. */
+      .belts > summary {
+        list-style: none;
+        cursor: pointer;
+        user-select: none;
+      }
+      .belts > summary::-webkit-details-marker { display: none; }
+      .belts > summary:hover .cap,
+      .belts > summary:focus-visible .cap { color: var(--accent); }
+      .belts > summary:focus-visible { outline: 2px solid rgba(var(--cyan-rgb), 0.5); outline-offset: 4px; border-radius: 6px; }
+      .belts .fold {
+        width: 9px;
+        height: 9px;
+        margin: 0 4px 3px 2px;
+        border-right: 2px solid var(--label);
+        border-bottom: 2px solid var(--label);
+        transform: rotate(45deg);
+        transition: transform 0.18s ease;
+      }
+      .belts[open] .fold { transform: rotate(225deg); margin-bottom: -3px; }
       .belt-best {
         font-weight: 700;
         font-size: 15px;
@@ -2171,10 +2191,10 @@
             <div class="xpbar"><i id="profile-xp" style="width: 0%"></i></div>
             <div class="record-line"><span id="profile-lp"></span><span id="profile-next"></span></div>
             <div class="chips-row"><span class="cap">Honours</span><span id="profile-honours"></span></div>
-            <div class="belts">
-              <div class="chips-row"><span class="cap">Belts</span><span id="profile-belt-best"></span><span class="count" id="profile-belt-count"></span></div>
+            <details class="belts">
+              <summary class="chips-row"><span class="cap">Belts</span><span id="profile-belt-best"></span><span class="count" id="profile-belt-count"></span><span class="fold" aria-hidden="true"></span></summary>
               <div class="rack" id="profile-rack"></div>
-            </div>
+            </details>
             <div class="note empty" id="profile-note">no note</div>
             <div class="kit-line" id="profile-kit"></div>
           </section>
@@ -4338,6 +4358,7 @@
         profile.name = name || '';
         profile.open = true;
         profileTape.open = null;
+        document.querySelector('#profile .belts').open = false; // every record starts with its rack folded
         if (face !== 'ff') showFace('ff');
         syncFfFace();
         try { history.replaceState(null, '', `#player=${encodeURIComponent(uid)}`); } catch {}
