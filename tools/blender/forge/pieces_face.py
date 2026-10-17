@@ -90,11 +90,11 @@ def vent_slots(F, pts, cut=True, out=None, name="vent", half=(0.011, 0.0016, 0.0
 
 BEAR_DOME = ((0, 0.012, 0.02), (0.12, 0.112, 0.118))
 BEAR_CLIPS = [((0, 0.42, -0.9), (0, 0.075, -0.082))]
-BEAR_JOWLS = [((s * 0.072, -0.052, -0.035), (0.058, 0.05, 0.06)) for s in (-1, 1)]
+BEAR_JOWLS = [((s * 0.066, -0.05, -0.02), (0.056, 0.046, 0.068)) for s in (-1, 1)]
 
 
 def _bear_extras():
-    return [(ellipsoid(c, r), 0.03) for c, r in BEAR_JOWLS]
+    return [(ellipsoid(c, r), 0.045) for c, r in BEAR_JOWLS]
 
 
 def _bear_snout(seg=96, sub=12):
@@ -141,7 +141,7 @@ def bear_form(F, ctx):
         clip(F, n, p0, k=0.008, hi=(0.2, 0.3, 0.0))
     for prim, k in _bear_extras():
         F.add(prim, k)
-    F.add(mesh_prim(*_bear_snout()), k=0.012)
+    F.add(mesh_prim(*_bear_snout()), k=0.018)
     for side in (-1, 1):
         F.add(mesh_prim(*_bear_ear(side)), k=0.005)
     if "brow" not in ctx:
@@ -157,7 +157,8 @@ def bear_form(F, ctx):
     if "mouth" not in ctx:
         th = np.linspace(-1.2, 1.2, 33)
         ctx["mouth"] = surface_path(F, drape_ring(F, np.full(33, -0.07), th, -0.09, r_out=0.3), 2)
-        ctx["vents"] = [[land(F, (s * 0.25, -0.03 - 0.0085 * j, -0.128), (-s, 0, 0)) for j in range(3)]
+        # the vents sit back by the jaw hinge, clear of the cheeks
+        ctx["vents"] = [[land(F, (s * 0.3, -0.045 - 0.0085 * j, 0.03), (-s, 0, 0)) for j in range(3)]
                         for s in (-1, 1)]
         ctx["crown"] = seam_path(F, [(0, 0.2, -0.05), (0, 0.2, 0.02), (0, 0.2, 0.08), (0, 0.1, 0.16), (0, 0.0, 0.17)], 40)
         ctx["mask"] = [seam_path(F, [(s * 0.2, 0.07, -0.01), (s * 0.2, 0.02, -0.005), (s * 0.2, -0.03, -0.02), (s * 0.2, -0.075, -0.04)], 24)
