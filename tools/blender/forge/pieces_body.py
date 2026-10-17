@@ -723,7 +723,21 @@ def tail(ref):
     fpts = [p - t * 0.004, p + t * 0.012]
     fer = gk.tube("ferrule", [tuple(q) for q in fpts], lambda u: R(1.0) * (1.12 - 0.12 * u), sides=14, scale_xy=(0.9, 1.0), step=0.003)
     objs.append(gk.fin(fer, "trim"))
+    # THE TAIL FLOPS (avatar/flop.ts): every segment, lip, ring and the
+    # spade swing together from the socket — heavier and slower than a
+    # whip, so it sways and trails rather than flicks.
+    for ob in objs:
+        if ob.name.split(".")[0].rstrip("0123456789") in ("seg", "lip", "lit", "spade", "ferrule"):
+            gk.flop(ob, "tail")
+    tip_p, _ = path.at(1.0)
+    d = tip_p + Vector(path.at(1.0)[1]) * 0.09 - o
+    TAIL_FLOPS.clear()
+    TAIL_FLOPS["tail"] = dict(pivot=[round(v, 5) for v in o], dir=[round(v, 5) for v in d.normalized()], len=round(d.length, 4),
+                              stiff=45.0, damp=2.6, swing=0.45)
     return objs
+
+
+TAIL_FLOPS = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1170,12 +1184,28 @@ def cape(ref):
     pts, _ = on_body_path(body, ctrl, 0.006, step=0.008)
     pts[0], pts[-1] = claspL, cR
     objs.append(gk.fin(gk.tube("cord", [tuple(p) for p in pts], 0.0042, sides=6, step=0.010), "trim"))
+    # THE CAPE FLOPS (avatar/flop.ts): the cloth and its weighted hem swing
+    # from the collar's back edge — slow and heavy — and never forward into
+    # the wearer's back.
+    gk.flop(cloth, "cape")
+    for ob in objs:
+        if ob.name.split(".")[0] == "hem":
+            gk.flop(ob, "cape")
+    top_c = sum((Vector(t) for t in tops), Vector()) / len(tops)
+    hem_c = sum((Vector(p) for p in Pc[-1]), Vector()) / len(Pc[-1])
+    d = hem_c - top_c
+    CAPE_FLOPS.clear()
+    CAPE_FLOPS["cape"] = dict(pivot=[round(v, 5) for v in top_c], dir=[round(v, 5) for v in d.normalized()], len=round(d.length, 4),
+                              stiff=38.0, damp=3.0, swing=0.32, block=[0.0, 0.0, -1.0])
     res = []
     for o in objs:
         res.append(o)
         if o.name in ("clasp", "gem"):
             res.append(gk.mirrored_copy(o))
     return res
+
+
+CAPE_FLOPS = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1344,10 +1374,10 @@ def _ty(y):
 
 PIECES = {
     "tabard": dict(slot="body", build=tabard, tex=1024, view=dict(target=(0, 0.10, 0), dist=2.4, yaw=-30, pitch=8)),
-    "cape": dict(slot="body", build=cape, tex=1024, view=dict(target=(0, 0.1, 0), dist=3.2, yaw=150, pitch=10)),
+    "cape": dict(slot="body", build=cape, flops=CAPE_FLOPS, tex=1024, view=dict(target=(0, 0.1, 0), dist=3.2, yaw=150, pitch=10)),
     "thrusters": dict(slot="body", build=thrusters, tex=512, view=dict(target=(0, 0.29, 0), dist=2.3, yaw=145, pitch=12)),
     "wings": dict(slot="body", build=wings, tex=1024, view=dict(target=(0, 0.45, 0), dist=3.6, yaw=155, pitch=12)),
-    "tail": dict(slot="body", build=tail, tex=512, view=dict(target=(-0.16, 0.05, -0.11), dist=3.0, yaw=-125, pitch=8)),
+    "tail": dict(slot="body", build=tail, flops=TAIL_FLOPS, tex=512, view=dict(target=(-0.16, 0.05, -0.11), dist=3.0, yaw=-125, pitch=8)),
     "belt": dict(slot="body", build=belt, tex=512, view=dict(target=(0, 0.1, 0), dist=1.9, yaw=-30, pitch=10)),
     "chestplate": dict(slot="body", build=chestplate, tex=512, view=dict(target=(0, 0.28, 0), dist=1.6, yaw=-30, pitch=8)),
 }

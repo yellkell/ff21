@@ -55,8 +55,19 @@ def obj_from_bm(name, bm, smooth=True):
     return ob
 
 
-def fin(ob, finish):
+def fin(ob, finish, flop=None):
+    """Tag an object with its FINISH, and optionally the FLOP it belongs to
+    (a part that swings on a spring in the game; its pivot, direction and
+    length are the piece spec's `flops[name]`)."""
     ob["finish"] = finish
+    if flop:
+        ob["flop"] = flop
+    return ob
+
+
+def flop(ob, name):
+    """Mark an already-finished object as part of floppy part `name`."""
+    ob["flop"] = name
     return ob
 
 

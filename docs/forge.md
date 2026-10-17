@@ -70,6 +70,21 @@ The Forge's UVs are a new layout, so a gear mark made on the old
 procedural shape is re-flagged as a legacy stamp (like the pre-atlas
 marks), never lost.
 
+## 3½ · FLOPS — parts that swing
+
+Some parts swing as the wearer moves: the antennae's whips, a tail, a
+cape's cloth, an epaulet's fringe, a bunny's ears, an eagle's plume. In
+Blender a part is tagged `gk.fin(obj, finish, flop="name")` and the piece
+spec gives `flops={name: dict(pivot, dir, len, stiff, damp, swing,
+block?)}`; it exports as its own meshes ("shell@name"…). In the game
+(`src/avatar/flop.ts`) each flop is one particle — its tip — on a spring
+to where the tip would be if the part were rigid; the lag becomes a
+rotation about the pivot, applied in the vertex shader and graded root to
+tip, so the part bends. `block` is a direction the tip never swings toward
+(a cape never swings into the back). Local and cosmetic: nothing rides
+the wire; a flop off-screen costs nothing; paint and raycasts see it at
+rest. `forge-preview.html?move=1` sways the figures to watch them.
+
 ## 4 · The store, with pictures
 
 Every tile in GEAR and BODY shows the piece itself — a Blender render on

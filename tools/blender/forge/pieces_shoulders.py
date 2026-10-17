@@ -914,7 +914,24 @@ def epaulets(ref):
     objs.append(gk.fin(keeper, "trim"))
     bp = top(0.022, 0.0, 0.0)
     _stud("button", bp, Vector((0.0, 1.0, 0.0)), r=0.0095, objs=objs)
-    return _pairs(objs)
+    # THE FRINGE FLOPS (avatar/flop.ts): the bullion swings as one curtain
+    # from the board's end, quick and loose like hanging wire.
+    for ob in objs:
+        if ob.name.split(".")[0].startswith("fr") and ob.name.split(".")[0][2:].isdigit():
+            gk.flop(ob, "fringe_l")
+    piv = top(xc + (hw - 0.007) * 0.4, 0.0, -th - 0.002)
+    EPAULET_FLOPS.clear()
+    spring = dict(dir=[0.25, -0.97, 0.0], len=0.085, stiff=90.0, damp=3.2, swing=0.55)
+    EPAULET_FLOPS["fringe_l"] = dict(pivot=[round(piv.x, 5), round(piv.y, 5), round(piv.z, 5)], **spring)
+    EPAULET_FLOPS["fringe_r"] = dict(pivot=[round(-piv.x, 5), round(piv.y, 5), round(piv.z, 5)], **{**spring, "dir": [-0.25, -0.97, 0.0]})
+    out = _pairs(objs)
+    for ob in out[1::2]:
+        if ob.get("flop") == "fringe_l":
+            ob["flop"] = "fringe_r"
+    return out
+
+
+EPAULET_FLOPS = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1051,6 +1068,6 @@ PIECES = {
     "warlord": dict(slot="shoulders", build=warlord, tex=1024, view=WIDE),
     "bastion": dict(slot="shoulders", build=bastion, tex=1024, view=WIDE),
     "spikepads": dict(slot="shoulders", build=spikepads, tex=1024, view=WIDE),
-    "epaulets": dict(slot="shoulders", build=epaulets, tex=1024, view=WIDE),
+    "epaulets": dict(slot="shoulders", build=epaulets, tex=1024, view=WIDE, flops=EPAULET_FLOPS),
     "gladiator": dict(slot="shoulders", build=gladiator, tex=1024, view=dict(target=(-0.06, 0.32, 0), dist=1.6, yaw=30)),
 }

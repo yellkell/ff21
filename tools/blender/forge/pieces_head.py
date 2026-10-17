@@ -608,11 +608,31 @@ def antennae(ref):
         bead.append((0.0054 * math.sin(math.pi * u) ** 0.9 * (1.0 - 0.2 * u), 0.0014 + 0.0130 * (1 - math.cos(math.pi * u)) / 2))
     bead.append((0.0, 0.0144))
     objs.append(gk.fin(gk.lathe("bead", bead, segs=12, axis_origin=tuple(tp), axis=tuple(tt)), "glow"))
+    # THE WHIP FLOPS (avatar/flop.ts): everything above the collar swings
+    # on a spring from the collar's lip — whippy, light, quick to settle.
+    whip_parts = {"sleeve", "ferrule", "band", "whip", "cup", "bead"}
+    for o in objs:
+        if o.name.split(".")[0] in whip_parts:
+            gk.flop(o, "ant_l")
+    tip = Cw[-1]
+    d = (tip - c0)
+    L = d.length
+    d = d.normalized()
+    ANT_FLOPS.clear()
+    spring = dict(len=round(L, 4), stiff=70.0, damp=3.0, swing=0.8)
+    ANT_FLOPS["ant_l"] = dict(pivot=[round(v, 5) for v in c0], dir=[round(v, 5) for v in d], **spring)
+    ANT_FLOPS["ant_r"] = dict(pivot=[round(-c0.x, 5), round(c0.y, 5), round(c0.z, 5)], dir=[round(-d.x, 5), round(d.y, 5), round(d.z, 5)], **spring)
     out = []
     for o in objs:
         out.append(o)
-        out.append(gk.mirrored_copy(o))
+        m = gk.mirrored_copy(o)
+        if o.get("flop") == "ant_l":
+            m["flop"] = "ant_r"
+        out.append(m)
     return out
+
+
+ANT_FLOPS = {}
 
 
 # ---------------------------------------------------------------------------
@@ -926,7 +946,7 @@ def mohawk(ref):
 
 PIECES = {
     "crest": dict(slot="head", build=crest, tex=512, view=dict(target=(0, 0.06, 0.0), dist=1.05)),
-    "antennae": dict(slot="head", build=antennae, tex=512, view=dict(target=(0, 0.11, 0.02), dist=1.25)),
+    "antennae": dict(slot="head", build=antennae, tex=512, view=dict(target=(0, 0.11, 0.02), dist=1.25), flops=ANT_FLOPS),
     "horns": dict(slot="head", build=horns, tex=1024, view=dict(target=(0, 0.05, 0.03), dist=1.25, yaw=-42, pitch=12)),
     "halo": dict(slot="head", build=halo, tex=512, view=dict(target=(0, 0.09, 0), dist=1.05, pitch=30)),
     "mohawk": dict(slot="head", build=mohawk, tex=512, view=dict(target=(0, 0.07, 0.01), dist=1.1)),

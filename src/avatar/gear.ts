@@ -42,6 +42,7 @@ import { BODY_IK, PAINT } from '../config.js';
 import { BODY_RINGS, EGG_SCALE, HEAD_SCALE, type BlankTone } from './mannequin.js';
 import { atlasGear, type GearMap, mapFromUv, mergePiece } from './gearAtlas.js';
 import { setGearRemap } from './paint.js';
+import { type FlopState, flopState, installFlop } from './flop.js';
 import { HEAD_FIT, HEAD_PIECES, PIECE_FIT } from './heads.js';
 import { DEFAULT_FRAME, FRAMES, dressFrame, fitGearKit, fitGearMaps, forgeFaceFit, forgeGearKit, forgeGearState, frameRing, type GearKit, loadForgeGear } from './forge.js';
 
@@ -2058,6 +2059,8 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
     const mesh = m as Mesh;
     if (!mesh.isMesh) return;
     mesh.material = (mesh.material as MeshStandardMaterial).clone();
+    // A floppy part bends in its own (final) material (avatar/flop.ts).
+    if (mesh.userData.flopState) installFlop(mesh, mesh.userData.flopState as FlopState, !!mesh.userData.flopDrive);
     // Trim keeps its own finish: no part tag, so the bake walks past it.
     if (mesh.userData.trim) return;
     mesh.userData.paintPart = part;
@@ -2124,11 +2127,23 @@ function dressSlot(o: Object3D, slot: GearSlot, id: string, tone: BlankTone, fac
  */
 function forgePiece(kit: GearKit, tone: BlankTone, glowMat: MeshStandardMaterial, side: 1 | -1): Group {
   const g = new Group();
-  for (const { finish, geo } of kit.meshes) {
+  // One spring per floppy part, shared by its shell, trim and glow meshes
+  // (installed once the materials are final: dressSlot).
+  const states = new Map<string, FlopState>();
+  for (const { finish, geo, flop } of kit.meshes) {
     const mat = finish === 'shell' ? primer(tone) : finish === 'trim' ? trim(tone) : glowMat;
     fitGearMaps(mat, finish, kit);
     const mesh = new Mesh(geo, mat);
     mesh.userData.forged = true;
+    if (flop) {
+      let st = states.get(flop);
+      if (!st) {
+        st = flopState(kit.flops[flop]);
+        states.set(flop, st);
+        mesh.userData.flopDrive = true;
+      }
+      mesh.userData.flopState = st;
+    }
     if (finish === 'trim') asTrim(mesh);
     if (finish === 'glow') asGlow(mesh);
     g.add(mesh);

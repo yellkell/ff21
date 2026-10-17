@@ -20,6 +20,7 @@
 import { type BufferGeometry, Mesh, MeshStandardMaterial, type Object3D, type Texture, TextureLoader, Vector2 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { registerFrameChart, rebakeMesh } from './paint.js';
+import type { FlopSpec } from './flop.js';
 
 const BASE = 'forge/';
 
@@ -206,7 +207,9 @@ export type Finish = 'shell' | 'trim' | 'glow';
 
 export interface GearKit {
   id: string;
-  meshes: Array<{ finish: Finish; geo: BufferGeometry }>;
+  /** `flop` names the floppy part a mesh belongs to (avatar/flop.ts). */
+  meshes: Array<{ finish: Finish; geo: BufferGeometry; flop?: string }>;
+  flops: Record<string, FlopSpec>;
   nrm: Texture;
   orm: Texture;
 }
@@ -216,6 +219,7 @@ interface GearEntry {
   tris: number;
   tex: number;
   finishes: Finish[];
+  flops?: Record<string, FlopSpec>;
 }
 
 let gearList: Record<string, GearEntry> | null = null;
@@ -258,17 +262,24 @@ export function loadForgeGear(id: string): Promise<GearKit | null> {
     if (!list?.[id]) return null;
     return Promise.all([new GLTFLoader().loadAsync(`${BASE}gear/${id}.glb`), loadTex(`gear/${id}_nrm.webp`), loadTex(`gear/${id}_orm.webp`)])
       .then(([gltf, nrm, orm]) => {
-        const kit: GearKit = { id, meshes: [], nrm, orm };
+        const flops = list[id].flops ?? {};
+        const kit: GearKit = { id, meshes: [], flops, nrm, orm };
         gltf.scene.traverse((o) => {
           const m = o as Mesh;
           if (!m.isMesh) return;
-          const finish = (['shell', 'trim', 'glow'] as const).find((f) => m.name.startsWith(f));
+          // "shell", or "shell@ear_l" for a floppy part (three may suffix a
+          // node name to keep it unique; the finish and flop are what count).
+          const name = (m.name || m.parent?.name || '').replace(/_\d+$/, '');
+          const finish = (['shell', 'trim', 'glow'] as const).find((f) => name.startsWith(f));
           if (!finish) return;
+          const at = name.indexOf('@');
+          const flop = at >= 0 && flops[name.slice(at + 1)] ? name.slice(at + 1) : undefined;
           m.updateWorldMatrix(true, false);
           const geo = m.geometry.clone().applyMatrix4(m.matrixWorld);
           geo.computeBoundingSphere();
+          if (flop && geo.boundingSphere) geo.boundingSphere.radius += flops[flop].len * (flops[flop].swing ?? 0.6);
           (m.material as MeshStandardMaterial).dispose();
-          kit.meshes.push({ finish, geo });
+          kit.meshes.push({ finish, geo, flop });
         });
         gearKits.set(id, kit);
         return kit;
@@ -447,7 +458,7 @@ export function fitGearKit(kit: GearKit, frame: string): GearKit {
     }
     return r;
   };
-  const meshes = kit.meshes.map(({ finish, geo }) => {
+  const meshes = kit.meshes.map(({ finish, geo, flop }) => {
     const g = geo.clone();
     const pos = g.getAttribute('position');
     const nrm = g.getAttribute('normal');
@@ -465,9 +476,18 @@ export function fitGearKit(kit: GearKit, frame: string): GearKit {
     }
     pos.needsUpdate = true;
     g.computeBoundingSphere();
-    return { finish, geo: g };
+    if (flop && g.boundingSphere) g.boundingSphere.radius += kit.flops[flop].len * (kit.flops[flop].swing ?? 0.6);
+    return { finish, geo: g, flop };
   });
-  const out: GearKit = { ...kit, meshes };
+  // The flops' pivots and directions ride the same fit.
+  const flops: Record<string, FlopSpec> = {};
+  for (const [name, f] of Object.entries(kit.flops)) {
+    const [rw, rd, sz, fz] = at(f.pivot[1]);
+    const dir: [number, number, number] = [f.dir[0] * rw, f.dir[1], f.dir[2] * rd];
+    const l = Math.hypot(...dir) || 1;
+    flops[name] = { ...f, pivot: [f.pivot[0] * rw, f.pivot[1], fz + (f.pivot[2] - sz) * rd], dir: [dir[0] / l, dir[1] / l, dir[2] / l] };
+  }
+  const out: GearKit = { ...kit, meshes, flops };
   fitted.set(key, out);
   return out;
 }

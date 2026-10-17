@@ -111,7 +111,17 @@ def build_piece(pid, spec):
     kit.set_gpu(scn)
     ref = gk.reference(spec["slot"])
     objs = spec["build"](ref)
-    groups = {f: [o for o in objs if o.get("finish") == f] for f in ("shell", "trim", "glow")}
+    # Parts tagged `flop` (gk.flop) are kept apart from the rest of their
+    # finish: each FLOP is its own mesh per finish, named "<finish>@<flop>",
+    # so the game can swing it on its own spring (avatar/forge.ts).
+    keys = []
+    for o in objs:
+        f = o.get("finish")
+        if f in ("shell", "trim", "glow"):
+            k = (f, o.get("flop", ""))
+            if k not in keys:
+                keys.append(k)
+    groups = {k: [o for o in objs if (o.get("finish"), o.get("flop", "")) == k] for k in keys}
     # HIGH: sculpt-density surfaces the SHELL's normal map is baked from
     # (an animal's fur tufts, a muzzle's folds), never exported.
     highs = [o for o in objs if o.get("finish") == "high"]
@@ -121,7 +131,16 @@ def build_piece(pid, spec):
         o.matrix_basis.identity()
         o.hide_render = True
     HIGH[0] = highs
-    finals = [o for o in (join_finish(groups[f], f) for f in ("shell", "trim", "glow")) if o is not None]
+    finals = []
+    for (f, fl) in keys:
+        o = join_finish(groups[(f, fl)], f)
+        if o is None:
+            continue
+        label = f"{f}@{fl}" if fl else f
+        o.name = label
+        o.data.name = label
+        o["flop"] = fl
+        finals.append(o)
     for o in finals:
         o.data.materials.clear()
         o.data.materials.append(finish_mat(o["finish"])[0])
@@ -143,31 +162,41 @@ def bake_piece(pid, spec, finals):
     nrm = kit.new_image(f"{pid}_nrm", size, "nrm")
     orm = kit.new_image(f"{pid}_orm", size, "orm")
     highs = HIGH[0]
-    shell = [o for o in finals if o["finish"] == "shell"]
-    if highs and shell:
-        # The shell from its sculpt, then everything else from its own
-        # bevels, into the same sheet (islands never overlap).
-        for o in highs:
-            o.hide_render = False
-        kit.bake(shell, [finish_mat("shell")[1]], "nrm", nrm, samples=1, high=highs, extrusion=spec.get("cage", 0.006), margin=6)
-        for o in highs:
-            o.hide_render = True
+    shells = [o for o in finals if o["finish"] == "shell"]
+    if highs and shells:
+        # Each shell mesh from the sculpt (a floppy ear is a shell mesh of
+        # its own, and a high → low bake takes one low at a time), then the
+        # trim and glow from their own bevels — each into its own sheet
+        # with a mask of its islands, and the sheets laid together by
+        # mask. (A second bake into one sheet would smear its margins over
+        # the islands already there.)
+        layers = []
+        for i, sh in enumerate(shells):
+            for o in highs:
+                o.hide_render = False
+            im = nrm if i == 0 else kit.new_image(f"{pid}_nrm_s{i}", size, "nrm")
+            kit.bake([sh], [finish_mat("shell")[1]], "nrm", im, samples=1, high=highs, extrusion=spec.get("cage", 0.006), margin=6)
+            for o in highs:
+                o.hide_render = True
+            mk = kit.new_image(f"{pid}_mask_s{i}", size, "orm")
+            kit.bake([sh], [finish_mat("shell")[1]], "mask", mk, samples=1, margin=0)
+            layers.append((kit.pixels(im), kit.pixels(mk)))
         rest = [o for o in finals if o["finish"] != "shell"]
         if rest:
-            # Trim and glow from their own bevels into a second sheet, then
-            # laid over the shell's wherever their islands are (a mask
-            # pass) — a second bake into the same sheet would smear its
-            # margins over the shell's edges.
             rtaps = [finish_mat(o["finish"])[1] for o in rest]
             nb = kit.new_image(f"{pid}_nrm_rest", size, "nrm")
-            mk = kit.new_image(f"{pid}_mask", size, "orm")
+            mk = kit.new_image(f"{pid}_mask_rest", size, "orm")
             kit.bake(rest, rtaps, "nrm", nb, samples=16, margin=6)
             kit.bake(rest, rtaps, "mask", mk, samples=1, margin=0)
-            A, B, M = kit.pixels(nrm), kit.pixels(nb), kit.pixels(mk)
-            sel = M[..., :1] > 0.5
-            out = A.copy()
-            out[..., :3] = np.where(sel, B[..., :3], A[..., :3])
-            nrm.pixels.foreach_set(out.astype(np.float32).ravel())
+            layers.append((kit.pixels(nb), kit.pixels(mk)))
+        out = layers[0][0].copy()
+        for img, m in layers[1:]:
+            sel = m[..., :1] > 0.5
+            out[..., :3] = np.where(sel, img[..., :3], out[..., :3])
+        # The first sheet's own islands win over its margins being overwritten.
+        sel0 = layers[0][1][..., :1] > 0.5
+        out[..., :3] = np.where(sel0, layers[0][0][..., :3], out[..., :3])
+        nrm.pixels.foreach_set(out.astype(np.float32).ravel())
     else:
         kit.bake(finals, taps, "nrm", nrm, samples=16, margin=6)
     kit.bake(finals, taps, "orm", orm, samples=48, margin=6)
@@ -186,14 +215,15 @@ def export_piece(pid, finals):
     for o in finals:
         c = o.copy()
         c.data = o.data.copy()
-        c.name = o["finish"]
-        c.data.name = o["finish"]
+        label = f'{o["finish"]}@{o["flop"]}' if o.get("flop") else o["finish"]
+        c["label"] = label
         kit.link(c)
         copies.append(c)
     for o in finals:
         o.name = o.name + "_scene"
     for c in copies:
-        c.name = c["finish"]
+        c.name = c["label"]
+        c.data.name = c["label"]
     kit.export_glb(copies, os.path.join(OUT, f"{pid}.glb"))
     for c in copies:
         bpy.data.objects.remove(c, do_unlink=True)
@@ -300,6 +330,10 @@ def main():
             size = bake_piece(pid, spec, finals)
             export_piece(pid, finals)
             entry = dict(slot=spec["slot"], tris=n, tex=size, finishes=[o["finish"] for o in finals])
+            if spec.get("flops"):
+                # Each floppy part: pivot (game space), dir (rest direction, root →
+                # tip), len (m), and its spring: stiff (1/s²), damp (1/s), swing (max rad).
+                entry["flops"] = spec["flops"]
             if "fit" in spec:
                 entry["fit"] = spec["fit"]  # a worn head's cranium, for the headgear (heads.ts HEAD_FIT)
             with open(os.path.join(OUT, "meta", f"{pid}.json"), "w") as f:

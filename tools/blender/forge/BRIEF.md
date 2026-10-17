@@ -68,6 +68,16 @@ the forms between the eyes continuous and rounded).
   so a low shell can carry sculpted detail (fur tufts, muzzle folds,
   panel seams). Keep the high within a few mm of the low shell.
 
+## Floppy parts
+
+A part that should swing (ears, whips, plumes, tails, cloth, fringes):
+tag every object of it `gk.fin(obj, finish, flop="name")` (mirrored copies
+get their own name), and give the spec `flops={"name": dict(pivot=(x, y,
+z), dir=(root → tip), len=m, stiff=…, damp=…, swing=rad, block=(x, y, z)
+optional)}`. Lower damp is floppier; stiff sets how quick (antennae 70 /
+3, a tail 45 / 2.6, a cape 38 / 3 with block toward the body). See
+docs/forge.md §3½.
+
 ## Spaces (game space: +y up, front is −z, metres)
 
 The kit authors everything in GAME space; `gk.reference(slot)` builds the
