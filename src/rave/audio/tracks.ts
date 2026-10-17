@@ -65,6 +65,7 @@ import bringitonUrl from '../assets/music/bringiton.m4a';
 import eraseUrl from '../assets/music/erase.m4a';
 import indecisiveUrl from '../assets/music/indecisive.m4a';
 import climbUrl from '../assets/music/climb.m4a';
+import eliteUrl from '../assets/music/elite.m4a';
 import type { MoveKind } from '../config.js';
 
 /** Where a record is allowed to play. 'credits' is a role of one: the
@@ -611,6 +612,35 @@ export const TRACKS: Track[] = [
     // scale on a maxed music slider, so the music-bus limiter catches it the
     // same as AWAKENING. (It arrived as Climb.wav, but the file inside is
     // AAC in an MP4 box, so it goes in as .m4a with no re-encode.)
+    roles: ['raid'],
+  },
+  {
+    id: 'elite',
+    title: 'ELITE',
+    url: eliteUrl,
+    bpm: 130.0,
+    downbeat: 0.049,
+    seconds: 280.65,
+    lufs: -14.8,
+    // 130 flat. The phase lock's loudest reading is 65, the half-time
+    // accent again, but the kick sits on every beat (the off-eighths carry
+    // 0.85 of it), and each half of the file locks to 130.000 on its own.
+    // Kick starts drift under 2 ms between the first and last thirds. Sound
+    // starts 49 ms in (the AAC lead-in), and that's bar 1 beat 1: every
+    // section change lands on a four-bar line counted from it, and the
+    // slam back out of the break lands on beat 352.001.
+    //
+    // A RADIO EDIT. The master runs 5:28 with a long breakdown after its
+    // body. This file stops where the body does, on the bar line at 4:40.6
+    // (bar 153), and the last eight-bar phrase (265.88 s on) fades to
+    // nothing. It is the one re-encoded record in the box: AAC at 192k, 3 dB
+    // down, because the master already peaks +2.9 dB over full scale and a
+    // re-encode at its own level overshot to +5.2. The gain-match puts the
+    // 3 dB back.
+    //
+    // The beat drops out at 158.88 s. Only a tick on each beat carries
+    // through the gap, then the record slams back in at 162.51 s (bar 89).
+    breaks: [[158.878, 162.511]],
     roles: ['raid'],
   },
   {

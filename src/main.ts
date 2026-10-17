@@ -24,7 +24,7 @@ import { myPackedLook } from './avatar/paint.js';
 import { initGazette } from './net/gazette.js';
 import { preloadBattleMusic } from './audio/battleMusic.js';
 import { enterMenuMusic, preloadMenuMusic } from './audio/menuMusic.js';
-import { runBootIntro } from './experience/BootIntro.js';
+import { raiseCurtain, runBootIntro } from './experience/BootIntro.js';
 import { ensureAudio } from './audio/sfx.js';
 import { preflightMic } from './audio/micPermission.js';
 import { preloadTutorVoice } from './audio/tutorVoice.js';
@@ -372,6 +372,12 @@ World.create(container, {
     // No passthrough in a plain-VR fallback: a saved AR backdrop would render
     // as a black void, so promote it to the default arena, NEON.
     if (sessionMode === SessionMode.ImmersiveVR && app.environment === 'ar') app.environment = 'neon';
+    // Black out FIRST: the headset presents from the session's first frame,
+    // long before the poll below sees it — without this the menu and the
+    // alley flash up before the intro (BootIntro.raiseCurtain). It stays up
+    // until the session does come, however long a prompt takes — the
+    // landing covers the canvas meanwhile, so nobody sees it.
+    if (!introPlayed) raiseCurtain(world.camera);
     launchXR(world, { sessionMode });
 
     // Poll for the session on a TIMER, not requestAnimationFrame: Quest
