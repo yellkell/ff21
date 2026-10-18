@@ -92,6 +92,17 @@
         camera.position.set(0, maxH * 0.55, -d);
         camera.lookAt(0, maxH * 0.48, 0);
       }
+      // ?cam=x,y,z&look=x,y,z[&fov=70]: a free camera — e.g. your eye on the
+      // deck (0,1.6,-3.6) looking up at a titan the way the fight shows it.
+      const cam = params.get('cam');
+      if (cam) {
+        const c = cam.split(',').map(Number);
+        const l = (params.get('look') ?? '0,2,0').split(',').map(Number);
+        camera.fov = Number(params.get('fov') ?? 70);
+        camera.updateProjectionMatrix();
+        camera.position.set(c[0], c[1], c[2]);
+        camera.lookAt(l[0], l[1], l[2]);
+      }
       renderer.render(scene, camera);
       // Triangles and draw calls per titan, for the budget.
       window.__stats = placed.map((p) => {

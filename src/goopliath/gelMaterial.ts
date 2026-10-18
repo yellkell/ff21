@@ -470,6 +470,12 @@ export function createGelMaterial(): GelUniforms {
     setEnvironment(tex) {
       material.uniforms.uEnvMap.value = tex;
       material.uniforms.uEnvMix.value = tex ? 1 : 0;
+      // BLACK CHROME is opaque, so it draws in the opaque pass: the belt's
+      // glass and his shots' glow sprites (transparent, no depth write) then
+      // draw after it and test against his real surface depth, rather than
+      // being painted over by a "transparent" body that covers them whole.
+      material.transparent = !tex;
+      material.needsUpdate = true;
     },
   };
 }
