@@ -55,6 +55,11 @@ OUT = os.path.join(kit.PUBLIC, "frames")
 COLS, ROWS = 60, 62            # the low mesh: quads round × rows down
 HCOLS, HROWS = 384, 420        # the high mesh
 NRM, ORM = 1024, 512
+# The body's share of AMBIENT light (scales the baked occlusion). The broken
+# bakes ran LEAN and CURVED at about this (fully occluded = 0.18) and
+# STANDARD / HEAVY at 1. The user picked the darker ones' colour: the body's
+# paint then comes from the scene's key lights, not a flat ambient wash.
+FRAME_AMBIENT = 0.2
 NECK_TOP = 0.488               # the head's seat is shared (boxer.ts NECK_SEAT)
 
 # THE BLANK's rings (avatar/mannequin.ts BODY_RINGS): y, half-width,
@@ -427,14 +432,22 @@ def bake_frame(fid, low, high):
     nrm = kit.new_image(f"{fid}_nrm", NRM, "nrm")
     orm = kit.new_image(f"{fid}_orm", ORM, "orm")
     kit.bake([low], [t], "nrm", nrm, samples=1, high=[high], extrusion=0.006)
-    high.hide_render = True
+    # The occlusion bake sees ONLY this frame. The frames built before it
+    # still stand at the origin, and they used to bake into it: LEAN came
+    # out black inside STANDARD, CURVED black inside HEAVY save the bust
+    # and glutes that poke through it.
+    others = [o for o in bpy.context.scene.objects if o.type == "MESH" and o is not low and not o.hide_render]
+    for o in others + [high]:
+        o.hide_render = True
     kit.bake([low], [t], "orm", orm, samples=64)
-    high.hide_render = False
+    for o in others + [high]:
+        o.hide_render = False
     a = kit.pixels(nrm)
     a[..., 3] = 1
     kit.write_webp(os.path.join(OUT, f"{fid}_nrm.webp"), a, 92)
     b = kit.pixels(orm)
     b[..., 3] = 1
+    b[..., 0] *= FRAME_AMBIENT
     kit.write_webp(os.path.join(OUT, f"{fid}_orm.webp"), b, 90)
     return shell
 

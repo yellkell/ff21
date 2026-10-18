@@ -151,7 +151,11 @@ export class GelCreature {
     this.gel = createGelMaterial();
     this.gelMesh = new Mesh(new BoxGeometry(2, 2, 2), this.gel.material);
     this.gelMesh.frustumCulled = false;
-    this.gelMesh.renderOrder = 2; // after opaque eyes so blending sees them
+    // Sorted by distance like any other see-through thing (the eyes are
+    // opaque, so they're drawn before it regardless). A forced late order
+    // painted the gel over every glow in front of him that writes no
+    // depth — his own shots leaving his fists, the belt held up over him.
+    this.gelMesh.renderOrder = 0;
     this.group.add(this.gelMesh);
 
     // Contact shadow — grounds the creature on the REAL floor in passthrough.

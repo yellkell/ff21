@@ -237,7 +237,9 @@ def build(K):
     tv0, tv1 = _tz(head, 1.347), _tz(head, 1.381)
     uv = _ux(head, 0.185, (tv0 + tv1) / 2)
     put("EYE_0", head.plate("visor_bar", "visor", -uv, uv, tv0, tv1, off=0.01, th=0.007, nu=16, nt=2, bevel=0.0))
-    put("HEAD", head.plate("jaw", "navy", -uw, uw, _tz(head, 1.245), tw0, off=0.003, th=0.03, nu=16, nt=4, cw=0.016))
+    # The jaw lies flush (proud only 1.3 cm, under the visor bar's 1.7):
+    # thicker, its lip hid his eye from the deck below.
+    put("HEAD", head.plate("jaw", "navy", -uw, uw, _tz(head, 1.245), tw0, off=0.003, th=0.01, nu=16, nt=4, cw=0.008))
     ep = head.at(0.0, (tv0 + tv1) / 2, 0.0)[0]
     R.extra.append(("EYEFX", V((0, ep.y + 0.07, ep.z)), "HEAD"))
     # light bar on the roof
@@ -254,8 +256,11 @@ def build(K):
     put("HEAD", K.cyl("ant_spring", "steel", ab + V((0, 0, 0.035)), 0.008, 0.03, 10))
     put("HEAD", K.cyl("ant_whip", "rubber", ab + V((0, 0, 0.17)), 0.0035, 0.24, 8, r2=0.0022))
     put("HEAD", K.sphere("ant_tip", "graphite", ab + V((0, 0, 0.29)), 0.007, 10, 6))
-    # collar ring the cupola sits in (chest)
-    put("CHEST", K.lathe("collar", "graphite", [(0.0, 1.27), (0.23, 1.27), (0.25, 1.29), (0.245, 1.315), (0.0, 1.315)], 40))
+    # collar ring the cupola sits in (chest). Kept inside the head's own
+    # silhouette and well under the visor: it used to stand wider than the
+    # head right up to the eye line, and from the deck below its front rim
+    # was a black bar across the middle of the visor.
+    put("CHEST", K.lathe("collar", "graphite", [(0.0, 1.25), (0.19, 1.25), (0.205, 1.265), (0.2, 1.28), (0.0, 1.28)], 40))
 
     # ── WAIST: a turret ring between hull and chest ──────────────────────
     put("TITAN", K.lathe("waist", "graphite", [(0.0, 0.53), (0.22, 0.53), (0.19, 0.57), (0.18, 0.62), (0.2, 0.65), (0.0, 0.65)], 36))
