@@ -15,7 +15,7 @@
  * the `players` collection (same hackathon-grade shape as `lobbies`).
  */
 
-import { FIREBASE_ENABLED, cloud, cloudNote, cloudUid, type Cloud } from './firebase.js';
+import { FIREBASE_ENABLED, cloud, cloudNote, cloudUid, cloudUnavailable, type Cloud } from './firebase.js';
 import { boardRows, fetchBoard, postScore, runBoardsFor, runPostBoards, type BoardRow } from './boards.js';
 import { xpForArcade, xpForBot, xpForCampaign, xpForMatch, xpForTraining, xpForTutorial } from '../menu/progression.js';
 import { myPackedLook } from '../avatar/paint.js';
@@ -415,11 +415,18 @@ async function firestore(): Promise<Cloud | null> {
   return c;
 }
 
-// Becomes true once the boot load has settled (doc fetched, created, or the
-// attempt failed) — so `profile.xp` is real, not the pre-load 0. The promotion
-// celebration waits for this before baselining, or a cloud load looks like an
-// instant promotion on every login.
+// Becomes true once `profile.xp` is real, not the pre-load 0: my doc has been
+// read (or created), or there will be no cloud this session at all. The
+// promotion celebration waits for this before baselining, or a cloud load
+// looks like an instant promotion on every login.
 let loaded = false;
+
+// Has my doc actually been READ (or created) this session? Until it has, every
+// number on `profile` is the pre-load default plus whatever this session
+// earned — and writing that over the doc would bank a Diamond's XP as a
+// Bronze's. So writeMine holds off until this is true, and the load folds the
+// session's earnings in on top of the doc's numbers.
+let synced = false;
 
 /** Has the boot profile load settled? (XP is real, not the pre-load 0.) */
 export function profileReady(): boolean {
@@ -436,143 +443,233 @@ export function initLeaderboard(): void {
     /* fall through to the derived callsign */
   }
   profile.name = stored ?? `IRON-${profile.id.replace(/-/g, '').slice(0, 4).toUpperCase()}`;
-  void (async () => {
-    const h = await firestore();
-    if (!h) {
-      loaded = true; // no cloud — local-only play, baseline off the current XP
-      return;
-    }
-    // ADOPT THE AUTH UID as the player id. The localStorage uuid above is a
-    // placeholder that keeps offline play working and gives the derived
-    // callsign something to chew on; once the cloud is open, the anonymous
-    // uid is who you are. It has to be: the security rules identify a row by
-    // its document name matching request.auth.uid, so a doc keyed by a
-    // client-invented uuid is a doc nobody is allowed to write.
-    profile.id = h.uid;
-    try {
-      const ref = h.fs.doc(h.db, 'players', profile.id);
-      const snap = await h.fs.getDoc(ref);
-      const season = seasonIndex();
-      if (snap.exists()) {
-        const d = snap.data();
-        // Ladder points are PER SEASON: read the live season's bank. A new
-        // season SOFT-RESETS — your previous final carries over capped at
-        // LADDER.seasonCarryCap, so the summit restarts within reach (season
-        // 1 seeds from the pre-season lifetime score the same way). The doc
-        // self-migrates so the season board sees the old guard.
-        const banked = d[seasonScoreField(season)] as number | undefined;
-        const prevFinal =
-          season === 1 ? ((d.score as number) ?? 0) : ((d[seasonScoreField(season - 1)] as number) ?? 0);
-        profile.score = banked ?? Math.min(LADDER.seasonCarryCap, prevFinal);
-        if (banked === undefined && profile.score > 0) {
-          writeMine({ [seasonScoreField(season)]: profile.score, score: profile.score });
-        }
-        // INACTIVITY DECAY, applied lazily: every full decayDays-block since
-        // the last ranked bout hands back decayLp (floored at 0). The anchor
-        // advances by exactly the blocks charged, so idle time never
-        // double-bills and a mid-block return keeps its partial credit.
-        {
-          const dayMs = 86_400_000;
-          let anchor = (d.lastPlayedAt as number) ?? 0;
-          if (!anchor) {
-            anchor = Date.now();
-            writeMine({ lastPlayedAt: anchor });
-          }
-          const blocks = Math.floor((Date.now() - anchor) / (LADDER.decayDays * dayMs));
-          if (blocks > 0) {
-            profile.score = Math.max(0, profile.score - blocks * LADDER.decayLp);
-            writeMine({
-              [seasonScoreField(season)]: profile.score,
-              score: profile.score,
-              lastPlayedAt: anchor + blocks * LADDER.decayDays * dayMs,
-            });
-          }
-        }
-        profile.elo = (d.elo as number) ?? 1000;
-        profile.training = (d.training as number) ?? 0;
-        profile.duo = (d.duo as number) ?? 0;
-        profile.ffa = (d.ffa as number) ?? 0;
-        profile.xp = (d.xp as number) ?? 0;
-        profile.note = (d.note as string) ?? '';
-        profile.awards = (d.awards as Partial<Record<SeasonAward, number>>) ?? {};
-        profile.awardedThrough = (d.awardedThrough as number) ?? season - 1;
-        profile.gauntletBest = (d.gauntletBest as number) ?? 0;
-        profile.gauntletBestHc = (d.gauntletBestHc as number) ?? 0;
-        profile.raidBest = (d.raidBest as number) ?? 0;
-        profile.raidBestHc = (d.raidBestHc as number) ?? 0;
-        profile.goopBest = (d.goopBest as number) ?? 0;
-        profile.beltBest = (d.beltBest as number) ?? 0;
-        // Belts won offline, or before belts were synced (a boss beaten long
-        // ago still hands its title belt over): bring the card up to date.
-        syncBeltBest();
-        // Seed the look-mirror key so an unchanged look never re-writes; the
-        // syncLookMirror() below then catches up a look painted offline.
-        mirroredLook = `${(d.tone as string) ?? ''}|${(d.look as string) ?? ''}`;
-        // A rename FILED FOR this account rides `renameTo`/`renameAt` — doc
-        // fields the client's ordinary writes never touch, so a correction
-        // survives however many times an old build's name re-sync (below)
-        // stamps the stale callsign back over `name`. Adopt it unless the
-        // player has typed a NEWER name themselves. (This is what lets a
-        // rename be repaired server-side at all: `name` alone can't carry a
-        // correction, because every client write re-asserts the local name.)
-        {
-          const renameTo = d.renameTo as string | undefined;
-          const renameAt = (d.renameAt as number) ?? 0;
-          let localAt = 0;
-          try {
-            localAt = parseInt(localStorage.getItem('ff-player-name-at') ?? '0', 10) || 0;
-          } catch {
-            /* no stamp readable — treat the local name as old */
-          }
-          if (renameTo && renameTo !== profile.name && localAt < renameAt) {
-            profile.name = renameTo;
-            try {
-              localStorage.setItem('ff-player-name', renameTo);
-              localStorage.setItem('ff-player-name-at', String(Date.now()));
-            } catch {
-              /* session-only adoption — re-adopts next boot */
-            }
-          }
-        }
-        // A locally renamed player syncs the doc's stale callsign.
-        if ((d.name as string) !== profile.name) writeMine({});
-        // Seasons that closed since our last visit: claim any honours.
-        void claimSeasonAwards(season);
-      } else {
-        profile.awardedThrough = season - 1;
-        await h.fs.setDoc(ref, {
-          name: profile.name,
-          score: 0,
-          elo: 1000,
-          training: 0,
-          duo: 0,
-          ffa: 0,
-          xp: 0,
-          note: '',
-          awards: {},
-          awardedThrough: season - 1,
-          gauntletBest: 0,
-          gauntletBestHc: 0,
-          raidBest: 0,
-          raidBestHc: 0,
-          goopBest: 0,
-          beltBest: 0,
-          look: myPackedLook(),
-          tone: customization.avatar,
-          gear: myPackedGear(),
-          pad: customization.platform,
-          lastPlayedAt: Date.now(),
-          updatedAt: h.fs.serverTimestamp(),
-        });
-        mirroredLook = `${customization.avatar}|${myPackedLook()}|${myPackedGear()}|${customization.platform}`;
+  void loadProfileUntilSynced();
+}
+
+/** How long before the next try at the profile — doubles, capped. */
+let profileRetryMs = 5_000;
+
+/**
+ * THE LOAD MUST LAND. It used to be one shot at boot: a sign-in that timed out
+ * while the arena was building, or a read that failed on a waking network,
+ * left `profile` at its defaults for the whole session — 0 XP and BRONZE on
+ * the player's own card while the boards and stats.html, which read the doc
+ * directly, still showed their Diamond. So keep trying until it does.
+ */
+async function loadProfileUntilSynced(): Promise<void> {
+  await loadProfile();
+  if (synced) return;
+  if (cloudUnavailable()) {
+    loaded = true; // no cloud this session — local-only play, baseline off the current XP
+    return;
+  }
+  setTimeout(() => void loadProfileUntilSynced(), profileRetryMs);
+  profileRetryMs = Math.min(60_000, profileRetryMs * 2);
+}
+
+/** What this session earned before my doc was read: the numbers `profile`
+ *  holds over its defaults. The load folds these in on top of the doc's. */
+function earnedBeforeLoad() {
+  return {
+    xp: profile.xp,
+    score: profile.score,
+    elo: profile.elo - 1000,
+    duo: profile.duo,
+    ffa: profile.ffa,
+    training: profile.training,
+    gauntletBest: profile.gauntletBest,
+    gauntletBestHc: profile.gauntletBestHc,
+    raidBest: profile.raidBest,
+    raidBestHc: profile.raidBestHc,
+    goopBest: profile.goopBest,
+    note: profile.note,
+  };
+}
+
+/** One attempt at reading (or creating) my doc. Leaves `synced` false on failure. */
+async function loadProfile(): Promise<void> {
+  const h = await firestore();
+  if (!h) return;
+  // ADOPT THE AUTH UID as the player id. The localStorage uuid above is a
+  // placeholder that keeps offline play working and gives the derived
+  // callsign something to chew on; once the cloud is open, the anonymous
+  // uid is who you are. It has to be: the security rules identify a row by
+  // its document name matching request.auth.uid, so a doc keyed by a
+  // client-invented uuid is a doc nobody is allowed to write.
+  profile.id = h.uid;
+  try {
+    const ref = h.fs.doc(h.db, 'players', profile.id);
+    const snap = await h.fs.getDoc(ref);
+    const season = seasonIndex();
+    if (snap.exists()) {
+      const d = snap.data();
+      // The doc is in hand: from here my writes carry real numbers.
+      const early = earnedBeforeLoad();
+      synced = true;
+      // Ladder points are PER SEASON: read the live season's bank. A new
+      // season SOFT-RESETS — your previous final carries over capped at
+      // LADDER.seasonCarryCap, so the summit restarts within reach (season
+      // 1 seeds from the pre-season lifetime score the same way). The doc
+      // self-migrates so the season board sees the old guard.
+      const banked = d[seasonScoreField(season)] as number | undefined;
+      const prevFinal =
+        season === 1 ? ((d.score as number) ?? 0) : ((d[seasonScoreField(season - 1)] as number) ?? 0);
+      profile.score = banked ?? Math.min(LADDER.seasonCarryCap, prevFinal);
+      if (banked === undefined && profile.score > 0) {
+        writeMine({ [seasonScoreField(season)]: profile.score, score: profile.score });
       }
-    } catch {
-      leaderboard.status = 'leaderboard unreachable';
+      // INACTIVITY DECAY, applied lazily: every full decayDays-block since
+      // the last ranked bout hands back decayLp (floored at 0). The anchor
+      // advances by exactly the blocks charged, so idle time never
+      // double-bills and a mid-block return keeps its partial credit.
+      {
+        const dayMs = 86_400_000;
+        let anchor = (d.lastPlayedAt as number) ?? 0;
+        if (!anchor) {
+          anchor = Date.now();
+          writeMine({ lastPlayedAt: anchor });
+        }
+        const blocks = Math.floor((Date.now() - anchor) / (LADDER.decayDays * dayMs));
+        if (blocks > 0) {
+          profile.score = Math.max(0, profile.score - blocks * LADDER.decayLp);
+          writeMine({
+            [seasonScoreField(season)]: profile.score,
+            score: profile.score,
+            lastPlayedAt: anchor + blocks * LADDER.decayDays * dayMs,
+          });
+        }
+      }
+      profile.elo = (d.elo as number) ?? 1000;
+      profile.training = (d.training as number) ?? 0;
+      profile.duo = (d.duo as number) ?? 0;
+      profile.ffa = (d.ffa as number) ?? 0;
+      profile.xp = (d.xp as number) ?? 0;
+      profile.note = (d.note as string) ?? '';
+      profile.awards = (d.awards as Partial<Record<SeasonAward, number>>) ?? {};
+      profile.awardedThrough = (d.awardedThrough as number) ?? season - 1;
+      profile.gauntletBest = (d.gauntletBest as number) ?? 0;
+      profile.gauntletBestHc = (d.gauntletBestHc as number) ?? 0;
+      profile.raidBest = (d.raidBest as number) ?? 0;
+      profile.raidBestHc = (d.raidBestHc as number) ?? 0;
+      profile.goopBest = (d.goopBest as number) ?? 0;
+      profile.beltBest = (d.beltBest as number) ?? 0;
+      // Anything banked before the doc was read (the load can land minutes
+      // late now — see loadProfileUntilSynced) goes ON TOP, never instead.
+      if (early.note) profile.note = early.note;
+      const earned = early.xp || early.score || early.elo || early.duo || early.ffa;
+      const bested =
+        early.training > profile.training ||
+        early.gauntletBest > profile.gauntletBest ||
+        early.gauntletBestHc > profile.gauntletBestHc ||
+        early.raidBest > profile.raidBest ||
+        early.raidBestHc > profile.raidBestHc ||
+        early.goopBest > profile.goopBest;
+      if (earned || bested || early.note) {
+        profile.xp += early.xp;
+        profile.score = Math.max(0, profile.score + early.score);
+        profile.elo = Math.max(100, profile.elo + early.elo);
+        profile.duo = Math.max(0, profile.duo + early.duo);
+        profile.ffa = Math.max(0, profile.ffa + early.ffa);
+        profile.training = Math.max(profile.training, early.training);
+        profile.gauntletBest = Math.max(profile.gauntletBest, early.gauntletBest);
+        profile.gauntletBestHc = Math.max(profile.gauntletBestHc, early.gauntletBestHc);
+        profile.raidBest = Math.max(profile.raidBest, early.raidBest);
+        profile.raidBestHc = Math.max(profile.raidBestHc, early.raidBestHc);
+        profile.goopBest = Math.max(profile.goopBest, early.goopBest);
+        writeMine({
+          [seasonScoreField(season)]: profile.score,
+          score: profile.score,
+          elo: profile.elo,
+          xp: profile.xp,
+          duo: profile.duo,
+          ffa: profile.ffa,
+          training: profile.training,
+          gauntletBest: profile.gauntletBest,
+          gauntletBestHc: profile.gauntletBestHc,
+          raidBest: profile.raidBest,
+          raidBestHc: profile.raidBestHc,
+          goopBest: profile.goopBest,
+          note: profile.note,
+        });
+      }
+      // Belts won offline, or before belts were synced (a boss beaten long
+      // ago still hands its title belt over): bring the card up to date.
+      syncBeltBest();
+      // Seed the look-mirror key so an unchanged look never re-writes; the
+      // syncLookMirror() below then catches up a look painted offline.
+      mirroredLook = `${(d.tone as string) ?? ''}|${(d.look as string) ?? ''}`;
+      // A rename FILED FOR this account rides `renameTo`/`renameAt` — doc
+      // fields the client's ordinary writes never touch, so a correction
+      // survives however many times an old build's name re-sync (below)
+      // stamps the stale callsign back over `name`. Adopt it unless the
+      // player has typed a NEWER name themselves. (This is what lets a
+      // rename be repaired server-side at all: `name` alone can't carry a
+      // correction, because every client write re-asserts the local name.)
+      {
+        const renameTo = d.renameTo as string | undefined;
+        const renameAt = (d.renameAt as number) ?? 0;
+        let localAt = 0;
+        try {
+          localAt = parseInt(localStorage.getItem('ff-player-name-at') ?? '0', 10) || 0;
+        } catch {
+          /* no stamp readable — treat the local name as old */
+        }
+        if (renameTo && renameTo !== profile.name && localAt < renameAt) {
+          profile.name = renameTo;
+          try {
+            localStorage.setItem('ff-player-name', renameTo);
+            localStorage.setItem('ff-player-name-at', String(Date.now()));
+          } catch {
+            /* session-only adoption — re-adopts next boot */
+          }
+        }
+      }
+      // A locally renamed player syncs the doc's stale callsign.
+      if ((d.name as string) !== profile.name) writeMine({});
+      // Seasons that closed since our last visit: claim any honours.
+      void claimSeasonAwards(season);
+    } else {
+      profile.awardedThrough = season - 1;
+      // A brand-new player — but not necessarily a blank one: a session that
+      // played before the doc could be made keeps what it banked.
+      await h.fs.setDoc(ref, {
+        name: profile.name,
+        [seasonScoreField(season)]: profile.score,
+        score: profile.score,
+        elo: profile.elo,
+        training: profile.training,
+        duo: profile.duo,
+        ffa: profile.ffa,
+        xp: profile.xp,
+        note: profile.note,
+        awards: {},
+        awardedThrough: season - 1,
+        gauntletBest: profile.gauntletBest,
+        gauntletBestHc: profile.gauntletBestHc,
+        raidBest: profile.raidBest,
+        raidBestHc: profile.raidBestHc,
+        goopBest: profile.goopBest,
+        beltBest: profile.beltBest,
+        look: myPackedLook(),
+        tone: customization.avatar,
+        gear: myPackedGear(),
+        pad: customization.platform,
+        lastPlayedAt: Date.now(),
+        // firestore.rules stamped(): no `at`, no write — this create was being
+        // refused outright, and only a later merge write ever made the doc.
+        at: Date.now(),
+        updatedAt: h.fs.serverTimestamp(),
+      });
+      synced = true;
+      mirroredLook = `${customization.avatar}|${myPackedLook()}|${myPackedGear()}|${customization.platform}`;
     }
-    loaded = true; // XP is now real (or the load failed) — safe to baseline
-    syncLookMirror(); // a look painted since the doc's last visit catches up
-    void refreshLeaderboard(true);
-  })();
+  } catch {
+    leaderboard.status = 'leaderboard unreachable';
+  }
+  if (!synced) return; // try again shortly — loadProfileUntilSynced
+  loaded = true; // XP is now real — safe to baseline
+  syncLookMirror(); // a look painted since the doc's last visit catches up
+  void refreshLeaderboard(true);
 }
 
 /** The mirrored `${tone}|${look}` last written to (or read off) my doc —
@@ -864,6 +961,10 @@ async function claimSeasonAwards(current: number): Promise<void> {
 }
 
 function writeMine(fields: Record<string, unknown>): void {
+  // Not before my doc has been read: these numbers would be the pre-load
+  // defaults, and a merge write of them is how a Diamond banks as a Bronze.
+  // What's earned meanwhile stays on `profile`, and the load folds it in.
+  if (!synced) return;
   void (async () => {
     const h = await firestore();
     if (!h) return;

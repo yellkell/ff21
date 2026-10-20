@@ -182,9 +182,16 @@ export function cloud(): Promise<Cloud | null> {
       const app = appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
       const auth = authMod.getAuth(app);
 
-      // The SDK restores a previous anonymous session from IndexedDB, so this
-      // usually returns the SAME uid the headset had last time rather than
-      // minting a new player on every boot.
+      // The SDK restores the previous session from IndexedDB — but LATER:
+      // straight after getAuth() `currentUser` is always null. So wait for the
+      // restore, and keep whoever comes back. signInAnonymously() is not a
+      // safe stand-in for that wait: it only hands back the stored user while
+      // that user is still ANONYMOUS. An account that was RECOVERED (custom
+      // token) or has an email attached (PROTECT, the recover link) no longer
+      // is, and signInAnonymously() quietly mints a brand-new uid over it —
+      // a fresh players/ doc, 0 XP, Bronze, while the real profile sits
+      // untouched under the old uid.
+      await withTimeout(auth.authStateReady(), 'auth restore');
       const cred = auth.currentUser ?? (await withTimeout(authMod.signInAnonymously(auth), 'sign-in')).user;
 
       live = { app, auth, db: fs.getFirestore(app), fs, uid: cred.uid };
@@ -245,6 +252,13 @@ export function currentIdToken(): string {
 /** True once the cloud is open and usable. */
 export function cloudReady(): boolean {
   return cloudState.status === 'ready';
+}
+
+/** True when there will be no cloud this session however often it is asked
+ *  for — switched off, a probe, or a permanent failure. A plain network blip
+ *  is NOT this: that one is worth retrying. */
+export function cloudUnavailable(): boolean {
+  return !FIREBASE_ENABLED || isProbe() || !!dead;
 }
 
 /**
