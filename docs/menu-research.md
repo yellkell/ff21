@@ -89,6 +89,32 @@ Counts begin from the default, tutorial-complete lobby and count menu presses up
 
 The currency path deliberately gains one press so shopping no longer occupies the personal equipment landing. These counts are a code-path analysis, not measured completion times. The expected improvement is predictability and scope clarity, not a universal reduction in clicks.
 
+## Second iteration: the Quest rail (24 October 2026)
+
+The native Meta Quest build iterated on this lobby on a headset, and its rail comes back here. The three panels keep their sizes, positions and ray targets; only the tabs and what sits under them change.
+
+| Area | Destination | Contents and reason |
+| --- | --- | --- |
+| Center | Career | The campaign itself, straight under the tab strip. The lobby still opens here. |
+| Center | Versus | Every way to fight in one grid: Quick Match, Ranked, Custom Games, 2v2, Free for All, Co-op Raid, Aim Training (Shoot Back beside it) and the Tutorial replay. Practice and the Play families are gone. |
+| Center | Rave Raid | A door: one press walks into the foyer. |
+| Center | Club | A door: one press knocks, and the slab reads out the wait while the house wakes. |
+| Left | Rankings | Unchanged. |
+| Left | News | Unchanged, plus a standing NOW AVAILABLE ON THE META QUEST STORE strap over every edition. |
+| Right | Locker / Store | Unchanged. |
+| Right | Settings | A cog at the end of the strip, not a named tab. |
+
+Activity left the strip. Its three counts ride the doors they describe: the queue on Quick Match, forming squads on Co-op Raid, the club's head count on the Club tab's badge and face. The menus never say "bots": the opponent while a quick match searches is a rival, the lobby's no-wait button is FIGHT NOW, the bout panel is THE BOUT.
+
+| Task | First iteration | Quest rail |
+| --- | --- | --- |
+| Quick match | Versus family, Quick Match: 2 | Versus, Quick Match: 2 |
+| Aim training | Practice, Aim Training: 2 | Versus, Aim Training: 2 |
+| Campaign | already up: 0 | already up: 0 |
+| Rave Raid | Rave Raid family, Enter: 2 | Rave Raid: 1 |
+| Club | Social, Enter Club: 2 | Club: 1 |
+| Co-op raid | Rave Raid family, Co-op Raid: 2 | Versus, Co-op Raid: 2 |
+
 ## Validation and next iteration
 
 The wrap smoke test covers fresh-save onboarding, every new family, return to the remembered family, Club entry/return, private-room navigation, direct Store entry and return, and the existing settings, equipment, paint, news and profile flows. Canvas captures should be checked for readable copy, tab separation and action hierarchy. Typecheck/build verify integration.

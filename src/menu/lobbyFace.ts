@@ -114,7 +114,7 @@ function browser(mode: ArcadeMode): LobbyFace {
     const half = (INNER - 20) / 2;
     buttons.push(
       { id: 'lobby-host', label: 'MAKE LOBBY', sub: 'open the door', x: M, y: footY, w: half, h: 96, primary: true },
-      { id: 'lobby-vsbots', label: 'VS BOTS', sub: 'no waiting', x: M + half + 20, y: footY, w: half, h: 96 },
+      { id: 'lobby-vsbots', label: 'FIGHT NOW', sub: 'no waiting', x: M + half + 20, y: footY, w: half, h: 96 },
     );
   }
   buttons.push({ id: 'lobby-close', label: 'CLOSE', x: LOBBY_W / 2 - 130, y: LOBBY_H - 104, w: 260, h: 80, small: true });

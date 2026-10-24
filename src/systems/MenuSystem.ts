@@ -1452,7 +1452,8 @@ export class MenuSystem extends createSystem({}) {
         void refreshGazette(true);
         break;
       case 'gazette-close':
-        wrapNav.town = 'town';
+        // NEWS stays up on the wing (there is no ACTIVITY tab to fall back
+        // to now); closing only puts THE READER down.
         app.readerOpen = false;
         break;
       case 'gazette-reader':
@@ -2249,7 +2250,7 @@ export class MenuSystem extends createSystem({}) {
     // tutorial keeps its guided flow: no panel there.
     if (app.state === 'playing' && app.mode === 'bot' && match.phase === 'playing' && !app.tutorial) {
       return {
-        title: 'BOT BOUT',
+        title: 'THE BOUT', // the menus never say "bots"
         buttons: this.forfeitButtons('FORFEIT'),
         status: this.confirmForfeit ? 'give up the bout?' : this.botLine(),
         loadout: false,

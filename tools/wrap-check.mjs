@@ -7,9 +7,9 @@
  *
  * Boots the game in headless Chromium (the IWSDK dev plugin's IWER
  * emulator provides WebXR), enters the arena, and drives the TABBED wrap
- * (MENUS 2) through its dev hook (window.__ff2.wrap): the center slab's
- * PLAY / PRACTICE / SOCIAL tabs and PLAY's game families, the left wing's
- * ACTIVITY / RANKINGS / NEWS, the right wing's LOCKER / STORE / SETTINGS,
+ * (MENUS 2, on the Quest rail) through its dev hook (window.__ff2.wrap): the
+ * center slab's CAREER / VERSUS / RAVE RAID / CLUB, the left wing's
+ * RANKINGS / NEWS, the right wing's LOCKER / STORE and its settings cog,
  * and THE PROFILE chip + card above the right
  * wing. --shots saves each face's canvas as a PNG beside this script.
  */
@@ -90,17 +90,17 @@ const has = (ids, ...want) => want.every((w) => ids.includes(w));
 console.log('\n=== the strips: tabs across the top of every panel ===');
 const tutorialDone = await page.evaluate(() => localStorage.getItem('ff-tutorial-done') === '1');
 let slab = await wrap(`buttons('train')`);
-check('the slab wears PLAY / PRACTICE / SOCIAL', has(slab, 'wrap:tab-fight', 'wrap:tab-practice', 'wrap:tab-club'), tabsOf(slab).join(','));
+check('the slab wears CAREER / VERSUS / RAVE RAID / CLUB, nothing else', has(slab, 'wrap:tab-career', 'wrap:tab-fight', 'wrap:tab-rave', 'wrap:tab-club') && tabsOf(slab).length === 4, tabsOf(slab).join(','));
 let town = await wrap(`buttons('duel')`);
-check('the left wing wears ACTIVITY / RANKINGS / NEWS', has(town, 'wrap:tab-town', 'wrap:tab-ladder', 'wrap:tab-news'), tabsOf(town).join(','));
+check('the left wing wears RANKINGS / NEWS (ACTIVITY is off the strip)', has(town, 'wrap:tab-ladder', 'wrap:tab-news') && !town.includes('wrap:tab-town'), tabsOf(town).join(','));
 let you = await wrap(`buttons('info')`);
-check('the right wing wears LOCKER / STORE / SETTINGS', has(you, 'wrap:tab-you', 'wrap:tab-store', 'wrap:tab-settings'), tabsOf(you).join(','));
+check('the right wing wears LOCKER / STORE and the settings cog', has(you, 'wrap:tab-you', 'wrap:tab-store', 'wrap:tab-settings'), tabsOf(you).join(','));
 if (!tutorialDone) {
   check('a fresh save leads with the tutorial', slab.includes('start-tutorial'), slab.join(','));
   const live = notTabs(await wrap(`live('train')`));
   check('and ONLY the tutorial answers on the slab', live.length === 1 && live[0] === 'start-tutorial', live.join(','));
   const liveTabs = tabsOf(await wrap(`live('train')`));
-  check('Practice and Social tabs are sealed too', !liveTabs.includes('wrap:tab-practice') && !liveTabs.includes('wrap:tab-club'), liveTabs.join(','));
+  check('CAREER, RAVE RAID and CLUB are sealed too', !liveTabs.includes('wrap:tab-career') && !liveTabs.includes('wrap:tab-rave') && !liveTabs.includes('wrap:tab-club'), liveTabs.join(','));
   const liveTown = tabsOf(await wrap(`live('duel')`));
   check('the LADDER is sealed, the paper is not', !liveTown.includes('wrap:tab-ladder') && liveTown.includes('wrap:tab-news'), liveTown.join(','));
   // Unseal for the rest of the walk.
@@ -109,52 +109,42 @@ if (!tutorialDone) {
   slab = await wrap(`buttons('train')`);
 }
 
-console.log('\n=== the slab: PLAY / PRACTICE / SOCIAL ===');
+console.log('\n=== the slab: CAREER / VERSUS / RAVE RAID / CLUB ===');
 let nav = await wrap(`nav()`);
-check('the slab opens on FIGHT', nav.center === 'fight' && !nav.club, JSON.stringify(nav));
+check('the slab opens on CAREER', nav.center === 'career' && !nav.club, JSON.stringify(nav));
 check('the TOWN wing opens on NEWS (the paper first)', nav.town === 'news', nav.town);
-check('PLAY opens on the CAMPAIGN tab, the career right there', nav.play === 'campaign' && has(slab, 'campaign-0', 'campaign-speedrun', 'campaign-belts') && !slab.includes('open-campaign'), notTabs(slab).join(','));
+check('CAREER: the career right there', has(slab, 'campaign-0', 'campaign-speedrun', 'campaign-belts') && !slab.includes('open-campaign'), notTabs(slab).join(','));
 save('campaign', await wrap(`snap('train')`));
-await wrap(`act('wrap:play-duels')`);
-slab = await wrap(`buttons('train')`);
-check('FIGHT: modes, no BOTS ONLY toggle, no BACK', has(slab, 'quick-match', 'ranked-match', 'private-open', 'arcade-2v2', 'arcade-ffa') && !slab.includes('toggle-onlybots') && !slab.includes('wrap:back'), notTabs(slab).join(','));
-save('fight', await wrap(`snap('train')`));
-await wrap(`act('wrap:play-rave')`);
-slab = await wrap(`buttons('train')`);
-check('PLAY / RAVE RAID / CO-OP RAIDS lists the rave and the co-op raid', has(slab, 'open-rave', 'open-raid') && !slab.includes('toggle-onlybots') && !slab.includes('campaign-0'), slab.join(','));
-save('rave', await wrap(`snap('train')`));
-await wrap(`act('wrap:tab-practice')`);
+await wrap(`act('wrap:tab-fight')`);
 slab = await wrap(`buttons('train')`);
 nav = await wrap(`nav()`);
-check('PRACTICE groups tutorial and aim, with the scoped shoot-back option', nav.center === 'practice' && has(slab, 'start-tutorial', 'start-training', 'toggle-shootback') && !slab.includes('open-campaign'), slab.join(','));
-save('practice', await wrap(`snap('train')`));
-await wrap(`act('wrap:tab-fight')`);
-check('returning to PLAY remembers the game family', (await wrap(`nav()`)).play === 'rave');
-await wrap(`act('wrap:play-duels')`);
-// SOCIAL carries the venue door: pressing the tab shows ENTER CLUB, and
-// that button crosses to the venue's floor in-session (tools/venue-check.mjs
-// walks that place properly — here we only prove the tab shows the door,
-// the door opens, and the arena comes back whole).
+check('VERSUS: every way to fight, practice folded in, no BOTS ONLY toggle, no BACK', nav.center === 'versus' && has(slab, 'quick-match', 'ranked-match', 'private-open', 'arcade-2v2', 'arcade-ffa', 'open-raid', 'start-training', 'start-tutorial', 'toggle-shootback') && !slab.includes('toggle-onlybots') && !slab.includes('wrap:back') && !slab.includes('campaign-0'), notTabs(slab).join(','));
+save('versus', await wrap(`snap('train')`));
+// RAVE RAID is a door (the tab fires open-rave; tools/rave-check.mjs walks
+// the foyer) — here only prove it is live on the strip.
+check('RAVE RAID: a live door on the strip', (await wrap(`live('train')`)).includes('wrap:tab-rave'));
+// CLUB is a door too: one press knocks and crosses to the venue's floor
+// in-session (tools/venue-check.mjs walks that place properly — here we only
+// prove the tab is the door, the door opens, and the arena comes back whole).
 await page.evaluate(() => localStorage.setItem('gdr-server', 'ws://127.0.0.1:1')); // no relay: the room of one
 await wrap(`act('wrap:tab-club')`);
 nav = await wrap(`nav()`);
-const clubFace = notTabs(await wrap(`buttons('train')`));
-check('SOCIAL groups the club with private games for friends', nav.club && has(clubFace, 'open-pub', 'private-open'), JSON.stringify({ nav, face: clubFace }));
+check('CLUB: one press turns the slab to the club and knocks', nav.club, JSON.stringify(nav));
 save('club', await wrap(`snap('train')`));
-await wrap(`act('open-pub')`);
 const crossed = await page
   .waitForFunction(() => window.__town && window.__town.place === 'venue' && !window.__town.busy, { timeout: 40000 })
   .then(() => true)
   .catch(() => false);
-check('ENTER CLUB: the door onto the venue floor, in-session', crossed && (await page.evaluate(() => document.body.classList.contains('app-entered'))), JSON.stringify(await page.evaluate(() => ({ place: window.__town?.place }))));
+check('CLUB: the door onto the venue floor, in-session', crossed && (await page.evaluate(() => document.body.classList.contains('app-entered'))), JSON.stringify(await page.evaluate(() => ({ place: window.__town?.place }))));
 await page.evaluate(() => window.__town.leave());
 await page.waitForFunction(() => window.__town && window.__town.place === 'arena' && !window.__town.busy, { timeout: 40000 });
 await page.waitForTimeout(300);
+check('home again, the club face offers the door back in', notTabs(await wrap(`buttons('train')`)).includes('open-pub'));
 await wrap(`act('wrap:tab-fight')`);
 nav = await wrap(`nav()`);
-check('home again, and FIGHT is the slab', nav.center === 'fight' && !nav.club, JSON.stringify(nav));
+check('home again, and VERSUS is the slab', nav.center === 'versus' && !nav.club, JSON.stringify(nav));
 
-console.log('\n=== through FIGHT: the flows still drill in and BACK out ===');
+console.log('\n=== through VERSUS: the flows still drill in and BACK out ===');
 await wrap(`act('private-open')`);
 let face = await wrap(`buttons('train')`);
 check('PRIVATE face on the slab, tabs still up', has(face, 'private-mode-1v1', 'private-create', 'private-enter', 'wrap:tab-fight'), notTabs(face).join(','));
@@ -167,7 +157,7 @@ face = await wrap(`buttons('train')`);
 check('keypad BACK returns to private-room setup', has(face, 'private-create', 'private-enter'));
 await wrap(`act('private-back')`);
 face = await wrap(`buttons('train')`);
-check('BACK lands on the FIGHT root', face.includes('quick-match') || face.includes('cancel-queue'), notTabs(face).join(','));
+check('BACK lands on the VERSUS root', face.includes('quick-match') || face.includes('cancel-queue'), notTabs(face).join(','));
 
 // Simulate a pending search without opening a live public room.
 await page.evaluate(async () => {
@@ -176,26 +166,19 @@ await page.evaluate(async () => {
   window.__ff2.wrap.redraw();
 });
 const pending = await wrap(`live('train')`);
-check('pending search keeps Cancel visible and blocks other activities', pending.includes('cancel-queue') && !pending.includes('wrap:tab-practice') && !pending.includes('wrap:tab-club') && !pending.includes('wrap:play-campaign'));
-await wrap(`act('wrap:tab-practice')`);
-await wrap(`act('wrap:play-rave')`);
-check('pending search also guards direct navigation', (await wrap(`nav()`)).center === 'fight' && (await wrap(`nav()`)).play === 'duels');
-await wrap(`act('cancel-queue')`);
-
-await wrap(`act('wrap:play-rave')`);
-check('online raid is open', (await wrap(`live('train')`)).includes('open-raid'));
-await wrap(`act('wrap:play-duels')`);
-
+check('pending search keeps Cancel visible and shuts the doors', pending.includes('cancel-queue') && !pending.includes('wrap:tab-career') && !pending.includes('wrap:tab-rave') && !pending.includes('wrap:tab-club') && !pending.includes('start-training'), pending.join(','));
+await wrap(`act('wrap:tab-career')`);
 await wrap(`act('wrap:tab-club')`);
+check('pending search also guards direct navigation', (await wrap(`nav()`)).center === 'versus');
+await wrap(`act('cancel-queue')`);
+check('online raid is open on VERSUS', (await wrap(`live('train')`)).includes('open-raid'));
+await wrap(`act('wrap:tab-career')`);
+check('CAREER: the tab puts the career back on the slab', (await wrap(`nav()`)).center === 'career' && (await wrap(`buttons('train')`)).includes('campaign-0'));
 await wrap(`act('private-open')`);
-check('Social private-game shortcut selects its owning Play context', (await wrap(`nav()`)).center === 'fight' && (await wrap(`buttons('train')`)).includes('private-create'));
+check('CUSTOM GAMES from anywhere selects its owning VERSUS context', (await wrap(`nav()`)).center === 'versus' && (await wrap(`buttons('train')`)).includes('private-create'));
 await wrap(`act('private-back')`);
 
-console.log('\n=== the left wing: ACTIVITY / RANKINGS / NEWS ===');
-await wrap(`act('wrap:tab-town')`); // the wing opens on NEWS now — walk to TOWN first
-town = await wrap(`buttons('duel')`);
-check('TOWN: the live chips, nothing pressable', has(town, 'town-queue', 'town-raids', 'town-club') && notTabs(await wrap(`live('duel')`)).length === 0, notTabs(town).join(','));
-save('town', await wrap(`snap('duel')`));
+console.log('\n=== the left wing: RANKINGS / NEWS ===');
 await wrap(`act('wrap:tab-ladder')`);
 town = await wrap(`buttons('duel')`);
 nav = await wrap(`nav()`);
@@ -214,7 +197,6 @@ check('LADDER › GOOP RAID: the view strip without HC ONLY (the tide has no har
 await wrap(`act('lb-xp')`);
 town = await wrap(`buttons('duel')`);
 check('LADDER › XP: no sub-row', !town.includes('lb-ranked') && !town.includes('lb-training'), notTabs(town).join(','));
-await wrap(`act('wrap:tab-town')`);
 
 // THE GAZETTE (net/gazette.ts + menu.ts): inject an edition with every
 // section — BY THE NUMBERS, THE RECORD BOOK, WHAT TO DO TODAY — open the
@@ -238,8 +220,8 @@ await wrap(`act('wrap:tab-town')`);
         { feat: 'SPEEDRUN · NORMAL', time: '0:46.3', who: 'CRYSTALZACH' },
       ],
       todo: [
-        { title: 'Take the first blazing speedrun', text: 'Nobody has finished the campaign on BLAZING. PLAY › TITANS › CAMPAIGN, set BLAZING, and the record is yours.' },
-        { title: 'Chase the season podium', text: 'Eight days left. PLAY › VERSUS › RANKED: a win is 20 points, more against a stronger opponent.' },
+        { title: 'Take the first blazing speedrun', text: 'Nobody has finished the campaign on BLAZING. CAREER, set BLAZING, and the record is yours.' },
+        { title: 'Chase the season podium', text: 'Eight days left. VERSUS › RANKED: a win is 20 points, more against a stronger opponent.' },
       ],
     });
     window.__ff2.gazette.open();
@@ -251,7 +233,7 @@ await wrap(`act('wrap:tab-town')`);
   await page.evaluate(() => window.__ff2.gazette.close());
   const after = await wrap(`nav()`);
   check("GAZETTE: opening the paper lands on the NEWS tab; the edition lays out and renders", nav.town === 'news' && snap.startsWith('data:image/png') && snap.length > 20000 && errors.length === before, `${nav.town} · ${snap.length} bytes`);
-  check('GAZETTE: closing the paper returns to TOWN', after.town === 'town', after.town);
+  check('GAZETTE: closing the paper leaves NEWS up (no ACTIVITY to fall back to)', after.town === 'news', after.town);
   save('news', snap);
   save('news-2', snap2);
 
@@ -275,7 +257,7 @@ await wrap(`act('wrap:tab-town')`);
   await page.evaluate(() => window.__ff2.gazette.close());
 }
 
-console.log('\n=== the right wing: LOCKER / STORE / SETTINGS ===');
+console.log('\n=== the right wing: LOCKER / STORE / the settings cog ===');
 you = await wrap(`buttons('info')`);
 check('LOCKER wing: one CUSTOMIZE door and the career, no currency sales', has(you, 'open-custom', 'profile-toggle') && !you.includes('open-paintbay') && !you.includes('open-bank') && !you.includes('you-coins') && !you.includes('rename') && !you.includes('you-record') && !you.includes('you-tip'), notTabs(you).join(','));
 save('you', await wrap(`snap('info')`));

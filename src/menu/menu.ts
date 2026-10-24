@@ -1306,7 +1306,7 @@ function drawMastheadMark(ctx: CanvasRenderingContext2D, cx: number, cy: number,
 }
 
 /** Where the scrolling article column begins (just below the dateline rule). */
-const NEWS_CONTENT_TOP = 272;
+const NEWS_CONTENT_TOP = 334; // under the dateline and THE QUEST STRAP
 
 /** A section's head: a heavy rule over a thin one, the label letterspaced
  *  between rules. Returns the y the section's content starts at. */
@@ -1546,6 +1546,25 @@ function drawNews(ctx: CanvasRenderingContext2D): void {
   ctx.fillText(dateText.toUpperCase(), NW / 2, 216, NW - 340);
   newsRule(ctx, 228, 2);
 
+  // THE QUEST STRAP — a standing notice over every edition, filed or
+  // welcome: the presses overwrite the article daily, so it lives here.
+  ctx.save();
+  ctx.fillStyle = NEWS_HOT;
+  ctx.shadowColor = 'rgba(255,61,166,0.8)';
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.roundRect(48, 240, NW - 96, 34, 6);
+  ctx.fill();
+  ctx.restore();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#12051a';
+  ctx.font = `700 21px ${NEWS_HEAD}`;
+  ctx.letterSpacing = '3px';
+  ctx.fillText('NOW AVAILABLE ON THE META QUEST STORE', NW / 2, 258, NW - 120);
+  ctx.letterSpacing = '0px';
+  ctx.textBaseline = 'alphabetic';
+
   ctx.textAlign = 'center';
   if (!art) {
     ctx.font = `600 24px ${NEWS_MONO}`;
@@ -1558,7 +1577,7 @@ function drawNews(ctx: CanvasRenderingContext2D): void {
     // The WHOLE article — headline, subhead, body, byline — scrolls together
     // as one column under the fixed masthead (thumbstick, like the leaderboard).
     const viewBottom = NEWS_VIEW_BOTTOM;
-    const clipTop = 238; // just under the dateline rule, above the headline tops
+    const clipTop = 290; // just under THE QUEST STRAP, above the headline tops
 
     // Measure the full article height (no draw) to clamp the scroll.
     const contentBottom = layoutArticle(ctx, art, NEWS_CONTENT_TOP, false);

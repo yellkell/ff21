@@ -65,7 +65,7 @@ export function mercyFor(xp: number, roundsWon: number, roundsLost: number): num
   return Math.min(BOT_MERCY.max, Math.max(0, (roundsLost - roundsWon) * BOT_MERCY.perRound));
 }
 
-/** The one-line grade the bout panel shows under BOT BOUT / ROUND BREAK. */
+/** The one-line grade the bout panel shows under THE BOUT / ROUND BREAK. */
 export function botGradeLine(brain: BotBrain): string {
   return `${brain.label.toLowerCase()} · ${brain.grade.toLowerCase()} grade`;
 }
