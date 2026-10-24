@@ -85,6 +85,8 @@ export interface PanelOpts {
   /** No glass, sheen, frame or brackets — the body paints its own
    *  chrome (a chip, a pop-out card). */
   bare?: boolean;
+  /** The glass's own fill (the lobby BOARD runs near-opaque). */
+  fill?: string;
 }
 
 // The accent's triple and the holo's second tube live with the glass they
@@ -167,6 +169,7 @@ export class Panel {
   private body: ((g: CanvasRenderingContext2D, hover: string | null) => void) | null = null;
   private hover: string | null = null;
   private bare: boolean;
+  private fill: string | undefined;
 
   /* Transition state. */
   private hoverAmt = new Map<string, number>();
@@ -180,6 +183,7 @@ export class Panel {
     this.pxW = pxW;
     this.pxH = pxH;
     this.bare = !!opts.bare;
+    this.fill = opts.fill;
     this.canvas.width = pxW;
     this.canvas.height = pxH;
     this.tex = new CanvasTexture(this.canvas);
@@ -244,6 +248,12 @@ export class Panel {
     this.buttons = buttons;
     this.hover = hover;
     this.animating = true; // hover targets may have moved — let tick settle it
+    this.draw();
+  }
+
+  /** Repaint with the stored face and hover — a body animating on its own
+   *  clock (THE BOARD's sliding rail marker) calls this per frame it moves. */
+  repaint(): void {
     this.draw();
   }
 
@@ -347,7 +357,7 @@ export class Panel {
 
     // HOLO GLASS: the see-through pane, its lit edge, light bar, magenta
     // corner brackets and readout ticks (shared with the match UI).
-    holoGlass(g, 6, 6, W - 12, H - 12, { fill: KIT.panel });
+    holoGlass(g, 6, 6, W - 12, H - 12, { fill: this.fill ?? KIT.panel });
 
     // THE TAB STRIP: when a face carries tabs they own the title band — a
     // faint baseline the whole width, the brand (title) left-aligned as a

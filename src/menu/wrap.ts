@@ -1,15 +1,20 @@
-/** FF2 lobby: player intent owns the top level; game families live under PLAY.
- * See docs/menu-research.md for the audit, evidence and navigation contract.
- * The three existing VR panels retain their physical sizes and ray targets.
+/** FF2 lobby: ONE BOARD, back from the Meta Quest build (ff2meta
+ * UI/Menu/Wrap.cs + UI/MenuSystem.cs; docs/menu-research.md has the
+ * navigation contract). The three panels of the wrap — PLAY slab, TOWN and
+ * YOU wings — became one board dead ahead in RAVE RAID's format
+ * (menu/board.ts): the sheared wordmark, the status chip, the settings cog
+ * and THE PROFILE in the header, an indexed rail down the left, and the
+ * open page hosted in the content region beside it.
  *
- * THE RAIL (back from the Meta Quest build): the slab's tabs are CAREER ·
- * VERSUS · RAVE RAID · CLUB, the left wing's RANKINGS · NEWS, the right
- * wing's LOCKER · STORE and a settings cog. PRACTICE and SOCIAL are gone —
- * AIM TRAINING (SHOOT BACK beside it) and the TUTORIAL replay are VERSUS
- * modes, and so are CUSTOM GAMES and the CO-OP RAID. RAVE RAID and CLUB are
- * doors: one press walks you in. ACTIVITY is off the strip; its counts ride
- * the doors they belong to (the queue on QUICK MATCH, squads on CO-OP RAID,
- * the club's head count on CLUB). The menus never say "bots".
+ * THE RAIL: CAREER · VERSUS · RAVE RAID · CLUB, then RANKINGS · NEWS, then
+ * LOCKER · STORE. CAREER takes the whole board (‹ BACK returns). VERSUS is
+ * THE PLAY PAGE (menu/playPage.ts): every way to fight, AIM TRAINING and
+ * the TUTORIAL replay included. RAVE RAID, CLUB, LOCKER and STORE are
+ * doors: one press walks you into the foyer, knocks on the club (its face
+ * reads out the wait), or opens the locker / the store. SETTINGS is the
+ * header's cog. ACTIVITY is off the rail: the queue, the squads and the
+ * club's head count ride the pages they belong to. The menus never say
+ * "bots".
  */
 
 import type { Menu, MenuAction, MenuPanel, PanelId } from './menu.js';
@@ -17,16 +22,17 @@ import { renderNewsPage } from './menu.js';
 import { Panel, KIT, type PanelButton, type PanelOpts } from '../ui/kit/panel.js';
 import { font } from '../ui/kit/fonts.js';
 import { app } from './appState.js';
-import { coins } from './wallet.js';
-import { PLATFORMS_OPEN } from '../avatar/skins.js';
 import { leaderboard, setLeaderboardTab } from '../net/leaderboard.js';
 import { gazette } from '../net/gazette.js';
+import { FIREBASE_ENABLED } from '../net/firebase.js';
 import { ladderFace } from './ladder.js';
 import { settingsFace } from './settingsFace.js';
-import { CARD_H, CARD_W, CHIP_H, CHIP_W, profileCardFace, profileChipFace } from './profilePop.js';
+import { CARD_H, CARD_W, profileCardFace, profilePop } from './profilePop.js';
 import { GAME_TITLE, warmRoomServer } from '../config.js';
 import { prefetchVenue } from '../rave/club/venue.js';
 import { CAMP_W, CAREER_BOTTOM, CAREER_TOP, careerFace } from './campaignFace.js';
+import { BACK_ID, BOARD_H, BOARD_PANE, BOARD_W, CHIP, CONTENT, COG_ID, FULL, RailMarker, boardButtons, drawBoard, type BoardState, type RailTab } from './board.js';
+import { PLAY_H, PLAY_W, playAction, playPageFace, selectMode } from './playPage.js';
 
 /** One face of a wrap panel: everything Panel.paint needs. */
 interface Face {
@@ -47,6 +53,9 @@ export class KitMenuPanel implements MenuPanel {
   /** A face with a slider sets this (MenuSystem.addModal): the scrub hook
    *  MenuSystem feeds the hit's UV every frame the trigger is held. */
   drag?: (u: number, v: number, grabbed?: boolean) => boolean;
+  /** THE BOARD's pages set this: whether the panel is up while the lobby
+   *  is (MenuSystem ANDs it with the lobby's own visibility). */
+  shown?: () => boolean;
 
   constructor(
     readonly id: PanelId,
@@ -86,35 +95,38 @@ export class KitMenuPanel implements MenuPanel {
   }
 }
 
-/* ── the wrap's tab state ─────────────────────────────────────────────── */
+/* ── the board's state ────────────────────────────────────────────────── */
 
-export type CenterTab = 'career' | 'versus' | 'club';
+/** The page in the content region (CAREER takes the whole board — `full`). */
+export type BoardPage = 'versus' | 'club' | 'rankings' | 'news' | 'settings';
 export type TownTab = 'ladder' | 'news';
 export type YouTab = 'you' | 'store' | 'settings';
 
-/** Which tab each panel is on. */
 export const wrapNav = {
-  // The slab opens on the CAREER: the titan line-up is the first thing up.
-  center: 'career' as CenterTab,
-  // The wing opens on the PAPER: the day's edition — or the welcome, for a
-  // newcomer — is the first thing on the wall, not a chip count.
+  // The board opens on VERSUS: QUICK MATCH is one press away.
+  page: 'versus' as BoardPage,
+  /** A page that has the whole board: the CAREER, or nothing. */
+  full: null as 'career' | null,
+  // RANKINGS and NEWS share the old TOWN wing's face host; its paper is
+  // the default, so the first visit to the wing is the day's edition.
   town: 'news' as TownTab,
   you: 'you' as YouTab,
 };
 
-/** Put the slab on the CAREER tab (campaign bouts return here, win or
- *  lose; the legacy open-campaign action lands here too). */
+/** Put the board on the CAREER (campaign bouts return here, win or lose;
+ *  the legacy open-campaign action lands here too). */
 export function showCampaign(): void {
-  wrapNav.center = 'career';
+  wrapNav.full = 'career';
   app.duelView = 'root';
 }
 
 /* ── shared bits ──────────────────────────────────────────────────────── */
 
 const sealed = (): boolean => !app.tutorialDone;
-const SEAL_SUB = 'sealed — run the tutorial';
-const TAB_Y = 36;
-const TAB_H = 76;
+/** CAREER, RAVE RAID and CLUB are shut while sealed or while a search runs. */
+const doorShut = (): boolean => sealed() || app.state === 'queueing';
+/** The old tab strip's band: the hosted faces start under it. */
+const STRIP = 124;
 
 function note(text: string, y: number, W: number): (g: CanvasRenderingContext2D) => void {
   return (g) => {
@@ -126,17 +138,9 @@ function note(text: string, y: number, W: number): (g: CanvasRenderingContext2D)
   };
 }
 
-/** A sub-face's name, right-aligned in the tab strip (FIGHT › PRIVATE). */
-function crumb(text: string, W: number): (g: CanvasRenderingContext2D) => void {
-  return (g) => {
-    g.textAlign = 'right';
-    g.textBaseline = 'middle';
-    g.font = font(600, 26);
-    g.letterSpacing = '3px';
-    g.fillStyle = KIT.faint;
-    g.fillText(text, W - 52, TAB_Y + TAB_H / 2 - 2);
-    g.letterSpacing = '0px';
-  };
+/** A sub-face's name — the tab strip it rode is gone on the board. */
+function crumb(_text: string, _W: number): (g: CanvasRenderingContext2D) => void {
+  return () => {};
 }
 
 const both =
@@ -145,102 +149,31 @@ const both =
     for (const f of fns) f?.(g, hover);
   };
 
-/* Center: Career, Versus, Rave Raid and the Club. */
+/** A face, moved up and left by (dx, dy): what a hosted panel shows of a
+ *  face drawn for a bigger canvas (the strip above a wing face, the air
+ *  above the career). Its tabs, and anything above the cut, are dropped. */
+function crop(face: Face, dx: number, dy: number): Face {
+  return {
+    title: '',
+    body: (g, hover) => {
+      g.save();
+      g.translate(-dx, -dy);
+      face.body?.(g, hover);
+      g.restore();
+    },
+    buttons: face.buttons.filter((b) => !b.tab && b.y + b.h > dy).map((b) => ({ ...b, x: b.x - dx, y: b.y - dy })),
+  };
+}
+
+/* Wide faces: the custom-game flows and the club's door. */
 
 const CW = 1536; // canvas
 const M = 96; // margin
 const WIDE = CW - M * 2; // 1344
 const COL = 656; // half column
 const C2 = M + COL + 32; // right column x
-const COL3 = (WIDE - 48) / 3; // a third column (VERSUS's grid)
-const col3 = (i: number): number => M + i * (COL3 + 24);
-
-const clubUp = (): boolean => wrapNav.center === 'club';
-/** CAREER, RAVE RAID and CLUB are shut while sealed or while a search runs. */
-const doorShut = (): boolean => sealed() || app.state === 'queueing';
-
-function centerTabs(): PanelButton[] {
-  // Sealed, the slab is the tutorial's face whichever tab was last up: VERSUS wears it.
-  const on = sealed() ? 'versus' : wrapNav.center;
-  return [
-    { id: 'wrap:tab-career', label: 'CAREER', tab: true, x: 420, y: TAB_Y, w: 210, h: TAB_H, selected: on === 'career', disabled: doorShut() },
-    { id: 'wrap:tab-fight', label: 'VERSUS', tab: true, x: 640, y: TAB_Y, w: 220, h: TAB_H, selected: on === 'versus' },
-    { id: 'wrap:tab-rave', label: 'RAVE RAID', tab: true, x: 870, y: TAB_Y, w: 270, h: TAB_H, disabled: doorShut() },
-    { id: 'wrap:tab-club', label: 'CLUB', tab: true, x: 1150, y: TAB_Y, w: 180, h: TAB_H, selected: on === 'club', disabled: doorShut(), badge: !sealed() && app.pubCount > 0 },
-  ];
-}
 
 const BACK: PanelButton = { id: 'wrap:back', label: 'BACK', x: M, y: 888, w: 320, h: 84, small: true };
-
-function sealedFace(): Face {
-  return {
-    title: GAME_TITLE,
-    body: () => {},
-    buttons: [
-      {
-        id: 'start-tutorial',
-        label: 'TUTORIAL',
-        sub: 'the guided basics — start here',
-        x: M, y: 190, w: WIDE, h: 240,
-        primary: true,
-      },
-      { id: 'quick-match', label: 'QUICK MATCH', sub: SEAL_SUB, x: M, y: 480, w: COL, h: 190, disabled: true },
-      { id: 'open-pub', label: 'THE CLUB', sub: SEAL_SUB, x: C2, y: 480, w: COL, h: 190, disabled: true },
-    ],
-  };
-}
-
-/** VERSUS: every way to fight — the 1v1s, the brawls, the co-op raid, and
- *  the practice that used to have a tab of its own. */
-function versusFace(): Face {
-  const queueing = app.state === 'queueing';
-  const ROW = [160, 370, 580];
-  const H = 180;
-  const cell = (i: number, r: number): Pick<PanelButton, 'x' | 'y' | 'w' | 'h'> => ({ x: col3(i), y: ROW[r], w: COL3, h: H });
-  const buttons: PanelButton[] = [
-    queueing
-      ? {
-          id: 'cancel-queue',
-          label: 'CANCEL SEARCH',
-          sub: app.searching > 0 ? `${app.searching} in the queue` : 'searching…',
-          ...cell(0, 0),
-          tone: KIT.danger,
-        }
-      : {
-          id: 'quick-match',
-          label: 'QUICK MATCH',
-          sub: app.onlyBots ? '1v1 against a rival' : app.searching > 0 ? `1v1 - ${app.searching} searching now` : '1v1 - fight now while finding a rival',
-          ...cell(0, 0),
-          primary: true,
-        },
-    {
-      id: 'ranked-match',
-      label: 'RANKED',
-      sub: app.onlyBots ? 'Online play is off' : 'Competitive 1v1 rooms',
-      ...cell(1, 0),
-      disabled: app.onlyBots || queueing,
-    },
-    { id: 'private-open', label: 'CUSTOM GAMES', sub: 'Private rooms with a code', ...cell(2, 0), disabled: queueing },
-    { id: 'arcade-2v2', label: '2V2', sub: 'Team battles', ...cell(0, 1), disabled: queueing },
-    { id: 'arcade-ffa', label: 'FREE FOR ALL', sub: 'Every fighter for themselves', ...cell(1, 1), disabled: queueing },
-    {
-      id: 'open-raid',
-      label: 'CO-OP RAID',
-      sub: app.onlyBots ? 'Online play is off' : app.raidsOpen > 0 ? `${app.raidsOpen} squads forming` : 'Squad up against the titans',
-      ...cell(2, 1),
-      disabled: app.onlyBots || queueing,
-    },
-    { id: 'start-training', label: 'AIM TRAINING', sub: 'Target practice', ...cell(0, 2), disabled: queueing },
-    // AIM TRAINING's one option, beside it (it was PRACTICE's toggle).
-    { id: 'toggle-shootback', label: 'SHOOT BACK', sub: 'Aim training only', ...cell(1, 2), small: true, selected: app.shootBack, toggle: true },
-    { id: 'start-tutorial', label: 'TUTORIAL', sub: 'Replay the guided basics', ...cell(2, 2), disabled: queueing },
-  ];
-  return {
-    title: GAME_TITLE,
-    body: () => {},
-    buttons,
-  };
-}
 
 function privateFace(): Face {
   const modes = [
@@ -353,30 +286,6 @@ function browserFace(): Face {
   };
 }
 
-/** CAREER: THE CAREER itself (campaignFace.ts), scaled onto the slab under
- *  the tab strip — no sub-menu between you and the titans. The launch card
- *  and THE RACK still pop up on their own panel. */
-const CAREER_Y = 136; // just under the tab strip
-const CAREER_S = Math.min(WIDE / (CAMP_W - 128), (972 - CAREER_Y) / (CAREER_BOTTOM - CAREER_TOP));
-const CAREER_DX = (CW - CAMP_W * CAREER_S) / 2;
-const CAREER_DY = CAREER_Y - CAREER_TOP * CAREER_S;
-
-function careerTabFace(): Face {
-  const f = careerFace();
-  const s = CAREER_S;
-  return {
-    title: GAME_TITLE,
-    body: (g, hover) => {
-      g.save();
-      g.translate(CAREER_DX, CAREER_DY);
-      g.scale(s, s);
-      f.body(g, hover);
-      g.restore();
-    },
-    buttons: f.buttons.map((b) => ({ ...b, x: CAREER_DX + b.x * s, y: CAREER_DY + b.y * s, w: b.w * s, h: b.h * s })),
-  };
-}
-
 /** THE CLUB: its tab is a door (one press knocks — see installWrap), and
  *  this face is what stands behind it while the house wakes, or for a
  *  second knock if you come home and want back in. */
@@ -411,46 +320,6 @@ function clubFace(): Face {
   };
 }
 
-function centerFace(): Face {
-  let face: Face;
-  if (sealed()) face = sealedFace();
-  else if (clubUp()) face = clubFace();
-  else if (wrapNav.center === 'career') face = careerTabFace();
-  else {
-    switch (app.duelView) {
-      case 'private':
-        face = privateFace();
-        break;
-      case 'keypad':
-        face = keypadFace();
-        break;
-      case 'hosting':
-        face = hostingFace();
-        break;
-      case 'browser':
-        face = browserFace();
-        break;
-      default:
-        face = versusFace();
-    }
-  }
-  return { ...face, buttons: [...centerTabs(), ...face.buttons] };
-}
-
-/* Left wing: Rankings and News. */
-
-const LW = 832;
-
-function townTabs(): PanelButton[] {
-  const lock = sealed();
-  return [
-    { id: 'wrap:tab-ladder', label: 'RANKINGS', tab: true, x: 36, y: TAB_Y, w: 260, h: TAB_H, selected: wrapNav.town === 'ladder' && !lock, disabled: lock },
-    // The pip says "a new edition you haven't seen" — pointless while the
-    // paper is the very thing on the wing (MenuSystem marks it read there).
-    { id: 'wrap:tab-news', label: 'NEWS', tab: true, x: 306, y: TAB_Y, w: 190, h: TAB_H, selected: wrapNav.town === 'news' || lock, badge: gazette.unread && wrapNav.town !== 'news' },
-  ];
-}
-
 /** The Gasket Gazette, blitted onto the wing: the page renders on its own
  *  portrait canvas (menu.ts) and lands here scaled to fit under the strip;
  *  the thumbstick scrolls the article while the pointer is on the wing. */
@@ -481,103 +350,74 @@ function newsFace(): Face {
   };
 }
 
+/** The wide host's face: a custom-game flow under VERSUS, or the club's door. */
+function wideFace(): Face {
+  if (wrapNav.page === 'club') return clubFace();
+  switch (app.duelView) {
+    case 'private':
+      return privateFace();
+    case 'keypad':
+      return keypadFace();
+    case 'hosting':
+      return hostingFace();
+    case 'browser':
+      return browserFace();
+    default:
+      return { title: '', buttons: [] };
+  }
+}
+
+/* Wing faces: RANKINGS, NEWS and SETTINGS. */
+
+const LW = 832;
+
 function townFace(): Face {
-  let face: Face;
-  if (wrapNav.town === 'ladder' && !sealed()) face = { title: '', ...ladderFace() };
-  else face = newsFace();
-  return { ...face, buttons: [...townTabs(), ...face.buttons] };
+  if (wrapNav.town === 'ladder' && !sealed()) return { title: '', ...ladderFace() };
+  return newsFace();
 }
 
-/* Right wing: Locker and Store, and the settings cog at the strip's end. */
+/* ── the rail ─────────────────────────────────────────────────────────── */
 
-const COG: PanelButton = { id: 'wrap:tab-settings', label: '', tab: true, x: 690, y: TAB_Y, w: 100, h: TAB_H };
-
-/** The settings cog: eight teeth round a real hole (the glass shows
- *  through — evenodd, never a dark dot painted on), lit while open. */
-function drawCog(g: CanvasRenderingContext2D, hover: string | null): void {
-  const on = wrapNav.you === 'settings';
-  const cx = COG.x + COG.w / 2;
-  const cy = COG.y + COG.h / 2 - 2;
-  const ROOT = 19;
-  const TIP = 27;
-  g.save();
-  g.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const teeth: Array<[number, number]> = [[ROOT, a - 0.36], [TIP, a - 0.2], [TIP, a + 0.2], [ROOT, a + 0.36]];
-    teeth.forEach(([r, t], k) => {
-      const x = cx + Math.cos(t) * r;
-      const y = cy + Math.sin(t) * r;
-      if (i === 0 && k === 0) g.moveTo(x, y);
-      else g.lineTo(x, y);
-    });
-  }
-  g.closePath();
-  g.moveTo(cx + 8, cy);
-  g.arc(cx, cy, 8, 0, Math.PI * 2);
-  g.fillStyle = on ? KIT.textHi : hover === COG.id ? 'rgba(250,246,238,0.95)' : 'rgba(250,246,238,0.6)';
-  g.fill('evenodd');
-  if (on) {
-    g.fillStyle = KIT.accent;
-    g.beginPath();
-    g.roundRect(cx - 30, COG.y + COG.h - 8, 60, 5, 2.5);
-    g.fill();
-  }
-  g.restore();
-}
-
-function youTabs(): PanelButton[] {
+function railTabs(): RailTab[] {
+  const lock = sealed();
+  const shut = doorShut();
   return [
-    { id: 'wrap:tab-you', label: 'LOCKER', tab: true, x: 36, y: TAB_Y, w: 230, h: TAB_H, selected: wrapNav.you === 'you' },
-    { id: 'wrap:tab-store', label: 'STORE', tab: true, x: 276, y: TAB_Y, w: 190, h: TAB_H, selected: wrapNav.you === 'store', disabled: sealed() },
-    { ...COG, selected: wrapNav.you === 'settings' },
+    { id: 'board:career', label: 'CAREER', disabled: shut },
+    { id: 'board:versus', label: 'VERSUS' },
+    { id: 'board:rave', label: 'RAVE RAID', disabled: shut },
+    { id: 'board:club', label: 'CLUB', disabled: shut, sub: !lock && app.pubCount > 0 ? `${app.pubCount} INSIDE` : undefined },
+    { id: 'board:rankings', label: 'RANKINGS', disabled: lock, groupStart: true },
+    // The pip says "a new edition you haven't seen".
+    { id: 'board:news', label: 'NEWS', sub: gazette.unread && wrapNav.page !== 'news' ? 'NEW EDITION' : undefined },
+    { id: 'board:locker', label: 'LOCKER', disabled: lock, groupStart: true },
+    { id: 'board:store', label: 'STORE', disabled: lock },
   ];
 }
 
-function youBoard(): Face {
-  const lock = sealed();
-  return {
-    title: '',
-    body: () => {},
-    buttons: [
-      // ONE door to the customization plate — LOCKER · STORE · PAINT are
-      // its tabs — and one to who you are.
-      { id: 'open-custom', label: 'CUSTOMIZE', sub: lock ? SEAL_SUB : 'Locker · Store · Paint', x: 96, y: 190, w: 640, h: 260, primary: !lock, disabled: lock },
-      { id: 'profile-toggle', label: 'CAREER PROFILE', sub: 'Rank, XP, achievements and identity', x: 96, y: 500, w: 640, h: 150, small: true },
-    ],
-  };
+/** The header's status chip: what the lobby is doing, else whether it's online. */
+function boardStatus(): BoardState['status'] {
+  if (app.state === 'queueing') return { text: 'SEARCHING', led: KIT.warn, lit: true };
+  if (app.venueStatus !== '') return { text: 'OPENING THE CLUB', led: KIT.warn, lit: true };
+  const online = FIREBASE_ENABLED && (typeof navigator === 'undefined' || navigator.onLine !== false);
+  return online ? { text: 'ONLINE', led: KIT.positive, lit: true } : { text: 'OFFLINE', led: KIT.faint, lit: false };
 }
 
-function storeBoard(): Face {
+function boardState(): BoardState {
   return {
-    title: '',
-    body: () => {},
-    buttons: [
-      { id: 'open-shop', label: 'BROWSE THE STORE', sub: PLATFORMS_OPEN ? 'Gear, platforms and paint' : 'Gear and paint', x: 96, y: 190, w: 640, h: 210 },
-      { id: 'open-bank', label: 'BANK', sub: 'Top up or recover your purchases', x: 96, y: 450, w: 640, h: 150, small: true },
-      { id: 'store-balance', label: `$ ${coins.balance}`, sub: 'iron-dollars available', x: 96, y: 650, w: 640, h: 110, small: true, display: true },
-    ],
-  };
-}
-
-function youFace(): Face {
-  const face: Face = wrapNav.you === 'settings' ? { title: '', ...settingsFace() }
-    : wrapNav.you === 'store' && !sealed() ? storeBoard() : youBoard();
-  const body = face.body;
-  return {
-    ...face,
-    body: (g, hover) => {
-      body?.(g, hover);
-      drawCog(g, hover);
-    },
-    buttons: [...youTabs(), ...face.buttons],
+    tabs: railTabs(),
+    // SETTINGS is off the rail (the cog): it parks no marker.
+    active: wrapNav.page === 'settings' ? null : `board:${wrapNav.page}`,
+    full: wrapNav.full === 'career' ? 'CAMPAIGN' : null,
+    status: boardStatus(),
+    cogOpen: wrapNav.page === 'settings' && !wrapNav.full,
+    profileOpen: profilePop.open,
   };
 }
 
 /* ── the rig ──────────────────────────────────────────────────────────── */
 
 export interface Wrap {
-  /** Advance kit transitions (hover eases, press flashes, halo breath). */
+  /** Advance kit transitions (hover eases, press flashes, the rail marker). */
   tick(delta: number): void;
 }
 
@@ -590,113 +430,185 @@ declare global {
         snap: (id: string) => string;
         act: (action: string) => void;
         redraw: () => void;
-        nav: () => { center: CenterTab; town: TownTab; you: YouTab; club: boolean };
+        nav: () => { page: BoardPage; full: 'career' | null; town: TownTab; you: YouTab; club: boolean };
         visible: (id: string) => boolean;
       };
     };
   }
 }
 
+/** Where the board hangs: dead ahead, its width and its metres per px. */
+const BOARD_POS = { x: 0, y: 1.45, z: -1.2 };
+const BOARD_WIDTH_M = 1.56;
+const MPP = BOARD_WIDTH_M / BOARD_W;
+
 /**
- * Replace the legacy 'train' / 'duel' / 'info' plates with the wrap, in
- * place — same ids, same slots, same parent group — and hang THE PROFILE
- * chip + card above the right wing. Call once, right after `createMenu`.
- * `act` is MenuSystem.run — global ids go through it; the wrap's own
- * `wrap:*` tab navigation is handled here.
+ * Replace the legacy 'train' / 'duel' / 'info' plates with THE BOARD and
+ * its hosted pages, and hang THE PROFILE's card under the header chip.
+ * Call once, right after `createMenu`. `act` is MenuSystem.run — global
+ * ids go through it; the board's own `board:*` navigation is settled here.
  */
 export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wrap {
-  /** Route one pressed id: local tab-nav, or the real dispatcher. */
+  /** Leaving a page backs out of a custom-game flow, as its own ‹ BACK would. */
+  const leaveFlow = (): void => {
+    if (app.duelView === 'root') return;
+    act?.(app.duelView === 'browser' ? 'ranked-back' : 'private-back');
+    app.duelView = 'root';
+  };
+
+  /** Route one pressed id: the board's own navigation, or the real dispatcher. */
   const dispatch = (id: string): void => {
+    if (id.startsWith('board:') && id !== BACK_ID) leaveFlow();
     switch (id) {
-      case 'wrap:tab-fight':
-        wrapNav.center = 'versus';
-        return;
-      case 'wrap:tab-career':
-      case 'wrap:tab-arcade': // legacy deep link: boss activities live in CAREER
+      case 'board:career':
         if (doorShut()) return;
         showCampaign();
         return;
-      case 'wrap:tab-rave':
-        // A door, not a tab: one press and you're in RAVE RAID's foyer.
+      case 'board:versus':
+        wrapNav.page = 'versus';
+        return;
+      case 'board:rave':
+        // A door: one press and you're in RAVE RAID's foyer.
         if (doorShut()) return;
         act?.('open-rave');
         return;
-      case 'wrap:tab-club':
-        // A door too. The slab turns to the club's face, which reads out
+      case 'board:club':
+        // A door too. The page turns to the club's face, which reads out
         // the wait while the house wakes (ClubExperienceManager
         // holdForTheFloor); a second knock while it's held does nothing.
         if (doorShut() || app.venueStatus !== '') return;
-        wrapNav.center = 'club';
+        wrapNav.page = 'club';
         warmRoomServer();
         // The hall is the slow part of the door (sixteen megabytes).
         prefetchVenue();
         act?.('open-pub');
         return;
-      case 'wrap:tab-store':
+      case 'board:rankings':
         if (sealed()) return;
-        act?.('settings-close');
-        wrapNav.you = 'store';
-        return;
-      case 'wrap:tab-ladder':
+        wrapNav.page = 'rankings';
         wrapNav.town = 'ladder';
         // The ladder opens onto a board, never a blank profile.
         if (leaderboard.tab === 'profile') setLeaderboardTab('ranked');
         return;
-      case 'wrap:tab-news':
+      case 'board:news':
+        wrapNav.page = 'news';
         act?.('open-gazette');
         return;
-      case 'wrap:tab-you':
-        act?.('settings-close');
+      case 'board:locker':
+        // LOCKER and STORE open the customization plate on their own tab in
+        // one press — no page in between.
+        if (sealed()) return;
+        act?.('open-custom');
         return;
-      case 'wrap:tab-settings':
+      case 'board:store':
+        if (sealed()) return;
+        act?.('open-shop');
+        return;
+      case COG_ID:
+        // The cog opens SETTINGS from anywhere, the whole-board CAREER included.
+        wrapNav.full = null;
         act?.('open-settings');
+        return;
+      case BACK_ID:
+        wrapNav.full = null;
         return;
       case 'wrap:back':
         return;
       default:
-        if (['private-open', 'ranked-match', 'quick-match'].includes(id)) wrapNav.center = 'versus';
+        if (['private-open', 'ranked-match', 'quick-match'].includes(id)) {
+          wrapNav.page = 'versus';
+          wrapNav.full = null;
+        }
         act?.(id as MenuAction);
     }
   };
 
-  const slab = new KitMenuPanel('train', 1.42, 0.95, CW, 1024, centerFace, dispatch);
-  const town = new KitMenuPanel('duel', 0.74, 0.91, LW, 1024, townFace, dispatch);
-  const you = new KitMenuPanel('info', 0.74, 0.91, LW, 1024, youFace, dispatch);
-  const chip = new KitMenuPanel('profile', 0.62, (0.62 * CHIP_H) / CHIP_W, CHIP_W, CHIP_H, profileChipFace, dispatch, { bare: true });
-  const card = new KitMenuPanel('profilecard', 0.62, (0.62 * CARD_H) / CARD_W, CARD_W, CARD_H, profileCardFace, dispatch, { bare: true });
+  const marker = new RailMarker();
+  // eslint-disable-next-line prefer-const
+  let board: KitMenuPanel;
+  const boardFace = (): Face => {
+    const st = boardState();
+    return { title: '', buttons: boardButtons(st), body: (g) => drawBoard(g, st, (id) => board.kit.hoverOf(id), marker) };
+  };
+  board = new KitMenuPanel('board', BOARD_WIDTH_M, BOARD_WIDTH_M * (BOARD_H / BOARD_W), BOARD_W, BOARD_H, boardFace, dispatch, { fill: BOARD_PANE });
+  board.mesh.position.set(BOARD_POS.x, BOARD_POS.y, BOARD_POS.z);
 
-  const y = 1.45;
-  slab.mesh.position.set(0, y, -1.26);
-  town.mesh.position.set(-1.02, y, -1.02);
-  town.mesh.rotation.y = 0.58;
-  you.mesh.position.set(1.02, y, -1.02);
-  you.mesh.rotation.y = -0.58;
-  // THE PROFILE: the chip rides just above the YOU wing's top edge; the
-  // card drops out from under it, a hand's width in front of the wing.
-  const yaw = -0.58;
-  const nx = Math.sin(yaw);
-  const nz = Math.cos(yaw);
-  const chipH = (0.62 * CHIP_H) / CHIP_W;
-  const cardH = (0.62 * CARD_H) / CARD_W;
-  const wingTop = y + 0.455;
-  chip.mesh.position.set(1.02, wingTop + 0.02 + chipH / 2, -1.02);
-  chip.mesh.rotation.y = yaw;
-  card.mesh.position.set(1.02 + nx * 0.05, wingTop + 0.01 - cardH / 2, -1.02 + nz * 0.05);
-  card.mesh.rotation.y = yaw;
-  card.mesh.renderOrder = 31; // over the wing, whatever the sort says
+  /** A page hung in a region of the board (board px), its pxW × pxH face
+   *  scaled to fit, top-aligned and centred across, a hair in front. */
+  const host = (
+    id: PanelId,
+    pxW: number,
+    pxH: number,
+    rect: { x: number; y: number; w: number; h: number },
+    face: () => Face,
+    shown: () => boolean,
+    onClick: (id: string) => void = dispatch,
+  ): KitMenuPanel => {
+    const s = Math.min(rect.w / pxW, rect.h / pxH);
+    const p = new KitMenuPanel(id, pxW * s * MPP, pxH * s * MPP, pxW, pxH, face, onClick, { bare: true });
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + (pxH * s) / 2;
+    p.mesh.position.set(BOARD_POS.x + (cx - BOARD_W / 2) * MPP, BOARD_POS.y + (BOARD_H / 2 - cy) * MPP, BOARD_POS.z + 0.004);
+    p.mesh.renderOrder = 31;
+    p.shown = shown;
+    return p;
+  };
+
+  const inPage = (page: BoardPage): boolean => !wrapNav.full && wrapNav.page === page;
+  // eslint-disable-next-line prefer-const
+  let play: KitMenuPanel;
+  play = host(
+    'play',
+    PLAY_W,
+    PLAY_H,
+    CONTENT,
+    () => playPageFace((id) => play.kit.hoverOf(id)),
+    () => inPage('versus') && app.duelView === 'root',
+    (id) => {
+      if (id.startsWith('mode:')) {
+        selectMode(id.slice('mode:'.length));
+        return;
+      }
+      if (id === 'play-go') {
+        const a = playAction();
+        if (a) dispatch(a);
+        return;
+      }
+      dispatch(id);
+    },
+  );
+  const wide = host('train', CW, 1024 - STRIP, CONTENT, () => crop(wideFace(), 0, STRIP), () => (inPage('versus') && app.duelView !== 'root') || inPage('club'));
+  const career = host(
+    'career',
+    CAMP_W,
+    CAREER_BOTTOM - CAREER_TOP,
+    FULL,
+    () => crop(careerFace(), 0, CAREER_TOP),
+    () => wrapNav.full === 'career' && !sealed(),
+  );
+  const town = host('duel', LW, 1024 - STRIP, CONTENT, () => crop(townFace(), 0, STRIP), () => inPage('news') || (inPage('rankings') && !sealed()));
+  const you = host('info', LW, 1024 - STRIP, CONTENT, () => crop({ title: '', ...settingsFace() }, 0, STRIP), () => inPage('settings'));
+
+  // THE PROFILE's card drops out under the header chip, in front of the board.
+  const CARD_WM = 0.5;
+  const cardH = (CARD_WM * CARD_H) / CARD_W;
+  const card = new KitMenuPanel('profilecard', CARD_WM, cardH, CARD_W, CARD_H, profileCardFace, dispatch, { bare: true });
+  card.mesh.position.set(
+    BOARD_POS.x + (CHIP.x + CHIP.w / 2 - BOARD_W / 2) * MPP,
+    BOARD_POS.y + (BOARD_H / 2 - (CHIP.y + CHIP.h + 8)) * MPP - cardH / 2,
+    BOARD_POS.z + 0.03,
+  );
+  card.mesh.renderOrder = 32; // over the board and its pages, whatever the sort says
   card.mesh.visible = false;
 
-  const panels = [slab, town, you, chip, card];
-  for (const p of [slab, town, you]) {
-    const i = menu.panels.findIndex((old) => old.id === p.id);
+  const panels = [board, play, wide, career, town, you, card];
+  for (const id of ['train', 'duel', 'info'] as const) {
+    const i = menu.panels.findIndex((old) => old.id === id);
     if (i < 0) continue;
-    const old = menu.panels[i];
-    old.mesh.removeFromParent();
-    menu.panels[i] = p;
-    menu.group.add(p.mesh);
-    p.redraw(null);
+    menu.panels[i].mesh.removeFromParent();
+    menu.panels.splice(i, 1);
   }
-  for (const p of [chip, card]) {
+  for (const p of panels) {
     menu.panels.push(p);
     menu.group.add(p.mesh);
     p.redraw(null);
@@ -709,13 +621,19 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
       live: (id) => byId(id)?.kit.liveButtons() ?? [],
       snap: (id) => (byId(id)?.kit.ctx().canvas as HTMLCanvasElement | undefined)?.toDataURL('image/png') ?? '',
       act: (action) => {
-        dispatch(action);
+        // A probe's press goes where a pointer's would: the PLAY page's
+        // rows and CTA settle on the page.
+        if (action.startsWith('mode:')) selectMode(action.slice('mode:'.length));
+        else if (action === 'play-go') {
+          const a = playAction();
+          if (a) dispatch(a);
+        } else dispatch(action);
         for (const p of panels) p.redraw(null);
       },
       redraw: () => {
         for (const p of panels) p.redraw(null);
       },
-      nav: () => ({ ...wrapNav, club: clubUp() }),
+      nav: () => ({ ...wrapNav, club: wrapNav.page === 'club' }),
       visible: (id) => byId(id)?.mesh.visible ?? false,
     },
   };
@@ -726,6 +644,8 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
       clock += delta;
       const pulse = 0.5 + 0.5 * Math.sin((clock * 2 * Math.PI) / 6);
       for (const p of panels) p.tick(delta, pulse);
+      // The rail's marker slides on its own clock: repaint while it moves.
+      if (marker.ease(delta) && board.mesh.visible) board.kit.repaint();
     },
   };
 }

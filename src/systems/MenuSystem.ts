@@ -200,7 +200,7 @@ function preTutorialAllowed(action: MenuAction | null): boolean {
   if (action === 'start-tutorial' || action === 'rename' || action === 'edit-note') return true;
   // Tabs, the paper, settings and the profile card all answer before the
   // tutorial; the ladder, the fights, the bay and the shop clank.
-  return /^(wrap:tab-|open-gazette|gazette-close|gazette-reader|reader-close|open-settings|settings-|credits-back|sfx-|music-|toggle-mute|toggle-voice|toggle-hide-paint|profile-|badge-|lb-)/.test(action);
+  return /^(wrap:tab-|board:|mode:|play-go$|open-gazette|gazette-close|gazette-reader|reader-close|open-settings|settings-|credits-back|sfx-|music-|toggle-mute|toggle-voice|toggle-hide-paint|profile-|badge-|lb-)/.test(action);
 }
 
 interface Pointer {
@@ -245,7 +245,7 @@ const wrapAngle = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 /** The faces that draw the player's look — what a skin change repaints.
  *  (Not the BALLS board: it draws nothing a pick changes, and repainted
  *  its 768² texture three times on every head swap.) */
-const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'loadout', 'profile', 'profilecard', 'paintbay']);
+const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'loadout', 'board', 'profilecard', 'paintbay']);
 
 export class MenuSystem extends createSystem({}) {
   private menu!: Menu;
@@ -791,9 +791,9 @@ export class MenuSystem extends createSystem({}) {
           show = modalReader;
           break;
         default:
-          // The arc (train/duel/info) and the profile chip: the lobby's
-          // face, gone while any modal is open.
-          show = arcUp;
+          // THE BOARD and its pages: the lobby's face, gone while any
+          // modal is open — and each page only while it's the open one.
+          show = arcUp && ((p as { shown?: () => boolean }).shown?.() ?? true);
           break;
       }
       if (p.mesh.visible !== show) {
@@ -989,7 +989,7 @@ export class MenuSystem extends createSystem({}) {
 
     // Coins banked during a bout roll up the moment you're back at the menu —
     // redraw just the readout each frame while the digits are still climbing.
-    if (tickCoinRollup(delta)) this.redrawPanel('profile');
+    if (tickCoinRollup(delta)) this.redrawPanel('board'); // THE PROFILE chip rides the board's header
 
     // (The old pre-tutorial "TUTORIAL plate breathes" per-frame repaint is
     // gone: on the wrap the sealed lobby's call to action is the kit's
@@ -1446,6 +1446,8 @@ export class MenuSystem extends createSystem({}) {
       case 'open-gazette':
         // The NEWS tab: open the paper, and the moment you do the edition
         // counts as read — the red pip on the tab clears.
+        wrapNav.page = 'news';
+        wrapNav.full = null;
         wrapNav.town = 'news';
         resetNewsScroll();
         markGazetteRead();
@@ -1467,6 +1469,7 @@ export class MenuSystem extends createSystem({}) {
         app.readerOpen = false;
         break;
       case 'open-settings':
+        wrapNav.page = 'settings';
         wrapNav.you = 'settings';
         break;
       case 'settings-credits':
@@ -1478,7 +1481,8 @@ export class MenuSystem extends createSystem({}) {
         this.redrawPanel('info');
         break;
       case 'settings-close':
-        // Back to the YOU tab.
+        // Off SETTINGS, back to VERSUS.
+        if (wrapNav.page === 'settings') wrapNav.page = 'versus';
         wrapNav.you = 'you';
         clearReportSent(); // next visit gets a fresh report button
         setCreditsOpen(false); // reopening lands on settings, not credits

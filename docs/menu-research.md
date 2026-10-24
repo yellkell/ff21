@@ -89,35 +89,39 @@ Counts begin from the default, tutorial-complete lobby and count menu presses up
 
 The currency path deliberately gains one press so shopping no longer occupies the personal equipment landing. These counts are a code-path analysis, not measured completion times. The expected improvement is predictability and scope clarity, not a universal reduction in clicks.
 
-## Second iteration: the Quest rail (24 October 2026)
+## Second iteration: the Quest board (24 October 2026)
 
-The native Meta Quest build iterated on this lobby on a headset, and its rail comes back here. The three panels keep their sizes, positions and ray targets; only the tabs and what sits under them change.
+The native Meta Quest build iterated on this lobby on a headset, and its board comes back here (`menu/board.ts`, `menu/playPage.ts`, `menu/wrap.ts`). The three panels became ONE BOARD dead ahead in RAVE RAID's format, in FIRE FIGHT's colours: the sheared FIRE FIGHT 2 wordmark, a status chip, the settings cog and THE PROFILE chip in the header, an indexed rail down the left with a sliding marker, and the open page in the content region beside it.
 
-| Area | Destination | Contents and reason |
+| Rail | Destination | Contents and reason |
 | --- | --- | --- |
-| Center | Career | The campaign itself, straight under the tab strip. The lobby still opens here. |
-| Center | Versus | Every way to fight in one grid: Quick Match, Ranked, Custom Games, 2v2, Free for All, Co-op Raid, Aim Training (Shoot Back beside it) and the Tutorial replay. Practice and the Play families are gone. |
-| Center | Rave Raid | A door: one press walks into the foyer. |
-| Center | Club | A door: one press knocks, and the slab reads out the wait while the house wakes. |
-| Left | Rankings | Unchanged. |
-| Left | News | Unchanged, plus a standing NOW AVAILABLE ON THE META QUEST STORE strap over every edition. |
-| Right | Locker / Store | Unchanged. |
-| Right | Settings | A cog at the end of the strip, not a named tab. |
+| 01 | Career | Takes the whole board: ‹ BACK and CAMPAIGN in the header, the campaign under it. |
+| 02 | Versus | The PLAY page: a SELECT MODE list (Quick Match, Ranked, Custom Games, 2v2, Free for All, Co-op Raid, Aim Training, Tutorial), a plate with only real data, one CTA. Shoot Back sits on Aim Training's plate. The board opens here. |
+| 03 | Rave Raid | A door: one press walks into the foyer. |
+| 04 | Club | A door: one press knocks, and the page reads out the wait while the house wakes. |
+| 05 | Rankings | The ladder, unchanged, in the content region. |
+| 06 | News | The paper, plus a standing NOW AVAILABLE ON THE META QUEST STORE strap over every edition. |
+| 07 | Locker | A door onto the customization plate. |
+| 08 | Store | A door onto the catalogue. |
+| cog | Settings | In the header, not on the rail. |
 
-Activity left the strip. Its three counts ride the doors they describe: the queue on Quick Match, forming squads on Co-op Raid, the club's head count on the Club tab's badge and face. The menus never say "bots": the opponent while a quick match searches is a rival, the lobby's no-wait button is FIGHT NOW, the bout panel is THE BOUT.
+Activity left the board. Its three counts ride the places they describe: the queue on Quick Match's plate, forming squads on Co-op Raid's, the club's head count under CLUB on the rail. The menus never say "bots": the opponent while a quick match searches is a rival, the lobby's no-wait button is FIGHT NOW, the bout panel is THE BOUT.
 
-| Task | First iteration | Quest rail |
+| Task | First iteration | Quest board |
 | --- | --- | --- |
-| Quick match | Versus family, Quick Match: 2 | Versus, Quick Match: 2 |
-| Aim training | Practice, Aim Training: 2 | Versus, Aim Training: 2 |
-| Campaign | already up: 0 | already up: 0 |
+| Quick match | Versus family, Quick Match: 2 | Fight: 1 (Quick Match is the selected mode) |
+| Aim training | Practice, Aim Training: 2 | Aim Training, Start: 2 |
+| Campaign | already up: 0 | Career: 1 |
 | Rave Raid | Rave Raid family, Enter: 2 | Rave Raid: 1 |
 | Club | Social, Enter Club: 2 | Club: 1 |
-| Co-op raid | Rave Raid family, Co-op Raid: 2 | Versus, Co-op Raid: 2 |
+| Co-op raid | Rave Raid family, Co-op Raid: 2 | Co-op Raid, Form a Squad: 2 |
+| Browse cosmetics | Store, Browse Cosmetics: 2 | Store: 1 |
+
+Still to come back from the Quest build: CAREER and CUSTOMIZE as redesigned full pages, the RANKINGS redesign and the BELTS row on the card. The board hosts the web's own faces for those meanwhile.
 
 ## Validation and next iteration
 
-The wrap smoke test covers fresh-save onboarding, every new family, return to the remembered family, Club entry/return, private-room navigation, direct Store entry and return, and the existing settings, equipment, paint, news and profile flows. Canvas captures should be checked for readable copy, tab separation and action hierarchy. Typecheck/build verify integration.
+The wrap smoke test (`tools/wrap-check.mjs`, now walking the board) covers fresh-save onboarding, every rail page and door, return to the remembered family, Club entry/return, private-room navigation, direct Store entry and return, and the existing settings, equipment, paint, news and profile flows. Canvas captures should be checked for readable copy, tab separation and action hierarchy. Typecheck/build verify integration.
 
 Next, test with a headset and a few players unfamiliar with the new grouping. Ask them to find a co-op boss fight, practice with return fire, equip owned gear, buy a cosmetic, inspect their record and meet a friend. Record first tab selected, wrong turns, completion time and whether they can explain the categories afterward. These are proposed evaluation measures; no usability improvement percentage is claimed.
 

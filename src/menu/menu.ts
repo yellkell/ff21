@@ -34,6 +34,12 @@ export type PanelId =
   | 'train'
   | 'duel'
   | 'info'
+  /** THE BOARD: the lobby's frame — wordmark, header chips, rail (menu/board.ts). */
+  | 'board'
+  /** THE BOARD's VERSUS page (menu/playPage.ts). */
+  | 'play'
+  /** THE BOARD's CAREER, the whole board wide. */
+  | 'career'
   /** THE READER: the paper held up large in front of you (MenuSystem). */
   | 'reader'
   /** THE PAINT BAY (a kit panel modal — src/menu/paintbay.ts). */
