@@ -48,8 +48,11 @@ HARDCORE (no healing between bosses) above the same difficulty without it.
 
 **Every edition tells people what they can do.** `todo` is the point of the
 paper. Make each item concrete and reachable from the menu, and give the
-path where it helps (`PLAY › TITANS › CO-OP RAID`). Good sources, all in the
-brief:
+path where it helps (`VERSUS › CO-OP RAID`). The lobby's paths are CAREER
+(the campaign), VERSUS › QUICK MATCH / RANKED / CUSTOM GAMES / 2V2 / FREE FOR
+ALL / CO-OP RAID / AIM TRAINING / TUTORIAL, RAVE RAID, CLUB, RANKINGS, NEWS,
+LOCKER › CUSTOMIZE and STORE. The menus never say "bots". Good sources, all in
+the brief:
 
 - an **open feat** nobody has cleared yet ("Nobody has beaten the titan raid
   on BLAZING HARDCORE. Get a squad of up to five together and take the first
@@ -61,7 +64,11 @@ brief:
 
 **Don't send readers to RANKED.** Results from the ladder can be reported,
 but `todo` never suggests a ranked fight. Point people at the campaign first
-(`PLAY › TITANS › CAMPAIGN`), then QUICK MATCH (`PLAY › VERSUS › QUICK MATCH`).
+(`CAREER`), then QUICK MATCH (`VERSUS › QUICK MATCH`).
+
+**The Quest Store notice is built in.** The NEWS page wears a standing strap,
+NOW AVAILABLE ON THE META QUEST STORE, over every edition, so an edition never
+needs to announce it.
 
 **Never punch down.** The brief only reports climbers and clears. Nobody who
 dropped places or lost is named. The game never records a failed run, so
@@ -92,8 +99,8 @@ season race, and make `todo` do the work: the open feats are always there.
     { "feat": "SPEEDRUN · NORMAL", "time": "0:46.3", "who": "CRYSTALZACH" }
   ],
   "todo": [
-    { "title": "Take the first blazing speedrun", "text": "Nobody has finished the campaign on BLAZING. PLAY › TITANS › CAMPAIGN, set BLAZING, and the record is yours." },
-    { "title": "Try a quick match", "text": "PLAY › VERSUS › QUICK MATCH. You warm up against a bot while it finds you a real opponent." },
+    { "title": "Take the first blazing speedrun", "text": "Nobody has finished the campaign on BLAZING. CAREER, set BLAZING, and the record is yours." },
+    { "title": "Try a quick match", "text": "VERSUS › QUICK MATCH. You fight straight away while it finds you a real opponent." },
     { "title": "Get on the GOOPLIATH board", "text": "Only two squads have cleared GOOPLIATH on HARD. A third clear puts you on the podium." }
   ]
 }

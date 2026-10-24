@@ -6,11 +6,13 @@
  *   node tools/wrap-check.mjs [--shots]
  *
  * Boots the game in headless Chromium (the IWSDK dev plugin's IWER
- * emulator provides WebXR), enters the arena, and drives the TABBED wrap
- * (MENUS 2) through its dev hook (window.__ff2.wrap): the center slab's
- * PLAY / PRACTICE / SOCIAL tabs and PLAY's game families, the left wing's
- * ACTIVITY / RANKINGS / NEWS, the right wing's LOCKER / STORE / SETTINGS,
- * and THE PROFILE chip + card above the right
+ * emulator provides WebXR), enters the arena, and drives THE BOARD (the
+ * lobby's one panel, back from the Quest build) through its dev hook
+ * (window.__ff2.wrap): the rail's CAREER / VERSUS / RAVE RAID / CLUB /
+ * RANKINGS / NEWS / LOCKER / STORE, the pages hosted beside it (VERSUS's
+ * PLAY page, the custom-game flows and the club's door, the career, the
+ * ladder and the paper, settings), the header's cog, and THE PROFILE chip
+ * + card under the right
  * wing. --shots saves each face's canvas as a PNG beside this script.
  */
 
@@ -83,91 +85,122 @@ if (!hook) {
 }
 
 const wrap = (expr) => page.evaluate(`window.__ff2.wrap.${expr}`);
-const tabsOf = (ids) => ids.filter((b) => b.startsWith('wrap:tab-'));
-const notTabs = (ids) => ids.filter((b) => !b.startsWith('wrap:tab-'));
+const tabsOf = (ids) => ids.filter((b) => b.startsWith('board:'));
+const notTabs = (ids) => ids.filter((b) => !b.startsWith('board:') && b !== 'profile-toggle');
 const has = (ids, ...want) => want.every((w) => ids.includes(w));
+const RAIL = ['board:career', 'board:versus', 'board:rave', 'board:club', 'board:rankings', 'board:news', 'board:locker', 'board:store'];
 
-console.log('\n=== the strips: tabs across the top of every panel ===');
+console.log('\n=== THE BOARD: one panel, the rail down its left ===');
 const tutorialDone = await page.evaluate(() => localStorage.getItem('ff-tutorial-done') === '1');
-let slab = await wrap(`buttons('train')`);
-check('the slab wears PLAY / PRACTICE / SOCIAL', has(slab, 'wrap:tab-fight', 'wrap:tab-practice', 'wrap:tab-club'), tabsOf(slab).join(','));
-let town = await wrap(`buttons('duel')`);
-check('the left wing wears ACTIVITY / RANKINGS / NEWS', has(town, 'wrap:tab-town', 'wrap:tab-ladder', 'wrap:tab-news'), tabsOf(town).join(','));
-let you = await wrap(`buttons('info')`);
-check('the right wing wears LOCKER / STORE / SETTINGS', has(you, 'wrap:tab-you', 'wrap:tab-store', 'wrap:tab-settings'), tabsOf(you).join(','));
+let board = await wrap(`buttons('board')`);
+check('the rail: CAREER · VERSUS · RAVE RAID · CLUB · RANKINGS · NEWS · LOCKER · STORE', RAIL.every((id, i) => tabsOf(board)[i] === id), tabsOf(board).join(','));
+check('the header: the settings cog and THE PROFILE chip', has(board, 'board:settings', 'profile-toggle'), board.join(','));
+let play = await wrap(`buttons('play')`);
 if (!tutorialDone) {
-  check('a fresh save leads with the tutorial', slab.includes('start-tutorial'), slab.join(','));
-  const live = notTabs(await wrap(`live('train')`));
-  check('and ONLY the tutorial answers on the slab', live.length === 1 && live[0] === 'start-tutorial', live.join(','));
-  const liveTabs = tabsOf(await wrap(`live('train')`));
-  check('Practice and Social tabs are sealed too', !liveTabs.includes('wrap:tab-practice') && !liveTabs.includes('wrap:tab-club'), liveTabs.join(','));
-  const liveTown = tabsOf(await wrap(`live('duel')`));
-  check('the LADDER is sealed, the paper is not', !liveTown.includes('wrap:tab-ladder') && liveTown.includes('wrap:tab-news'), liveTown.join(','));
+  check('a fresh save leads with the tutorial', play.includes('mode:tutorial') && (await wrap(`live('play')`)).includes('play-go'), play.join(','));
+  const liveModes = (await wrap(`live('play')`)).filter((b) => b.startsWith('mode:'));
+  check('and ONLY the tutorial answers on the page', liveModes.length === 1 && liveModes[0] === 'mode:tutorial', liveModes.join(','));
+  const liveRail = tabsOf(await wrap(`live('board')`));
+  check('CAREER, RAVE RAID, CLUB, RANKINGS, LOCKER and STORE are sealed; VERSUS and NEWS are not', ['board:career', 'board:rave', 'board:club', 'board:rankings', 'board:locker', 'board:store'].every((id) => !liveRail.includes(id)) && has(liveRail, 'board:versus', 'board:news'), liveRail.join(','));
   // Unseal for the rest of the walk.
   await page.evaluate(() => localStorage.setItem('ff-tutorial-done', '1'));
   await enter();
-  slab = await wrap(`buttons('train')`);
 }
 
-console.log('\n=== the slab: PLAY / PRACTICE / SOCIAL ===');
+console.log('\n=== VERSUS: the PLAY page ===');
 let nav = await wrap(`nav()`);
-check('the slab opens on FIGHT', nav.center === 'fight' && !nav.club, JSON.stringify(nav));
-check('the TOWN wing opens on NEWS (the paper first)', nav.town === 'news', nav.town);
-check('PLAY opens on the CAMPAIGN tab, the career right there', nav.play === 'campaign' && has(slab, 'campaign-0', 'campaign-speedrun', 'campaign-belts') && !slab.includes('open-campaign'), notTabs(slab).join(','));
-save('campaign', await wrap(`snap('train')`));
-await wrap(`act('wrap:play-duels')`);
-slab = await wrap(`buttons('train')`);
-check('FIGHT: modes, no BOTS ONLY toggle, no BACK', has(slab, 'quick-match', 'ranked-match', 'private-open', 'arcade-2v2', 'arcade-ffa') && !slab.includes('toggle-onlybots') && !slab.includes('wrap:back'), notTabs(slab).join(','));
-save('fight', await wrap(`snap('train')`));
-await wrap(`act('wrap:play-rave')`);
-slab = await wrap(`buttons('train')`);
-check('PLAY / RAVE RAID / CO-OP RAIDS lists the rave and the co-op raid', has(slab, 'open-rave', 'open-raid') && !slab.includes('toggle-onlybots') && !slab.includes('campaign-0'), slab.join(','));
-save('rave', await wrap(`snap('train')`));
-await wrap(`act('wrap:tab-practice')`);
-slab = await wrap(`buttons('train')`);
+check('the board opens on VERSUS', nav.page === 'versus' && !nav.full && (await wrap(`visible('play')`)), JSON.stringify(nav));
+check('the wing face opens on NEWS (the paper first)', nav.town === 'news', nav.town);
+play = await wrap(`buttons('play')`);
+const MODES = ['quick', 'ranked', 'custom', '2v2', 'ffa', 'raid', 'aim', 'tutorial'].map((k) => `mode:${k}`);
+check('SELECT MODE lists every way to fight, practice folded in, and one CTA', MODES.every((id) => play.includes(id)) && play.includes('play-go') && !play.includes('toggle-onlybots'), play.join(','));
+save('board', await wrap(`snap('board')`));
+save('play', await wrap(`snap('play')`));
+await wrap(`act('mode:aim')`);
+check("AIM TRAINING's plate carries SHOOT BACK", (await wrap(`buttons('play')`)).includes('toggle-shootback'));
+await wrap(`act('mode:quick')`);
+check('RAVE RAID: a live door on the rail', (await wrap(`live('board')`)).includes('board:rave'));
+
+console.log('\n=== CAREER: the whole board ===');
+await wrap(`act('board:career')`);
 nav = await wrap(`nav()`);
-check('PRACTICE groups tutorial and aim, with the scoped shoot-back option', nav.center === 'practice' && has(slab, 'start-tutorial', 'start-training', 'toggle-shootback') && !slab.includes('open-campaign'), slab.join(','));
-save('practice', await wrap(`snap('train')`));
-await wrap(`act('wrap:tab-fight')`);
-check('returning to PLAY remembers the game family', (await wrap(`nav()`)).play === 'rave');
-await wrap(`act('wrap:play-duels')`);
-// SOCIAL carries the venue door: pressing the tab shows ENTER CLUB, and
-// that button crosses to the venue's floor in-session (tools/venue-check.mjs
-// walks that place properly — here we only prove the tab shows the door,
-// the door opens, and the arena comes back whole).
+board = await wrap(`buttons('board')`);
+const careerIds = await wrap(`buttons('career')`);
+check('CAREER takes the whole board: ‹ BACK, no rail, the career up', nav.full === 'career' && board.includes('board:back') && tabsOf(board).every((b) => !RAIL.includes(b)) && (await wrap(`visible('career')`)) && !(await wrap(`visible('play')`)), JSON.stringify({ nav, board }));
+check('the career: the cards and the three runs', has(careerIds, 'campaign-0', 'campaign-speedrun', 'campaign-hardcore', 'campaign-belts'), careerIds.join(','));
+save('career', await wrap(`snap('career')`));
+save('board-full', await wrap(`snap('board')`));
+await wrap(`act('board:back')`);
+nav = await wrap(`nav()`);
+check('‹ BACK hands the board back to the rail', !nav.full && nav.page === 'versus' && (await wrap(`visible('play')`)), JSON.stringify(nav));
+
+console.log('\n=== CLUB: a door ===');
+// One press knocks and crosses to the venue's floor in-session
+// (tools/venue-check.mjs walks that place properly — here we only prove the
+// rail is the door, the door opens, and the arena comes back whole).
 await page.evaluate(() => localStorage.setItem('gdr-server', 'ws://127.0.0.1:1')); // no relay: the room of one
-await wrap(`act('wrap:tab-club')`);
+await wrap(`act('board:club')`);
 nav = await wrap(`nav()`);
-const clubFace = notTabs(await wrap(`buttons('train')`));
-check('SOCIAL groups the club with private games for friends', nav.club && has(clubFace, 'open-pub', 'private-open'), JSON.stringify({ nav, face: clubFace }));
+check('CLUB: one press turns the page to the club and knocks', nav.club && (await wrap(`visible('train')`)), JSON.stringify(nav));
 save('club', await wrap(`snap('train')`));
-await wrap(`act('open-pub')`);
 const crossed = await page
   .waitForFunction(() => window.__town && window.__town.place === 'venue' && !window.__town.busy, { timeout: 40000 })
   .then(() => true)
   .catch(() => false);
-check('ENTER CLUB: the door onto the venue floor, in-session', crossed && (await page.evaluate(() => document.body.classList.contains('app-entered'))), JSON.stringify(await page.evaluate(() => ({ place: window.__town?.place }))));
+check('CLUB: the door onto the venue floor, in-session', crossed && (await page.evaluate(() => document.body.classList.contains('app-entered'))), JSON.stringify(await page.evaluate(() => ({ place: window.__town?.place }))));
+{
+  // THE CLUB MENU (right Ⓐ): the board in the club's colours.
+  const c = (expr) => page.evaluate(`window.__gdr.menu.${expr}`);
+  await c('show(true)');
+  await page.waitForTimeout(200);
+  let ids = await c('buttons()');
+  check('THE CLUB MENU: one board, its rail THE ROOM · DISCO BALL · SOUND · LEAVE', (await c('shown()')) && has(ids, 'tab-room', 'tab-bell', 'tab-sound', 'tab-leave') && (await c('tab()')) === 'room', ids.join(','));
+  save('club-room', await c('snapSocial()'));
+  await c(`press('tab-bell')`);
+  ids = await c('buttons()');
+  check('DISCO BALL: FIGHT · RAVE, the fights, one CTA', has(ids, 'tab-fight', 'tab-rave', 'fight-2v2', 'fight-raid', 'call'), ids.join(','));
+  await c(`press('fight-raid')`);
+  ids = await c('buttons()');
+  check('a TITAN RAID lists its tiers inline, with HARDCORE', ids.some((b) => b.startsWith('tier:')) && ids.includes('raidhc'), ids.join(','));
+  save('club-bell', await c('snapSocial()'));
+  await c(`press('tab-rave')`);
+  ids = await c('buttons()');
+  check('RAVE lists the records inline', has(ids, 'song:shuffle', 'expert', 'call'), ids.filter((b) => b.startsWith('song:')).slice(0, 4).join(','));
+  await c(`press('tab-sound')`);
+  ids = await c('buttons()');
+  check('SOUND: the mic, voice chat and the music', has(ids, 'mic', 'voice', 'music'), ids.join(','));
+  await c(`press('tab-leave')`);
+  check('LEAVE: the door', (await c('buttons()')).includes('leave'));
+  await c(`press('tab-room')`);
+  await c('show(false)');
+}
 await page.evaluate(() => window.__town.leave());
 await page.waitForFunction(() => window.__town && window.__town.place === 'arena' && !window.__town.busy, { timeout: 40000 });
 await page.waitForTimeout(300);
-await wrap(`act('wrap:tab-fight')`);
+check('home again, the club page offers the door back in', notTabs(await wrap(`buttons('train')`)).includes('open-pub'));
+await wrap(`act('board:versus')`);
 nav = await wrap(`nav()`);
-check('home again, and FIGHT is the slab', nav.center === 'fight' && !nav.club, JSON.stringify(nav));
+check('home again, and VERSUS is the page', nav.page === 'versus' && !nav.club, JSON.stringify(nav));
 
-console.log('\n=== through FIGHT: the flows still drill in and BACK out ===');
-await wrap(`act('private-open')`);
-let face = await wrap(`buttons('train')`);
-check('PRIVATE face on the slab, tabs still up', has(face, 'private-mode-1v1', 'private-create', 'private-enter', 'wrap:tab-fight'), notTabs(face).join(','));
+console.log('\n=== through VERSUS: the flows still drill in and BACK out ===');
+await wrap(`act('mode:custom')`);
+await wrap(`act('play-go')`);
+let face = await wrap(`buttons('room')`);
+check("CUSTOM GAMES' CTA opens the ROOMS page in the PLAY page's place", has(face, 'private-mode-1v1', 'private-create', 'private-enter', 'private-back') && (await wrap(`visible('room')`)) && !(await wrap(`visible('play')`)), notTabs(face).join(','));
+save('room-shape', await wrap(`snap('room')`));
 await wrap(`act('private-enter')`);
-face = await wrap(`buttons('train')`);
-check('keypad face on the slab', has(face, 'kp-5', 'kp-join', 'kp-del'), notTabs(face).join(','));
-save('keypad', await wrap(`snap('train')`));
+face = await wrap(`buttons('room')`);
+check('keypad face in the page', has(face, 'kp-5', 'kp-join', 'kp-del'), notTabs(face).join(','));
+save('keypad', await wrap(`snap('room')`));
 await wrap(`act('private-back')`);
-face = await wrap(`buttons('train')`);
+face = await wrap(`buttons('room')`);
 check('keypad BACK returns to private-room setup', has(face, 'private-create', 'private-enter'));
 await wrap(`act('private-back')`);
-face = await wrap(`buttons('train')`);
-check('BACK lands on the FIGHT root', face.includes('quick-match') || face.includes('cancel-queue'), notTabs(face).join(','));
+check('BACK lands on the PLAY page', (await wrap(`visible('play')`)) && (await wrap(`buttons('play')`)).includes('play-go'));
+await wrap(`act('private-open')`);
+await wrap(`act('board:news')`);
+await wrap(`act('board:versus')`);
+check('a rail press backs out of a flow, as its own BACK would', (await wrap(`visible('play')`)) && !(await wrap(`visible('room')`)));
 
 // Simulate a pending search without opening a live public room.
 await page.evaluate(async () => {
@@ -175,31 +208,26 @@ await page.evaluate(async () => {
   app.state = 'queueing';
   window.__ff2.wrap.redraw();
 });
-const pending = await wrap(`live('train')`);
-check('pending search keeps Cancel visible and blocks other activities', pending.includes('cancel-queue') && !pending.includes('wrap:tab-practice') && !pending.includes('wrap:tab-club') && !pending.includes('wrap:play-campaign'));
-await wrap(`act('wrap:tab-practice')`);
-await wrap(`act('wrap:play-rave')`);
-check('pending search also guards direct navigation', (await wrap(`nav()`)).center === 'fight' && (await wrap(`nav()`)).play === 'duels');
+const pendingRail = tabsOf(await wrap(`live('board')`));
+const pendingPlay = await wrap(`live('play')`);
+check('pending search keeps CANCEL up and shuts the doors', pendingPlay.includes('play-go') && !pendingPlay.includes('mode:ranked') && !pendingRail.includes('board:career') && !pendingRail.includes('board:rave') && !pendingRail.includes('board:club'), `${pendingRail.join(',')} · ${pendingPlay.join(',')}`);
+await wrap(`act('board:career')`);
+await wrap(`act('board:club')`);
+nav = await wrap(`nav()`);
+check('pending search also guards direct navigation', nav.page === 'versus' && !nav.full, JSON.stringify(nav));
 await wrap(`act('cancel-queue')`);
-
-await wrap(`act('wrap:play-rave')`);
-check('online raid is open', (await wrap(`live('train')`)).includes('open-raid'));
-await wrap(`act('wrap:play-duels')`);
-
-await wrap(`act('wrap:tab-club')`);
+check('online raid is open on VERSUS', (await wrap(`live('play')`)).includes('mode:raid'));
+await wrap(`act('board:career')`);
 await wrap(`act('private-open')`);
-check('Social private-game shortcut selects its owning Play context', (await wrap(`nav()`)).center === 'fight' && (await wrap(`buttons('train')`)).includes('private-create'));
+nav = await wrap(`nav()`);
+check('CUSTOM GAMES from anywhere selects its owning VERSUS page', nav.page === 'versus' && !nav.full && (await wrap(`buttons('room')`)).includes('private-create'), JSON.stringify(nav));
 await wrap(`act('private-back')`);
 
-console.log('\n=== the left wing: ACTIVITY / RANKINGS / NEWS ===');
-await wrap(`act('wrap:tab-town')`); // the wing opens on NEWS now — walk to TOWN first
-town = await wrap(`buttons('duel')`);
-check('TOWN: the live chips, nothing pressable', has(town, 'town-queue', 'town-raids', 'town-club') && notTabs(await wrap(`live('duel')`)).length === 0, notTabs(town).join(','));
-save('town', await wrap(`snap('duel')`));
-await wrap(`act('wrap:tab-ladder')`);
-town = await wrap(`buttons('duel')`);
+console.log('\n=== RANKINGS / NEWS ===');
+await wrap(`act('board:rankings')`);
+let town = await wrap(`buttons('duel')`);
 nav = await wrap(`nav()`);
-check('LADDER: opens on BATTLE › 1V1 with its sub-boards', nav.town === 'ladder' && has(town, 'lb-battle', 'lb-xp', 'lb-arcade', 'lb-ranked', 'lb-duo', 'lb-ffa'), notTabs(town).join(','));
+check('LADDER: opens on BATTLE › 1V1 with its sub-boards', nav.page === 'rankings' && nav.town === 'ladder' && has(town, 'lb-battle', 'lb-xp', 'lb-arcade', 'lb-ranked', 'lb-duo', 'lb-ffa'), notTabs(town).join(','));
 save('ladder', await wrap(`snap('duel')`));
 await wrap(`act('lb-arcade')`);
 town = await wrap(`buttons('duel')`);
@@ -214,7 +242,6 @@ check('LADDER › GOOP RAID: the view strip without HC ONLY (the tide has no har
 await wrap(`act('lb-xp')`);
 town = await wrap(`buttons('duel')`);
 check('LADDER › XP: no sub-row', !town.includes('lb-ranked') && !town.includes('lb-training'), notTabs(town).join(','));
-await wrap(`act('wrap:tab-town')`);
 
 // THE GAZETTE (net/gazette.ts + menu.ts): inject an edition with every
 // section — BY THE NUMBERS, THE RECORD BOOK, WHAT TO DO TODAY — open the
@@ -238,8 +265,8 @@ await wrap(`act('wrap:tab-town')`);
         { feat: 'SPEEDRUN · NORMAL', time: '0:46.3', who: 'CRYSTALZACH' },
       ],
       todo: [
-        { title: 'Take the first blazing speedrun', text: 'Nobody has finished the campaign on BLAZING. PLAY › TITANS › CAMPAIGN, set BLAZING, and the record is yours.' },
-        { title: 'Chase the season podium', text: 'Eight days left. PLAY › VERSUS › RANKED: a win is 20 points, more against a stronger opponent.' },
+        { title: 'Take the first blazing speedrun', text: 'Nobody has finished the campaign on BLAZING. CAREER, set BLAZING, and the record is yours.' },
+        { title: 'Chase the season podium', text: 'Eight days left. VERSUS › RANKED: a win is 20 points, more against a stronger opponent.' },
       ],
     });
     window.__ff2.gazette.open();
@@ -250,8 +277,8 @@ await wrap(`act('wrap:tab-town')`);
   const snap2 = await page.evaluate(() => { window.__ff2.gazette.scroll(900); return window.__ff2.gazette.snap(); });
   await page.evaluate(() => window.__ff2.gazette.close());
   const after = await wrap(`nav()`);
-  check("GAZETTE: opening the paper lands on the NEWS tab; the edition lays out and renders", nav.town === 'news' && snap.startsWith('data:image/png') && snap.length > 20000 && errors.length === before, `${nav.town} · ${snap.length} bytes`);
-  check('GAZETTE: closing the paper returns to TOWN', after.town === 'town', after.town);
+  check("GAZETTE: opening the paper lands on the NEWS page; the edition lays out and renders", nav.page === 'news' && nav.town === 'news' && snap.startsWith('data:image/png') && snap.length > 20000 && errors.length === before, `${nav.town} · ${snap.length} bytes`);
+  check('GAZETTE: closing the paper leaves NEWS up (no ACTIVITY to fall back to)', after.town === 'news', after.town);
   save('news', snap);
   save('news-2', snap2);
 
@@ -275,19 +302,19 @@ await wrap(`act('wrap:tab-town')`);
   await page.evaluate(() => window.__ff2.gazette.close());
 }
 
-console.log('\n=== the right wing: LOCKER / STORE / SETTINGS ===');
-you = await wrap(`buttons('info')`);
-check('LOCKER wing: one CUSTOMIZE door and the career, no currency sales', has(you, 'open-custom', 'profile-toggle') && !you.includes('open-paintbay') && !you.includes('open-bank') && !you.includes('you-coins') && !you.includes('rename') && !you.includes('you-record') && !you.includes('you-tip'), notTabs(you).join(','));
-save('you', await wrap(`snap('info')`));
-await wrap(`act('wrap:tab-store')`);
-you = await wrap(`buttons('info')`);
-check('STORE owns shopping and the bank', has(you, 'open-shop', 'open-bank', 'store-balance') && !you.includes('open-paintbay'));
-save('store-wing', await wrap(`snap('info')`));
-await wrap(`act('open-shop')`);
+console.log('\n=== LOCKER · STORE: doors onto the customization plate ===');
+let you;
+await wrap(`act('board:store')`);
 await page.waitForTimeout(200);
-check('STORE catalogue opens directly from the wing', await page.evaluate(() => window.__ff2.modals.up('shop')));
+check('STORE: one press opens the catalogue', await page.evaluate(() => window.__ff2.modals.up('shop')));
 await wrap(`act('custom-close')`);
-check('closing the catalogue returns to STORE', (await wrap(`nav()`)).you === 'store');
+await page.waitForTimeout(200);
+check('closing the catalogue hands the board back', !(await page.evaluate(() => window.__ff2.modals.up('shop'))) && (await wrap(`visible('board')`)));
+await wrap(`act('board:locker')`);
+await page.waitForTimeout(200);
+check('LOCKER: one press opens the locker', await page.evaluate(() => window.__ff2.modals.up('custom')));
+await wrap(`act('custom-close')`);
+await page.waitForTimeout(200);
 
 // THE HUB: one customization plate, three tabs — LOCKER · STORE · PAINT —
 // the same plate in the same place, the faces swapping under the tabs.
@@ -344,19 +371,18 @@ check('closing the catalogue returns to STORE', (await wrap(`nav()`)).you === 's
   check('HUB: CLOSE on any face closes the plate', !(await up('custom')) && !(await up('shop')) && !(await up('paintbay')));
 }
 
-await wrap(`act('wrap:tab-settings')`);
+await wrap(`act('board:settings')`);
 you = await wrap(`buttons('info')`);
 nav = await wrap(`nav()`);
-check('SETTINGS: tracks, breakers, report, credits', nav.you === 'settings' && has(you, 'sfx-vol', 'music-vol', 'toggle-mute', 'toggle-voice', 'toggle-hide-paint', 'settings-report', 'settings-credits'), notTabs(you).join(','));
+check('SETTINGS (the cog): tracks, breakers, report, credits', nav.page === 'settings' && (await wrap(`visible('info')`)) && has(you, 'sfx-vol', 'music-vol', 'toggle-mute', 'toggle-voice', 'toggle-hide-paint', 'settings-report', 'settings-credits'), notTabs(you).join(','));
 save('settings', await wrap(`snap('info')`));
 await wrap(`act('settings-credits')`);
 you = await wrap(`buttons('info')`);
 check('CREDITS is a sub-face with BACK', you.includes('credits-back') && !you.includes('sfx-vol'), notTabs(you).join(','));
 await wrap(`act('credits-back')`);
-await wrap(`act('wrap:tab-you')`);
-you = await wrap(`buttons('info')`);
+await wrap(`act('board:versus')`);
 nav = await wrap(`nav()`);
-check('YOU tab again', nav.you === 'you' && you.includes('open-custom'), nav.you);
+check('off SETTINGS by the rail', nav.page === 'versus' && !(await wrap(`visible('info')`)) && (await wrap(`visible('play')`)), JSON.stringify(nav));
 
 console.log('\n=== WHO HEARS WHOM (net/voiceRules.ts) ===');
 {
@@ -442,10 +468,10 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
 
   await wrap(`act('open-campaign')`);
   await page.waitForTimeout(400);
-  ids = await m(`buttons('train')`);
-  check('THE TITAN GAUNTLET on the CAMPAIGN tab: the cards and three runs', has(ids, 'campaign-0', 'campaign-4', 'campaign-speedrun', 'campaign-hardcore', 'campaign-goopliath'), ids.join(','));
+  ids = await m(`buttons('career')`);
+  check('THE TITAN GAUNTLET on the CAREER page: the cards and three runs', has(ids, 'campaign-0', 'campaign-4', 'campaign-speedrun', 'campaign-hardcore', 'campaign-goopliath'), ids.join(','));
   // A run opens the LAUNCH card, and it owns every click while it is up.
-  const wasLive = (await m(`live('train')`)).includes('campaign-0');
+  const wasLive = (await m(`live('career')`)).includes('campaign-0');
   await wrap(`act('campaign-speedrun')`);
   await page.waitForTimeout(300);
   ids = await m(`buttons('campaign')`);
@@ -454,15 +480,25 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
   await shot('campaign', 'campaign-launch');
   await wrap(`act('campaign-launch-cancel')`);
   await page.waitForTimeout(200);
-  check('cancelling hands the line-up back', (await m(`live('train')`)).includes('campaign-0') && wasLive);
+  check('cancelling hands the line-up back', (await m(`live('career')`)).includes('campaign-0') && wasLive);
+  await wrap(`act('board:back')`);
 
   await wrap(`act('open-raid')`);
   await page.waitForTimeout(500);
-  ids = await m(`buttons('lobby')`);
-  check('THE ARCADE LOBBY: host a raid, and a way out', has(ids, 'lobby-host', 'lobby-close'), ids.join(','));
-  await shot('lobby');
+  ids = await wrap(`buttons('room')`);
+  check('THE ARCADE LOBBY is a page of the board: host a raid, and ‹ BACK', has(ids, 'lobby-host', 'lobby-close') && (await wrap(`visible('room')`)) && (await wrap(`visible('board')`)) && !(await wrap(`visible('play')`)), ids.join(','));
+  save('lobby', await wrap(`snap('room')`));
+  await wrap(`act('board:news')`);
+  await page.waitForTimeout(300);
+  check('a rail press backs out of the lobby', !(await wrap(`visible('room')`)) && (await wrap(`visible('duel')`)));
+  await wrap(`act('arcade-2v2')`);
+  await page.waitForTimeout(300);
+  ids = await wrap(`buttons('room')`);
+  nav = await wrap(`nav()`);
+  check('2V2 opens its room browser under VERSUS: open a room, fight rivals now, ‹ BACK', nav.page === 'versus' && has(ids, 'lobby-host', 'lobby-vsbots', 'lobby-close'), ids.join(','));
   await wrap(`act('lobby-close')`);
   await page.waitForTimeout(300);
+  check('‹ BACK hands VERSUS back', (await wrap(`visible('play')`)) && !(await wrap(`visible('room')`)));
 }
 
 console.log('\n=== THE AUDIENCE: the terrace, the bodies, the roar ===');
@@ -506,15 +542,15 @@ console.log('\n=== THE AUDIENCE: the terrace, the bodies, the roar ===');
 }
 
 console.log('\n=== THE PROFILE: the chip and its card ===');
-const chip = await wrap(`buttons('profile')`);
-check('the chip is one pressable ghost', chip.length === 1 && chip[0] === 'profile-toggle', chip.join(','));
+const chip = await wrap(`buttons('board')`);
+check("the chip is a pressable ghost on the board's header", chip.includes('profile-toggle'), chip.join(','));
 const cardHidden = await wrap(`visible('profilecard')`);
 await wrap(`act('profile-toggle')`);
 await page.waitForTimeout(300); // MenuSystem shows the card on the next frame
 const cardShown = await wrap(`visible('profilecard')`);
 const card = await wrap(`buttons('profilecard')`);
 check('tapping the chip drops the card: rename · write note · close', !cardHidden && cardShown && has(card, 'rename', 'edit-note', 'profile-close'), `${cardHidden}→${cardShown} · ${card.join(',')}`);
-save('profile', await wrap(`snap('profile')`));
+save('profile', await wrap(`snap('board')`));
 save('profilecard', await wrap(`snap('profilecard')`));
 await wrap(`act('profile-close')`);
 await page.waitForTimeout(300);

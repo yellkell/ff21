@@ -14,9 +14,11 @@
  *    the set, and neither hears the other through the wall;
  *  - applies your safety lists every frame: a MUTED dancer goes silent, a
  *    BLOCKED one vanishes — figure, tag and voice, local only;
- *  - owns the SOCIAL panel (right Ⓐ on the club floor): everyone in the
- *    room, MUTE and BLOCK per dancer, your mic state, and the voice-chat
- *    master switch. The Horizon-store safety console, in house style.
+ *  - owns THE CLUB MENU (right Ⓐ on the club floor): the lobby's board
+ *    format in the club's colours (club/clubMenu.ts, back from the Meta
+ *    Quest build) — THE ROOM (everyone in it, MUTE and BLOCK per dancer),
+ *    DISCO BALL (what the ball calls, and the call), SOUND (the mic, the
+ *    voice-chat master switch, the floor's music) and LEAVE.
  *
  * When a set drops, the figures pack away (the raid's AvatarSystem takes
  * over on the ring) but the VOICE stays live among the dancers ON it,
@@ -38,10 +40,10 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three';
-import { DIFFICULTY, RING, hueToColor } from '../config.js';
+import { RING, hueToColor } from '../config.js';
 import * as sfx from '../audio/sfx.js';
 import { preload } from '../audio/music.js';
-import { pickRaidTrack, trackById, tracksFor } from '../audio/tracks.js';
+import { pickRaidTrack, trackById } from '../audio/tracks.js';
 import { platformRoot } from '../arena/arena.js';
 import { ballSpawnPos } from '../club/ball.js';
 import { CLUB_NET, inStillRoom } from '../club/config.js';
@@ -49,7 +51,7 @@ import { myHandFlags } from '../club/fingerGun.js';
 // MUTE and BLOCK are the safety console's to toggle now (ui/safety.ts owns
 // both homes); the floor's own MUSIC switch stays here, because it belongs
 // to the club and not to the ring.
-import { clubMusicOn, socialBlocked, socialMuted, toggleClubMusic } from '../club/social.js';
+import { socialBlocked, socialMuted, toggleClubMusic } from '../club/social.js';
 import { venueReady } from '../club/venue.js';
 import {
   clearVoiceSpeakers,
@@ -84,31 +86,20 @@ import {
   sendVoice,
   startBall, inRoom as roomOpen } from '../net/session.js';
 import { raveBridge } from '../bridge.js';
-import { bellView, FIGHTS, type BellMode } from '../club/bell.js';
-import { coins } from '../../menu/wallet.js';
+import { FIGHTS } from '../club/bell.js';
 import { app, saveDifficulty } from '../../menu/appState.js';
-import { DIFFICULTY as TIERS, DIFFICULTY_ORDER, type Difficulty } from '../../config.js';
+import { DIFFICULTY_ORDER, type Difficulty } from '../../config.js';
 import { difficultyUnlocked } from '../../campaign/campaignState.js';
 import { font } from '../ui/fonts.js';
-import { Panel, UI, type PanelButton } from '../ui/panel.js';
-import {
-  drawSafetyRows,
-  safetyButtons,
-  safetyClick,
-  safetyKey,
-  safetyRoster,
-  voiceButtons,
-  type SafetyLayout,
-} from '../ui/safety.js';
+import { Panel } from '../../ui/kit/panel.js';
+import { BOARD_H, BOARD_W, CLUB_LOOK, RailMarker } from '../../menu/board.js';
+import { SONG_VISIBLE, clubMenuFace, clubMenuKey, revealCued, songRows, type ClubMenuState, type ClubTab, type FightMode } from '../club/clubMenu.js';
+import { safetyClick } from '../ui/safety.js';
 import { PointerRay } from '../ui/pointer.js';
 
 const TRACK_KEY = 'gdr-track';
-/** The song list's window: rows are sized to be READ from a step back, so
- *  the shelf scrolls rather than shrinking every title to fit. */
-const SONG_Y0 = 96;
-const SONG_PITCH = 61;
-const SONG_ROW_H = 55;
-const SONG_VISIBLE = 12;
+/** THE CLUB MENU's width at the lectern (m). */
+const CLUB_MENU_W = 1.12;
 
 /** Club figures track the wire critically damped — real people's motion
  *  carries its own character; the spring's job is continuity, not bounce.
@@ -194,6 +185,9 @@ export const socialView: {
    *  ask and the answer are not the same question. */
   shown?: () => boolean;
   snapSocial?: () => string;
+  /** THE CLUB MENU's open rail tab, and the ids it offers. */
+  tab?: () => ClubTab;
+  buttons?: () => string[];
   snapSongs?: () => string;
   openSongs?: (on: boolean) => void;
   /** THE TIER list (the titan raid's difficulty), the songs' twin. */
@@ -214,38 +208,36 @@ export class ClubSocialSystem extends createSystem({}) {
   private voiceStarting = false;
   private voiceRetry = 0;
 
+  /** THE CLUB MENU: one board (club/clubMenu.ts paints it). */
   private panel!: Panel;
-  /** The song list, flown out beside the desk (see SONGS). */
-  private songs!: Panel;
-  /** THE BELL's two tabs (FF2 DESIGN §3.1): FIGHT calls one of the
-   *  arena's fights, RAVE calls a record. FIGHT is only on offer where a
-   *  host can open an arena room (raveBridge.openFightRoom) — the
-   *  standalone rave page has no arena and shows the shelf alone. */
-  private tab: 'fight' | 'rave' = raveBridge.openFightRoom ? 'fight' : 'rave';
-  private fight: Exclude<BellMode, 'rave'> = '2v2';
-  /** TITAN RAID run HARDCORE — no refit between titans. The desk's own
-   *  toggle (the arena's lobby has the same one for a room hosted there);
-   *  it rides the ball with the tier and the deal stamps it on the raid. */
-  private hardcore = false;
-  /** A fight call in flight: the arena is opening the room. */
-  private calling = false;
-  private callError = '';
-  private songsOpen = false;
-  private songsKey = '';
-  /** First row of the song list's window. */
-  private songScroll = 0;
+  private board = new Group();
+  private marker = new RailMarker();
+  /** The board's own state; the room's comes off the session each paint. */
+  private menu: ClubMenuState = {
+    tab: 'room',
+    // DISCO BALL's two tabs (FF2 DESIGN §3.1): FIGHT calls one of the
+    // arena's fights, RAVE calls a record. FIGHT is only on offer where a
+    // host can open an arena room (raveBridge.openFightRoom) — the
+    // standalone rave page has no arena and shows the records alone.
+    bellTab: raveBridge.openFightRoom ? 'fight' : 'rave',
+    fights: Boolean(raveBridge.openFightRoom),
+    fight: '2v2',
+    // TITAN RAID run HARDCORE — no refit between titans; it rides the ball
+    // with the tier and the deal stamps it on the raid.
+    hardcore: false,
+    // A fight call in flight: the arena is opening the room.
+    calling: false,
+    callError: '',
+    songScroll: 0,
+  };
   /** Thumbstick scroll needs a rest between steps or one flick runs the
    *  whole list past you. */
   private stickCool = 0;
-  /** THE TIER LIST: the titan raid's difficulty, flown out beside the desk
-   *  the way the records are — the row on the FIGHT tab opens it. */
-  private tiers!: Panel;
-  private tiersOpen = false;
-  private tiersKey = '';
   private pointers!: Record<'left' | 'right', PointerRay>;
   private ray = new Raycaster();
   private hover: string | null = null;
   private paintKey = '';
+  private shown = false;
   private clock = 0;
 
   init(): void {
@@ -255,48 +247,42 @@ export class ClubSocialSystem extends createSystem({}) {
     // Inbound voice frames route straight to their spatial speaker.
     onVoice((id, frame) => pushVoiceFrame(id, frame));
 
-    // With the board gone from the club floor, this panel is the floor's
-    // whole console — the extra rows (difficulty, leave) earn it the height.
-    this.panel = new Panel(0.6, 0.99, 700, 1155);
+    // THE CLUB MENU: the board in front of you at the lectern, in the club's
+    // own colours. The records and the raid's tiers live inline on its
+    // DISCO BALL tab (they used to fly out of the desk as leaves).
+    this.panel = new Panel(CLUB_MENU_W, CLUB_MENU_W * (BOARD_H / BOARD_W), BOARD_W, BOARD_H, { fill: CLUB_LOOK.pane });
     this.panel.setShown(false, true);
-    this.panel.group.rotation.order = 'YXZ';
-    this.scene.add(this.panel.group);
-
-    // THE SONG LIST, as a leaf off the desk: the ♪ row used to CYCLE, so
-    // finding a record meant tapping through fourteen of them and reading
-    // the label each time. It flies out to the left instead, whole, and
-    // rides the desk (a child of its group) wherever the desk is placed.
-    this.songs = new Panel(0.38, 0.777, 440, 900);
-    this.songs.setShown(false, true);
-    this.songs.group.position.set(-0.51, 0.107, 0.008);
-    this.panel.group.add(this.songs.group);
-
-    // THE TIER LIST, the same leaf on the FIGHT side: a TITAN RAID is a run
-    // with a difficulty, and the tier picked here is the one the bell deals
-    // to the whole squad. Top-aligned with the record list, shorter — four
-    // tiers, not fourteen records.
-    this.tiers = new Panel(0.38, 0.4, 440, 464);
-    this.tiers.setShown(false, true);
-    this.tiers.group.position.set(-0.51, 0.107 + 0.777 / 2 - 0.2, 0.008);
-    this.panel.group.add(this.tiers.group);
+    this.board.rotation.order = 'YXZ';
+    this.board.visible = false;
+    this.board.add(this.panel.mesh);
+    this.scene.add(this.board);
 
     this.pointers = { left: new PointerRay(this.scene), right: new PointerRay(this.scene) };
 
-    socialView.show = (on) => {
-      this.panel.setShown(on);
-      if (!on) {
-        this.closeSongs();
-        this.closeTiers();
-      }
-      if (on) this.place();
-      this.paintKey = '';
+    socialView.show = (on) => this.show(on);
+    socialView.shown = () => this.shown;
+    socialView.tab = () => this.menu.tab;
+    socialView.buttons = () => {
+      this.paint();
+      return this.panel.buttonIds();
     };
-    socialView.snapTiers = () => (this.tiers.ctx().canvas as HTMLCanvasElement).toDataURL('image/png');
-    socialView.openTiers = (on) => this.openTiers(on);
-    socialView.shown = () => this.panel.isShown;
-    socialView.snapSongs = () => (this.songs.ctx().canvas as HTMLCanvasElement).toDataURL('image/png');
-    socialView.openSongs = (on) => this.openSongs(on);
-    socialView.snapSocial = () => (this.panel.ctx().canvas as HTMLCanvasElement).toDataURL('image/png');
+    const snap = (): string => {
+      this.paintKey = '';
+      this.paint();
+      return (this.panel.ctx().canvas as HTMLCanvasElement).toDataURL('image/png');
+    };
+    socialView.snapSocial = snap;
+    // The old desk's leaves are DISCO BALL's two lists now: opening one opens the tab.
+    socialView.openSongs = (on) => {
+      if (on) this.openBell('rave');
+    };
+    socialView.snapSongs = snap;
+    socialView.openTiers = (on) => {
+      if (!on) return;
+      this.openBell('fight');
+      this.menu.fight = 'raid';
+    };
+    socialView.snapTiers = snap;
     socialView.press = (id) => this.act(id);
   }
 
@@ -452,7 +438,8 @@ export class ClubSocialSystem extends createSystem({}) {
     this.updatePanel(delta, inClub && inRoom);
     const pulse = this.beatPulse();
     this.panel.tick(delta, pulse);
-    this.songs.tick(delta, pulse);
+    // The rail's marker slides on its own clock: repaint while it moves.
+    if (this.shown && this.marker.ease(delta)) this.panel.repaint();
   }
 
   /** The under-halo's beat envelope (the same curve the board uses) —
@@ -635,13 +622,12 @@ export class ClubSocialSystem extends createSystem({}) {
   /* ── the SOCIAL panel ─────────────────────────────────────────────────── */
 
   private updatePanel(delta: number, allowed: boolean): void {
-    if (!allowed && this.panel.isShown) this.panel.setShown(false);
+    if (!allowed && this.shown) this.show(false);
     if (allowed && this.input.xr.gamepads.right?.getButtonDown(InputComponent.A_Button)) {
-      this.panel.setShown(!this.panel.isShown);
-      if (this.panel.isShown) this.place();
+      this.show(!this.shown);
       sfx.uiClick();
     }
-    if (!this.panel.isShown) {
+    if (!this.shown) {
       this.pointers.left.hide();
       this.pointers.right.hide();
       return;
@@ -663,16 +649,9 @@ export class ClubSocialSystem extends createSystem({}) {
       _d.set(0, 0, -1).applyQuaternion(_q).normalize();
       this.ray.set(_o, _d);
       this.ray.far = 3;
-      // Every surface that is out — nearest hit wins, and the id says
-      // which panel owns it ('song:' is the record list's, 'tier:' the
-      // tier list's).
-      const surfaces = [this.panel.mesh];
-      if (this.songsOpen) surfaces.push(this.songs.mesh);
-      if (this.tiersOpen) surfaces.push(this.tiers.mesh);
-      const hit = this.ray.intersectObjects(surfaces, false)[0];
-      const owner = hit?.object === this.songs.mesh ? this.songs : hit?.object === this.tiers.mesh ? this.tiers : this.panel;
-      const id = hit?.uv ? owner.buttonAt(hit.uv.x, hit.uv.y) : null;
-      if (hit?.object === this.songs.mesh) songHand = hand;
+      const hit = this.ray.intersectObject(this.panel.mesh, false)[0];
+      const id = hit?.uv ? this.panel.buttonAt(hit.uv.x, hit.uv.y) : null;
+      if (id?.startsWith('song:')) songHand = hand;
       p.update(delta, _o, hit ? hit.point : null, Boolean(id));
       if (!id) continue;
       hover = id;
@@ -685,15 +664,13 @@ export class ClubSocialSystem extends createSystem({}) {
       this.hover = hover;
       if (hover) sfx.uiHover();
       this.paintKey = '';
-      this.songsKey = '';
-      this.tiersKey = '';
     }
     if (clicked) {
       sfx.uiClick();
       this.act(clicked);
     }
 
-    // Thumbstick scrolling on the song list — the stick of the hand that's
+    // Thumbstick scrolling on the record list — the stick of the hand that's
     // POINTING at it, a row per flick, held deflection repeats on a
     // cadence. The ▲▼ page by a screenful; this is the fine adjustment.
     this.stickCool = Math.max(0, this.stickCool - delta);
@@ -708,61 +685,63 @@ export class ClubSocialSystem extends createSystem({}) {
     }
 
     this.paint();
-    if (this.songsOpen) this.paintSongs();
-    if (this.tiersOpen) this.paintTiers();
   }
 
-  /** Press one of the console's buttons — the trigger's path, and the
+  /** Raise or put away THE CLUB MENU. */
+  private show(on: boolean): void {
+    this.shown = on;
+    this.board.visible = on;
+    this.panel.setShown(on);
+    if (on) this.place();
+    this.paintKey = '';
+  }
+
+  /** DISCO BALL, on one of its two tabs (the records scrolled to the cued one). */
+  private openBell(tab: 'fight' | 'rave'): void {
+    this.menu.tab = 'bell';
+    this.menu.bellTab = this.menu.fights ? tab : 'rave';
+    if (this.menu.bellTab === 'rave') this.menu.songScroll = revealCued(this.menu.songScroll);
+    this.paintKey = '';
+  }
+
+  /** Press one of the board's buttons — the trigger's path, and the
    *  headless finger's (socialView.press). */
   private act(id: string): void {
-    const onList = id.startsWith('song:');
-    const onTiers = id.startsWith('tier:');
-    (onList ? this.songs : onTiers ? this.tiers : this.panel).press(id);
-    if (onList) {
+    this.panel.press(id);
+    if (id === 'tab-room' || id === 'tab-bell' || id === 'tab-sound' || id === 'tab-leave') {
+      const tab = id.slice(4) as ClubTab;
+      if (tab === 'bell') this.openBell(this.menu.bellTab);
+      else this.menu.tab = tab;
+    } else if (id.startsWith('song:')) {
       const pick = id.slice(5);
-      if (pick === 'up' || pick === 'down') {
-        this.scrollSongs(pick === 'up' ? -SONG_VISIBLE : SONG_VISIBLE);
-        return;
-      }
-      if (pick !== 'close') this.setTrack(pick === 'shuffle' ? '' : pick);
-      this.closeSongs();
-    } else if (onTiers) {
+      if (pick === 'up' || pick === 'down') this.scrollSongs(pick === 'up' ? -SONG_VISIBLE : SONG_VISIBLE);
+      else this.setTrack(pick === 'shuffle' ? '' : pick);
+    } else if (id.startsWith('tier:')) {
       // The titan raid's tier — the arena's own store, saved the way the
-      // arena's picker saves it, so the RUN shelf and the desk agree. A
-      // locked tier's row is not a button (paintTiers), so no re-check.
+      // arena's picker saves it, so the RUN shelf and the board agree. A
+      // locked tier's row is not a button, so no re-check.
       const pick = id.slice(5);
-      if (pick !== 'close' && (DIFFICULTY_ORDER as string[]).includes(pick)) {
+      if ((DIFFICULTY_ORDER as string[]).includes(pick) && difficultyUnlocked(pick as Difficulty)) {
         app.difficulty = pick as Difficulty;
         saveDifficulty();
       }
-      this.closeTiers();
-    } else if (id === 'raiddiff') {
-      this.openTiers(!this.tiersOpen);
     } else if (id === 'raidhc') {
-      this.hardcore = !this.hardcore;
+      this.menu.hardcore = !this.menu.hardcore;
     } else if (safetyClick(id)) {
       // MUTE, BLOCK, the mic and the voice master switch all belong to the
-      // safety console (ui/safety.ts), which the mid-set card shares. Two
-      // copies of a safety control is one you have to learn twice.
+      // safety console (ui/safety.ts), which the mid-set card shares.
     } else if (id === 'music') {
       // THE MUSIC SWITCH. Local and persisted, like MUTE and BLOCK: the
-      // floor keeps dancing to a record the room can still hear, and the
-      // hush is waiting for you the next night too. MusicSystem reads the
-      // preference every tick and closes the fader.
+      // floor keeps dancing to a record the room can still hear.
       toggleClubMusic();
-    } else if (id === 'track') {
-      this.openSongs(!this.songsOpen);
     } else if (id === 'tab-fight' || id === 'tab-rave') {
-      this.tab = id === 'tab-fight' ? 'fight' : 'rave';
-      this.callError = '';
-      this.closeSongs();
-      this.closeTiers();
+      this.openBell(id === 'tab-fight' ? 'fight' : 'rave');
+      this.menu.callError = '';
     } else if (id.startsWith('fight-')) {
       const pick = FIGHTS.find((f) => f.id === id.slice(6));
-      if (pick) this.fight = pick.id;
-      if (this.fight !== 'raid') this.closeTiers();
+      if (pick) this.menu.fight = pick.id as FightMode;
     } else if (id === 'call') {
-      if (this.tab === 'fight' && raveBridge.openFightRoom) this.callFight();
+      if (this.menu.bellTab === 'fight' && raveBridge.openFightRoom) this.callFight();
       else this.callFromHere();
     } else if (id === 'cancel') {
       cancelBall();
@@ -770,118 +749,11 @@ export class ClubSocialSystem extends createSystem({}) {
       // Cut the wait: the relay deals whoever is on the ball right now.
       startBall();
     } else if (id === 'leave') {
-      this.panel.setShown(false);
-      this.closeSongs();
-      this.closeTiers();
+      this.show(false);
+      this.menu.tab = 'room';
       leaveRoom();
     }
     this.paintKey = '';
-  }
-
-  /* ── TIERS: the list that flies out of the titan raid's row ───────────── */
-
-  private openTiers(on: boolean): void {
-    this.tiersOpen = on;
-    this.tiers.setShown(on);
-    this.tiersKey = '';
-    this.paintKey = '';
-    if (on) {
-      this.closeSongs();
-      this.paintTiers();
-    }
-  }
-
-  private closeTiers(): void {
-    if (this.tiersOpen) this.openTiers(false);
-  }
-
-  private paintTiers(): void {
-    const cur = app.difficulty;
-    const unlocked = DIFFICULTY_ORDER.map((t) => difficultyUnlocked(t));
-    const key = `${cur}#${this.hover ?? ''}#${unlocked.join('')}`;
-    if (key === this.tiersKey) return;
-    this.tiersKey = key;
-
-    const Y0 = 104;
-    const PITCH = 74;
-    const ROW_H = PITCH - 6;
-    const CLOSE_Y = Y0 + DIFFICULTY_ORDER.length * PITCH + 8;
-    // Ghost hit-areas over rows the body paints itself (name, blurb and the
-    // lock on one plate); a locked tier gets no button at all.
-    const buttons: PanelButton[] = [];
-    DIFFICULTY_ORDER.forEach((t, i) => {
-      if (!unlocked[i]) return;
-      buttons.push({ id: `tier:${t}`, label: TIERS[t].label, ghost: true, x: 16, y: Y0 + i * PITCH, w: 408, h: ROW_H });
-    });
-    buttons.push({ id: 'tier:close', label: 'CLOSE', x: 16, y: CLOSE_Y, w: 408, h: 44, small: true });
-
-    this.tiers.paint(
-      '',
-      (g) => {
-        g.textBaseline = 'middle';
-        g.textAlign = 'left';
-        g.font = font(600, 22);
-        g.letterSpacing = '4px';
-        g.fillStyle = UI.dim;
-        g.fillText('TITAN RAID', 22, 50);
-        g.letterSpacing = '0px';
-        g.fillStyle = UI.lineFaint;
-        g.fillRect(22, 76, 402, 2);
-
-        DIFFICULTY_ORDER.forEach((t, i) => {
-          const y = Y0 + i * PITCH;
-          const selected = cur === t;
-          const open = unlocked[i];
-          const hov = open ? this.tiers.hoverOf(`tier:${t}`) : 0;
-          g.beginPath();
-          g.roundRect(16, y, 408, ROW_H, 9);
-          g.fillStyle = selected ? UI.accentFaint : `rgba(255,255,255,${(0.03 + 0.05 * hov).toFixed(3)})`;
-          g.fill();
-          if (selected) {
-            g.lineWidth = 2;
-            g.strokeStyle = UI.accentDim;
-            g.stroke();
-            g.fillStyle = UI.accent;
-            g.beginPath();
-            g.roundRect(21, y + 8, 4, ROW_H - 16, 2);
-            g.fill();
-          }
-          // The tier's own accent (the arena's), as a swatch by the name.
-          g.fillStyle = open ? `#${TIERS[t].accent.toString(16).padStart(6, '0')}` : UI.faint;
-          g.beginPath();
-          g.arc(48, y + 26, 6, 0, Math.PI * 2);
-          g.fill();
-          g.textAlign = 'left';
-          g.font = font(600, 23);
-          g.letterSpacing = '1px';
-          g.fillStyle = !open ? UI.faint : selected ? UI.textHi : UI.text;
-          g.fillText(TIERS[t].label, 66, y + 26);
-          g.letterSpacing = '0px';
-          g.font = font(500, 17);
-          g.fillStyle = open ? UI.dim : UI.faint;
-          g.fillText(open ? TIERS[t].blurb : 'locked — clear the tier below', 66, y + 50, 350);
-        });
-      },
-      buttons,
-      this.hover,
-    );
-  }
-
-  /* ── SONGS: the list that flies out of the ♪ row ──────────────────────── */
-
-  private openSongs(on: boolean): void {
-    this.songsOpen = on;
-    this.songs.setShown(on);
-    this.songsKey = '';
-    this.paintKey = '';
-    if (on) {
-      this.revealCuedSong();
-      this.paintSongs();
-    }
-  }
-
-  private closeSongs(): void {
-    if (this.songsOpen) this.openSongs(false);
   }
 
   /** Take a record (or '' for SHUFFLE). The pick rides the ball when I call
@@ -896,159 +768,12 @@ export class ClubSocialSystem extends createSystem({}) {
     preload(trackById(id) ?? pickRaidTrack(match.seed));
   }
 
-  /** SHUFFLE, then the raid shelf alphabetically — the same order as the
-   *  foyer's SELECT SONG, because the list is for FINDING a record. */
-  private songRows(): { id: string; title: string; bpm: string }[] {
-    const pool = [...tracksFor('raid')].sort((a, b) => a.title.localeCompare(b.title));
-    return [
-      { id: 'shuffle', title: 'SHUFFLE', bpm: '' },
-      ...pool.map((t) => ({ id: t.id, title: t.title, bpm: `${Math.round(t.bpm)} BPM` })),
-    ];
-  }
-
-  private songTop(total: number): number {
-    return Math.max(0, Math.min(this.songScroll, total - SONG_VISIBLE));
-  }
-
   private scrollSongs(by: number): void {
-    const total = this.songRows().length;
-    const next = Math.max(0, Math.min(this.songScroll + by, Math.max(0, total - SONG_VISIBLE)));
-    if (next === this.songScroll) return;
-    this.songScroll = next;
-    this.songsKey = '';
-  }
-
-  /** Scroll the list so the cued record is inside the window. */
-  private revealCuedSong(): void {
-    const rows = this.songRows();
-    const cur = match.preferredTrack || 'shuffle';
-    const at = rows.findIndex((r) => r.id === cur);
-    if (at < 0) return;
-    const max = Math.max(0, rows.length - SONG_VISIBLE);
-    if (at < this.songScroll) this.songScroll = Math.min(at, max);
-    else if (at >= this.songScroll + SONG_VISIBLE) this.songScroll = Math.min(at - SONG_VISIBLE + 1, max);
-  }
-
-  private paintSongs(): void {
-    const rows = this.songRows();
-    const cur = match.preferredTrack || '';
-    const top = this.songTop(rows.length);
-    const key = `${cur}#${this.hover ?? ''}#${rows.length}#${top}`;
-    if (key === this.songsKey) return;
-    this.songsKey = key;
-
-    const CLOSE_Y = 848;
-    const scrolls = rows.length > SONG_VISIBLE;
-    const shown = rows.slice(top, top + SONG_VISIBLE);
-    // Ghost hit-areas: the body paints the rows itself so the title and the
-    // BPM can share one line (the kit's label/sub would stack them). Only
-    // the rows inside the window get one — a row scrolled out of sight is
-    // not a row you can point at.
-    const buttons: PanelButton[] = shown.map((r, i) => ({
-      id: `song:${r.id}`,
-      label: r.title,
-      ghost: true,
-      x: 16,
-      y: SONG_Y0 + i * SONG_PITCH,
-      w: 400,
-      h: SONG_ROW_H,
-    }));
-    if (scrolls) {
-      buttons.push({
-        id: 'song:up',
-        label: '▲',
-        small: true,
-        px: 20,
-        disabled: top <= 0,
-        x: 328,
-        y: 26,
-        w: 46,
-        h: 44,
-      });
-      buttons.push({
-        id: 'song:down',
-        label: '▼',
-        small: true,
-        px: 20,
-        disabled: top >= rows.length - SONG_VISIBLE,
-        x: 378,
-        y: 26,
-        w: 46,
-        h: 44,
-      });
-    }
-    buttons.push({
-      id: 'song:close',
-      label: 'CLOSE',
-      x: 16,
-      y: CLOSE_Y,
-      w: 408,
-      h: 44,
-      small: true,
-    });
-
-    this.songs.paint(
-      '',
-      (g) => {
-        g.textBaseline = 'middle';
-        g.textAlign = 'left';
-        g.font = font(600, 22);
-        g.letterSpacing = '4px';
-        g.fillStyle = UI.dim;
-        g.fillText('SELECT SONG', 22, 48);
-        g.letterSpacing = '0px';
-        g.fillStyle = UI.lineFaint;
-        g.fillRect(22, 80, 402, 2);
-
-        shown.forEach((r, i) => {
-          const y = SONG_Y0 + i * SONG_PITCH;
-          const selected = cur === (r.id === 'shuffle' ? '' : r.id);
-          const hov = this.songs.hoverOf(`song:${r.id}`);
-          g.beginPath();
-          g.roundRect(16, y, 400, SONG_ROW_H, 10);
-          g.fillStyle = selected ? UI.accentFaint : `rgba(255,255,255,${(0.03 + 0.05 * hov).toFixed(3)})`;
-          g.fill();
-          if (selected) {
-            g.lineWidth = 2;
-            g.strokeStyle = UI.accentDim;
-            g.stroke();
-            g.fillStyle = UI.accent;
-            g.beginPath();
-            g.roundRect(21, y + 9, 4, SONG_ROW_H - 18, 2);
-            g.fill();
-          }
-          const cy = y + SONG_ROW_H / 2 + 1;
-          g.textAlign = 'left';
-          g.font = font(600, 29);
-          g.letterSpacing = '1px';
-          g.fillStyle = selected ? UI.textHi : UI.text;
-          g.fillText(r.title, 36, cy, 262);
-          g.letterSpacing = '0px';
-          g.textAlign = 'right';
-          g.font = font(500, 18);
-          g.fillStyle = UI.dim;
-          g.fillText(r.bpm, 404, cy);
-        });
-
-        // The scrollbar: where the window sits on the whole shelf.
-        if (scrolls) {
-          const trackY = SONG_Y0;
-          const trackH = SONG_VISIBLE * SONG_PITCH - (SONG_PITCH - SONG_ROW_H);
-          const thumbH = Math.max(36, (trackH * SONG_VISIBLE) / rows.length);
-          const thumbY = trackY + ((trackH - thumbH) * top) / (rows.length - SONG_VISIBLE);
-          g.fillStyle = UI.lineFaint;
-          g.beginPath();
-          g.roundRect(422, trackY, 5, trackH, 2.5);
-          g.fill();
-          g.fillStyle = UI.dim;
-          g.beginPath();
-          g.roundRect(422, thumbY, 5, thumbH, 2.5);
-          g.fill();
-        }
-      },
-      buttons,
-      this.hover,
-    );
+    const total = songRows().length;
+    const next = Math.max(0, Math.min(this.menu.songScroll + by, Math.max(0, total - SONG_VISIBLE)));
+    if (next === this.menu.songScroll) return;
+    this.menu.songScroll = next;
+    this.paintKey = '';
   }
 
   /** Send the ball up just ahead of me, and warm my record for the drop. */
@@ -1062,46 +787,46 @@ export class ClubSocialSystem extends createSystem({}) {
     preload(trackById(match.preferredTrack) ?? pickRaidTrack(match.seed));
   }
 
-  /** THE BELL, a fight: ask the arena for a room, then send the ball up
+  /** DISCO BALL, a fight: ask the arena for a room, then send the ball up
    *  carrying its code. The ball only rises once the room exists — a
    *  deal into a room that isn't there would strand the squad. */
   private callFight(): void {
     const open = raveBridge.openFightRoom;
     const headObj = this.playerHeadEntity?.object3D;
-    if (!open || !headObj || this.calling) return;
+    if (!open || !headObj || this.menu.calling) return;
     headObj.getWorldPosition(_v);
     headObj.getWorldQuaternion(_q);
     _fwd.set(0, 0, -1).applyQuaternion(_q);
     const pos = ballSpawnPos(_v, _fwd);
-    const mode = this.fight;
-    // A TITAN RAID carries its tier — the desk's pick, as an index into the
+    const mode = this.menu.fight;
+    // A TITAN RAID carries its tier — the board's pick, as an index into the
     // arena's order — so the deal builds the same boss for the whole squad.
     const diff = mode === 'raid' ? Math.max(0, DIFFICULTY_ORDER.indexOf(app.difficulty)) : undefined;
-    const hardcore = mode === 'raid' && this.hardcore;
+    const hardcore = mode === 'raid' && this.menu.hardcore;
     if (net.solo) {
       // A ROOM OF ONE: no arena room to open — the ball deals you into a
-      // fight against the arena's own bots (net/session.ts soloCall).
+      // fight against the arena's own (net/session.ts soloCall).
       callBall(pos, { mode, code: '', diff, hardcore });
       return;
     }
     const me = net.members.find((m) => m.idx === net.myIdx);
-    this.calling = true;
-    this.callError = '';
+    this.menu.calling = true;
+    this.menu.callError = '';
     this.paintKey = '';
     open(mode, me?.name ?? '')
       .then((code) => {
         callBall(pos, { mode, code, diff, hardcore });
       })
       .catch((err: unknown) => {
-        this.callError = err instanceof Error && err.message ? err.message : 'the arena could not open a room';
+        this.menu.callError = err instanceof Error && err.message ? err.message : 'the arena could not open a room';
       })
       .finally(() => {
-        this.calling = false;
+        this.menu.calling = false;
         this.paintKey = '';
       });
   }
 
-  /** In front of you at waist height with a lectern lean, facing you. */
+  /** In front of you, a little below the eyes, with a lectern lean, facing you. */
   private place(): void {
     this.camera.getWorldPosition(_cam);
     this.camera.getWorldQuaternion(_camQ);
@@ -1109,276 +834,17 @@ export class ClubSocialSystem extends createSystem({}) {
     _fwd.y = 0;
     if (_fwd.lengthSq() < 1e-4) _fwd.set(0, 0, -1);
     _fwd.normalize();
-    const m = this.panel.group;
-    m.position.set(_cam.x + _fwd.x * 0.6, _cam.y - 0.42, _cam.z + _fwd.z * 0.6);
-    m.rotation.set(-0.3, Math.atan2(_cam.x - m.position.x, _cam.z - m.position.z), 0);
+    const m = this.board;
+    m.position.set(_cam.x + _fwd.x * 0.82, _cam.y - 0.3, _cam.z + _fwd.z * 0.82);
+    m.rotation.set(-0.22, Math.atan2(_cam.x - m.position.x, _cam.z - m.position.z), 0);
     this.paintKey = '';
   }
 
   private paint(): void {
-    const { rows: members, more } = safetyRoster(8);
-    const music = clubMusicOn();
-    const cued = trackById(match.preferredTrack);
-    const ballUp = net.ball !== null;
-    const mine = ballUp && net.ball!.callerIdx === net.myIdx;
-    const setOut = net.gamePlayers.size > 0;
-    const inRoom = roomOpen();
-    const key =
-      safetyKey(members, more) +
-      `#${this.hover ?? ''}#${music ? 1 : 0}#${net.phase}#${cued?.id ?? ''}#${ballUp ? (mine ? `B${net.ball!.joins.size}` : 'b') : ''}#${setOut ? net.gamePlayers.size : 0}#${match.difficulty}#${this.songsOpen ? 1 : 0}#${net.crownIdx ?? ''}`;
-    // The last take fades off the header after a while; quantised so the
-    // fade costs a few repaints, not one a frame.
-    const takeAge = performance.now() - bellView.paidAt;
-    const takeShown = bellView.lastPay > 0 && takeAge < 20_000;
-    const deskKey = `${key}#${this.tab}#${this.fight}#${this.calling ? 1 : 0}#${this.callError}#${coins.balance}#${takeShown ? bellView.lastPay : 0}#${app.difficulty}#${this.tiersOpen ? 1 : 0}#${this.hardcore ? 1 : 0}`;
-    if (deskKey === this.paintKey) return;
-    this.paintKey = deskKey;
-
-    const ROW0 = 172;
-    const ROW_H = 58;
-    const rowsAt: SafetyLayout = { left: 28, right: 682, y: ROW0, rowH: ROW_H };
-    const buttons: PanelButton[] = safetyButtons(members, rowsAt);
-
-    // ── THE BELL: two tabs, one verb ──────────────────────────────────────
-    // FIGHT picks one of the arena's fights; RAVE picks the record and its
-    // chart. Either way the CTA is HOST — you are opening the room and the
-    // floor can see the ball you just put up — and whoever touches the ball
-    // rides along when the relay's clock hits zero.
-    const fights = Boolean(raveBridge.openFightRoom);
-    const tab = fights ? this.tab : 'rave';
-    if (fights) {
-      buttons.push({
-        id: 'tab-fight',
-        label: 'FIGHT',
-        selected: tab === 'fight',
-        x: 24,
-        y: 644,
-        w: 318,
-        h: 44,
-        small: true,
-      });
-      buttons.push({
-        id: 'tab-rave',
-        label: 'RAVE',
-        selected: tab === 'rave',
-        x: 358,
-        y: 644,
-        w: 318,
-        h: 44,
-        small: true,
-      });
-    }
-    // With TITAN RAID lit the fight rows tighten to make room for its tier
-    // row underneath; the other fights have no tiers and keep the height.
-    const tiered = tab === 'fight' && this.fight === 'raid';
-    if (tab === 'fight') {
-      // The four fights, names only.
-      FIGHTS.forEach((f, i) => {
-        buttons.push({
-          id: `fight-${f.id}`,
-          label: f.label,
-          selected: this.fight === f.id,
-          x: 24 + (i % 2) * 334,
-          y: 698 + Math.floor(i / 2) * (tiered ? 46 : 54),
-          w: 318,
-          h: tiered ? 42 : 48,
-          small: true,
-        });
-      });
-      if (tiered) {
-        // THE TIER ROW: the titan raid's difficulty, opening onto the list
-        // the way the ♪ row opens onto the records. It is the arena's own
-        // pick (the RUN shelf's), and the bell deals it to the squad.
-        buttons.push({
-          id: 'raiddiff',
-          label: `${this.tiersOpen ? '◂' : '▸'}  ◆ ${TIERS[app.difficulty].label}`,
-          selected: this.tiersOpen,
-          x: 24,
-          y: 792,
-          w: 408,
-          h: 40,
-          small: true,
-        });
-        // HARDCORE beside it: the raid lobby's breaker, on the floor. Lit in
-        // the danger tone when armed, the way the lobby lights its own.
-        buttons.push({
-          id: 'raidhc',
-          label: 'HARDCORE',
-          selected: this.hardcore,
-          tone: this.hardcore ? UI.danger : undefined,
-          x: 440,
-          y: 792,
-          w: 236,
-          h: 40,
-          small: true,
-        });
-      }
-    } else {
-      buttons.push({
-        id: 'track',
-        // The chevron says the row opens onto something, rather than
-        // advancing one notch per press.
-        label: `${this.songsOpen ? '◂' : '▸'}  ♪ ${cued ? cued.title : 'SHUFFLE'}`,
-        // No BPM under it. The kit stacks a `sub` below the label at a
-        // fixed offset, which on a row this short hung the tempo outside
-        // the plate — and the number is on the record list a tap away,
-        // where it belongs when you are choosing between records.
-        selected: this.songsOpen,
-        x: 24,
-        y: fights ? 698 : 652,
-        w: 652,
-        h: fights ? 58 : 74,
-        small: true,
-      });
-      // DIFFICULTY: every ball off the tour calls EXPERT (DIFFICULTY.solo) —
-      // one plate across the row the four choices used to share.
-      buttons.push({
-        id: 'expert',
-        label: DIFFICULTY.labels[DIFFICULTY.solo],
-        selected: true,
-        x: 24,
-        y: fights ? 764 : 740,
-        w: 3 * 165 + 157,
-        h: fights ? 40 : 54,
-        small: true,
-      });
-    }
-    const ctaY = tiered ? 838 : fights ? 810 : 808;
-    const ctaH = tiered ? 56 : fights ? 72 : 74;
-    if (mine) {
-      // MY BALL IS UP, so the row splits: call it off, or drop the needle
-      // now. The clock is a courtesy to a room still walking over, and a
-      // room already standing at the ball should not have to watch it run
-      // out — so the caller who can see everyone is in gets to say when.
-      //
-      // START carries the count it would deal, because that is the only
-      // question the button raises: the ball fires with whoever has touched
-      // in, and "just you" is a real and easy-to-miss answer.
-      const aboard = net.ball!.joins.size + 1;
-      buttons.push({
-        id: 'cancel',
-        label: 'CALL IT OFF',
-        tone: UI.danger,
-        x: 24,
-        y: ctaY,
-        w: 318,
-        h: ctaH,
-        small: true,
-      });
-      buttons.push({
-        id: 'start',
-        label: 'START',
-        sub: aboard > 1 ? `${aboard} on the ${net.ball!.mode === 'rave' ? 'ring' : 'ball'}` : 'just you',
-        primary: true,
-        x: 358,
-        y: ctaY,
-        w: 318,
-        h: ctaH,
-        small: true,
-      });
-    } else {
-      // The floor's one CTA. It says what it does and nothing else: the
-      // subtitle used to explain the ball's whole ritual to a room that
-      // can see the ball hanging in front of them.
-      buttons.push({
-        id: 'call',
-        label: ballUp ? 'BALL IS UP' : setOut ? 'SET IS OUT' : this.calling ? 'OPENING A ROOM…' : 'HOST',
-        // No explaining: the lit chip above says what is being called.
-        sub: setOut ? `${net.gamePlayers.size} out` : this.callError || undefined,
-        primary: true,
-        disabled: ballUp || setOut || this.calling,
-        x: 24,
-        y: ctaY,
-        w: 652,
-        h: ctaH,
-        small: true,
-      });
-    }
-
-    // The desk's bottom lines, from the shared console — and on THIS floor
-    // the voice switch is paired with MUSIC. The two things you HEAR here
-    // are one decision made twice (quiet enough to talk, or loud enough to
-    // dance), and reading them side by side is what makes "turn the music
-    // down so we can chat" a single glance. The ring's card gets no music
-    // switch: out there the record is the set's, not the floor's.
-    buttons.push(...voiceButtons(24, fights ? 900 : 896, 652, { music: clubMusicOn() }));
-    if (inRoom) {
-      // The board's LEAVE moved in with the desk — the one door out of the
-      // room that isn't a set.
-      buttons.push({
-        id: 'leave',
-        label: 'LEAVE THE CLUB',
-        tone: UI.danger,
-        x: 24,
-        y: 1036,
-        w: 652,
-        h: 64,
-        small: true,
-      });
-    }
-
-    this.panel.paint(
-      '',
-      (g) => {
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.font = font(700, 42);
-        g.letterSpacing = '3px';
-        g.fillStyle = UI.textHi;
-        g.fillText('THE ROOM', 28, 56);
-        g.letterSpacing = '0px';
-        if (inRoom) {
-          // The code IS the invitation — it gets the data colour and the
-          // wide tracking; everything around it stays quiet.
-          g.font = font(600, 20);
-          g.letterSpacing = '2px';
-          g.fillStyle = UI.faint;
-          g.fillText('ROOM', 28, 102);
-          const rw = g.measureText('ROOM').width;
-          g.font = font(700, 30);
-          g.letterSpacing = '8px';
-          g.fillStyle = UI.info;
-          g.fillText(net.code, 28 + rw + 18, 102);
-          const cw = g.measureText(net.code).width;
-          g.font = font(500, 21);
-          g.letterSpacing = '0.5px';
-          g.fillStyle = UI.dim;
-          g.fillText(`· ${net.members.length} on the floor`, 28 + rw + 18 + cw + 16, 102);
-          g.font = font(500, 20);
-          g.fillStyle = UI.faint;
-          g.fillText('right Ⓐ closes', 28, 138);
-          // THE WALLET, and what the last trip through the bell paid —
-          // the floor is where the money shows, so a night here reads as
-          // a night that earned.
-          g.textAlign = 'right';
-          g.font = font(700, 24);
-          g.letterSpacing = '1px';
-          g.fillStyle = UI.info;
-          g.fillText(`$${coins.balance}`, 676, 102);
-          if (takeShown) {
-            g.font = font(600, 19);
-            g.fillStyle = UI.accent;
-            g.fillText(`+${bellView.lastPay} from the bell`, 676, 138);
-          }
-          g.textAlign = 'left';
-        } else {
-          g.font = font(500, 21);
-          g.letterSpacing = '0.5px';
-          g.fillStyle = UI.dim;
-          g.fillText('host or join a room', 28, 102);
-        }
-        g.letterSpacing = '0px';
-
-        drawSafetyRows(g, members, more, rowsAt, 'nobody else on the floor right now');
-
-        // Section seams: the ball's console, the voice desk, the door.
-        g.fillStyle = UI.lineFaint;
-        g.fillRect(24, 634, 652, 2);
-        g.fillRect(24, fights ? 890 : 884, 652, 2);
-        if (inRoom) g.fillRect(24, 1024, 652, 2);
-      },
-      buttons,
-      this.hover,
-    );
+    const key = `${clubMenuKey(this.menu)}#${this.hover ?? ''}`;
+    if (key === this.paintKey) return;
+    this.paintKey = key;
+    const face = clubMenuFace(this.menu, (id) => this.panel.hoverOf(id), this.marker);
+    this.panel.paint('', face.body, face.buttons, this.hover);
   }
 }

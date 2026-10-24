@@ -65,7 +65,6 @@ import {
   whoami,
 } from '../net/bank.js';
 import { campaignFace, campaignModal, CAMP_H, CAMP_W } from '../menu/campaignFace.js';
-import { lobbyFace, LOBBY_H, LOBBY_W } from '../menu/lobbyFace.js';
 import { ballsClick, ballsDrag, ballsFace, ballsFaceKey, ballsHit, BALLS_H, BALLS_W } from '../menu/ballsFace.js';
 import { profilePop } from '../menu/profilePop.js';
 import { audienceStands } from '../arena/desert/audience.js';
@@ -200,7 +199,7 @@ function preTutorialAllowed(action: MenuAction | null): boolean {
   if (action === 'start-tutorial' || action === 'rename' || action === 'edit-note') return true;
   // Tabs, the paper, settings and the profile card all answer before the
   // tutorial; the ladder, the fights, the bay and the shop clank.
-  return /^(wrap:tab-|open-gazette|gazette-close|gazette-reader|reader-close|open-settings|settings-|credits-back|sfx-|music-|toggle-mute|toggle-voice|toggle-hide-paint|profile-|badge-|lb-)/.test(action);
+  return /^(wrap:tab-|board:|mode:|play-go$|open-gazette|gazette-close|gazette-reader|reader-close|open-settings|settings-|credits-back|sfx-|music-|toggle-mute|toggle-voice|toggle-hide-paint|profile-|badge-|lb-)/.test(action);
 }
 
 interface Pointer {
@@ -245,7 +244,7 @@ const wrapAngle = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 /** The faces that draw the player's look — what a skin change repaints.
  *  (Not the BALLS board: it draws nothing a pick changes, and repainted
  *  its 768² texture three times on every head swap.) */
-const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'loadout', 'profile', 'profilecard', 'paintbay']);
+const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'loadout', 'board', 'profilecard', 'paintbay']);
 
 export class MenuSystem extends createSystem({}) {
   private menu!: Menu;
@@ -413,7 +412,7 @@ export class MenuSystem extends createSystem({}) {
     this.addModal('custom', 0.94, 0.94, LOCKER_W, LOCKER_H, () => lockerFace(true), [0.5, 1.52, -1.1], -0.3);
     this.addModal('shop', 0.94, 0.94, LOCKER_W, LOCKER_H, () => lockerFace(false), [0.5, 1.52, -1.1], -0.3);
     this.addModal('campaign', 1.5, 1.5 * (CAMP_H / CAMP_W), CAMP_W, CAMP_H, campaignFace, [0, 1.5, -1.2], 0);
-    this.addModal('lobby', 1.05, 1.05 * (LOBBY_H / LOBBY_W), LOBBY_W, LOBBY_H, lobbyFace, [0, 1.5, -1.18], 0);
+    // (THE ARCADE LOBBY is a page of the board now — menu/roomPage.ts.)
     // THE READER: the Gazette held up large, straight ahead, where the slab
     // was. The page renders at 2× so the type is sharp at reading distance;
     // the thumbstick scrolls it as it does on the wing, and tapping the page
@@ -761,9 +760,8 @@ export class MenuSystem extends createSystem({}) {
     const shopOpen = customization.open && customization.shopOpen && !app.paintBayOpen;
     const modalCustom = customization.open && !customization.shopOpen && !app.paintBayOpen;
     const modalCampaign = campaignModal.pending !== null;
-    const modalLobby = app.lobbyMode !== null;
     const modalReader = app.readerOpen;
-    const arcUp = !customization.open && !modalCampaign && !modalLobby && !app.paintBayOpen && !modalReader;
+    const arcUp = !customization.open && !modalCampaign && !app.paintBayOpen && !modalReader;
     let visChanged = this.rayTargets.length === 0; // first frame: build the list
     for (const p of this.menu.panels) {
       let show: boolean;
@@ -781,9 +779,6 @@ export class MenuSystem extends createSystem({}) {
         case 'campaign':
           show = modalCampaign;
           break;
-        case 'lobby':
-          show = modalLobby;
-          break;
         case 'paintbay':
           show = app.paintBayOpen;
           break;
@@ -791,9 +786,9 @@ export class MenuSystem extends createSystem({}) {
           show = modalReader;
           break;
         default:
-          // The arc (train/duel/info) and the profile chip: the lobby's
-          // face, gone while any modal is open.
-          show = arcUp;
+          // THE BOARD and its pages: the lobby's face, gone while any
+          // modal is open — and each page only while it's the open one.
+          show = arcUp && ((p as { shown?: () => boolean }).shown?.() ?? true);
           break;
       }
       if (p.mesh.visible !== show) {
@@ -989,7 +984,7 @@ export class MenuSystem extends createSystem({}) {
 
     // Coins banked during a bout roll up the moment you're back at the menu —
     // redraw just the readout each frame while the digits are still climbing.
-    if (tickCoinRollup(delta)) this.redrawPanel('profile');
+    if (tickCoinRollup(delta)) this.redrawPanel('board'); // THE PROFILE chip rides the board's header
 
     // (The old pre-tutorial "TUTORIAL plate breathes" per-frame repaint is
     // gone: on the wrap the sealed lobby's call to action is the kit's
@@ -1446,13 +1441,16 @@ export class MenuSystem extends createSystem({}) {
       case 'open-gazette':
         // The NEWS tab: open the paper, and the moment you do the edition
         // counts as read — the red pip on the tab clears.
+        wrapNav.page = 'news';
+        wrapNav.full = null;
         wrapNav.town = 'news';
         resetNewsScroll();
         markGazetteRead();
         void refreshGazette(true);
         break;
       case 'gazette-close':
-        wrapNav.town = 'town';
+        // NEWS stays up on the wing (there is no ACTIVITY tab to fall back
+        // to now); closing only puts THE READER down.
         app.readerOpen = false;
         break;
       case 'gazette-reader':
@@ -1466,6 +1464,7 @@ export class MenuSystem extends createSystem({}) {
         app.readerOpen = false;
         break;
       case 'open-settings':
+        wrapNav.page = 'settings';
         wrapNav.you = 'settings';
         break;
       case 'settings-credits':
@@ -1477,7 +1476,8 @@ export class MenuSystem extends createSystem({}) {
         this.redrawPanel('info');
         break;
       case 'settings-close':
-        // Back to the YOU tab.
+        // Off SETTINGS, back to VERSUS.
+        if (wrapNav.page === 'settings') wrapNav.page = 'versus';
         wrapNav.you = 'you';
         clearReportSent(); // next visit gets a fresh report button
         setCreditsOpen(false); // reopening lands on settings, not credits
@@ -2249,7 +2249,7 @@ export class MenuSystem extends createSystem({}) {
     // tutorial keeps its guided flow: no panel there.
     if (app.state === 'playing' && app.mode === 'bot' && match.phase === 'playing' && !app.tutorial) {
       return {
-        title: 'BOT BOUT',
+        title: 'THE BOUT', // the menus never say "bots"
         buttons: this.forfeitButtons('FORFEIT'),
         status: this.confirmForfeit ? 'give up the bout?' : this.botLine(),
         loadout: false,
