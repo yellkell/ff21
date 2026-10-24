@@ -12,6 +12,7 @@ import { Color, Mesh, MeshStandardMaterial, type Object3D, SRGBColorSpace } from
 import { PALETTE } from '../config.js';
 import { deckLook, setStreetFlag, streetDecks, type DeckLook, type DeckStyle } from '../arena/decks.js';
 import { allPads } from '../arena/padKit.js';
+import { showNativePad } from '../arena/nativePads.js';
 
 export interface AvatarSkin {
   id: string;
@@ -36,8 +37,9 @@ export interface PlatformSkin {
   locked?: boolean;
   /** What the deck is MADE OF (arena/decks.ts) — the skin's identity. The
    *  shop sells materials now, not tints: charred oak, pale ash, quarried
-   *  slate, veined marble, black glass, river ice, jade, gold leaf. */
-  deck: DeckStyle;
+   *  slate, veined marble, black glass, river ice, jade, gold leaf.
+   *  'native' is a whole modelled pad from the Quest build (arena/nativePads.ts). */
+  deck: DeckStyle | 'native';
   /** The neon tube round the edge — the light the deck stands in. */
   neon: number;
   /** The corner screws' metal (TRIM): iron, brass, chrome, gold. */
@@ -49,7 +51,7 @@ export interface PlatformSkin {
   earnedBy?: string;
   /** One line for the tile. */
   blurb: string;
-  /** Which SHELF of the PLATFORMS board it stands on (menu/lockerFace.ts):
+  /** Which SHELF of the PLATFORMS board it stands on (menu/customizePage.ts):
    *  the woods, the stones, the forge. Earned pads stand on HONOURS
    *  whatever this says — see platformShelf(). */
   shelf?: DeckShelf;
@@ -57,12 +59,13 @@ export interface PlatformSkin {
 
 /** The PLATFORMS board's shelves: seventeen pads on one board crushed the
  *  tiles (the GEAR board learned the same lesson with its slots), so the
- *  catalogue is shelved by what a deck is made of, plus the trophy shelf. */
-export type DeckShelf = 'timber' | 'stone' | 'forge' | 'honours';
+ *  catalogue is shelved by what a deck is made of, plus the trophy shelf.
+ *  From the Quest build (ff2meta Avatar/PlatformSkins.cs): the TIMBER /
+ *  STONE / FORGE shelves hold only unlisted decks, so the board shows
+ *  STREET (the standard pad and the four modelled pads) and HONOURS. */
+export type DeckShelf = 'street' | 'timber' | 'stone' | 'forge' | 'honours';
 export const DECK_SHELVES: ReadonlyArray<[DeckShelf, string]> = [
-  ['timber', 'TIMBER'],
-  ['stone', 'STONE'],
-  ['forge', 'FORGE'],
+  ['street', 'STREET'],
   ['honours', 'HONOURS'],
 ];
 
@@ -100,7 +103,9 @@ export const AVATAR_SKINS: AvatarSkin[] = [
 
 export const PLATFORM_SKINS: PlatformSkin[] = [
   // ── free: the three you're born with ──────────────────────────────────
-  { id: 'ember', name: 'SMOULDER', deck: 'charred', neon: PALETTE.ember, trim: TRIM.iron, shelf: 'timber', blurb: 'charred oak, still warm underfoot' },
+  // Shown as STANDARD, on the STREET shelf (as on the Quest build): it is the
+  // house deck everyone is born on, the street's iron cover in the plaza.
+  { id: 'ember', name: 'STANDARD', deck: 'charred', neon: PALETTE.ember, trim: TRIM.iron, shelf: 'street', blurb: "the house deck: the street's iron cover" },
   { id: 'azure', name: 'AZURE', deck: 'ash', neon: 0x4fb7ff, trim: TRIM.chrome, shelf: 'timber', blurb: 'pale ash boards under a cold tube' },
   { id: 'inferno', name: 'INFERNO', deck: 'redwood', neon: 0xff3b30, trim: TRIM.brass, shelf: 'timber', blurb: 'redwood, red light' },
   // ── the shop: materials, cheap to precious ────────────────────────────
@@ -125,6 +130,13 @@ export const PLATFORM_SKINS: PlatformSkin[] = [
   // BLAZING: clear any run or raid on the blazing breaker — the burning
   // rail and corner flame crowns stay (arena.ts).
   { id: 'blazing', name: 'BLAZING', deck: 'charred', neon: 0xff4a26, trim: TRIM.iron, earnedBy: 'WIN ON BLAZING', blurb: 'scorched boards under a burning rail' },
+  // ── THE STREET: whole modelled pads from the Quest build (ff2meta
+  //    Arena/NativePads.cs, arena/nativePads.ts here), cheap → precious; the
+  //    neon is the street plinth's line of light under each ──
+  { id: 'helipad', name: 'HELIPAD', deck: 'native', neon: 0x46ff7a, trim: TRIM.iron, price: 600, shelf: 'street', blurb: 'a wet rooftop pad, its landing lights chasing' },
+  { id: 'afterglow', name: 'AFTERGLOW', deck: 'native', neon: 0xff2a8c, trim: TRIM.chrome, price: 800, shelf: 'street', blurb: 'black glaze under a neon sign, a bolt in the floor' },
+  { id: 'mainframe', name: 'MAINFRAME', deck: 'native', neon: 0x30f0ff, trim: TRIM.chrome, price: 1000, shelf: 'street', blurb: 'gunmetal plates, etched circuits, a scan from the core' },
+  { id: 'smiley', name: 'DEAD SMILEY', deck: 'native', neon: 0xf0f4ff, trim: TRIM.iron, price: 1200, shelf: 'street', blurb: 'black dry-brush on white: X eyes, a wide grin' },
 ];
 
 /** How the OPPONENT looks when they haven't picked (bot bouts): team blue. */
@@ -145,17 +157,36 @@ export function avatarSkin(id: string): AvatarSkin {
 }
 
 /**
- * PLATFORMS, PAUSED. Everyone fights on the house deck for now: the LOCKER
- * and the STORE both stand their PLATFORMS chip greyed out, nothing on it
- * can be bought or equipped (MenuSystem refuses both), and every pad draws
- * SMOULDER whatever was picked before. What players own and picked stays
- * saved, so flipping this back restores everyone's choice.
+ * THE PLATFORMS SHELF, OPEN for the Quest build's four modelled pads (ff2meta
+ * Avatar/PlatformSkins.cs). The deck MATERIALS (walnut … meteorite) stay
+ * paused: they keep their ids, and what players own and picked stays saved,
+ * but they are not LISTED — neither sold nor worn; a pick of one wears the
+ * standard pad. The STORE sells the four; the LOCKER holds the STANDARD pad,
+ * the modelled pads you own and, on HONOURS once earned, the trophies.
  */
-export const PLATFORMS_OPEN = false;
+export const PLATFORMS_OPEN = true;
 
-/** The skin a pad actually WEARS: the pick, or the house deck while paused. */
+/** One of the Quest build's modelled pads (arena/nativePads.ts). */
+export function isNativePad(skin: PlatformSkin): boolean {
+  return skin.deck === 'native';
+}
+
+/** What the shelves list and a pad can wear: the modelled pads, the standard
+ *  pad and the earned ones. */
+export function platformListed(skin: PlatformSkin): boolean {
+  return isNativePad(skin) || skin.id === 'ember' || !!skin.earnedBy;
+}
+
+/** Is this pad on the open shelf: the STORE sells the listed pads you don't
+ *  own; the LOCKER holds what you own (an earned pad once earned). */
+export function platformOnShelf(skin: PlatformSkin, locker: boolean, owned: boolean): boolean {
+  return platformListed(skin) && (locker ? owned : !skin.earnedBy && !!skin.price && !owned);
+}
+
+/** The skin a pad actually WEARS: the pick if it is listed, else the house deck. */
 export function shownPlatform(id: string): PlatformSkin {
-  return PLATFORMS_OPEN ? platformSkin(id) : PLATFORM_SKINS[0];
+  const s = platformSkin(id);
+  return PLATFORMS_OPEN && platformListed(s) ? s : PLATFORM_SKINS[0];
 }
 
 export function platformSkin(id: string): PlatformSkin {
@@ -282,6 +313,8 @@ const HOUSE_TIMBER = new Set<DeckStyle>(['charred', 'ash', 'redwood', 'oak']);
 
 /** What this skin's deck is made of HERE — its own, or the street's plate. */
 function deckHere(skin: PlatformSkin): DeckStyle {
+  // A modelled pad hides the slab; under it the house deck stays laid.
+  if (skin.deck === 'native') return streetDecks() ? 'iron' : 'charred';
   return streetDecks() && HOUSE_TIMBER.has(skin.deck) && !skin.price && !skin.earnedBy ? 'iron' : skin.deck;
 }
 
@@ -351,4 +384,10 @@ export function applyPlatformSkin(root: Object3D, skin: PlatformSkin): void {
         break;
     }
   });
+  // THE STREET PADS (arena/nativePads.ts, the Quest build's NativePads.Show):
+  // a modelled skin lays its set in place of the standard deck, frame and
+  // tube (loading on first wear — the pad stays standard till it lands); any
+  // other skin hides every set and gives the pad its own pieces back.
+  const parts = allPads().find((p) => p.group === root);
+  if (parts) showNativePad(parts, isNativePad(skin) ? skin.id : null);
 }

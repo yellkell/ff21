@@ -9,14 +9,17 @@
  * THE RAIL: CAREER · VERSUS · RAVE RAID · CLUB, then RANKINGS · NEWS, then
  * LOCKER · STORE. CAREER takes the whole board (‹ BACK returns). VERSUS is
  * THE PLAY PAGE (menu/playPage.ts): every way to fight, AIM TRAINING and
- * the TUTORIAL replay included. RAVE RAID, CLUB, LOCKER and STORE are
- * doors: one press walks you into the foyer, knocks on the club (its face
- * reads out the wait), or opens the locker / the store. SETTINGS is the
+ * the TUTORIAL replay included. RAVE RAID and CLUB are doors: one press
+ * walks you into the foyer, or knocks on the club (its face reads out the
+ * wait). LOCKER and STORE open THE CUSTOMIZE PAGE (menu/customizePage.ts)
+ * on their own tab: it takes the whole board as the CAREER does, and the
+ * board slides right so the mirror stands clear on its left. SETTINGS is the
  * header's cog. ACTIVITY is off the rail: the queue, the squads and the
  * club's head count ride the pages they belong to. The menus never say
  * "bots".
  */
 
+import { Group } from 'three';
 import type { Menu, MenuAction, MenuPanel, PanelId } from './menu.js';
 import { renderNewsPage } from './menu.js';
 import { Panel, KIT, type PanelButton, type PanelOpts } from '../ui/kit/panel.js';
@@ -34,6 +37,9 @@ import { CAMP_W, CAREER_BOTTOM, CAREER_TOP, careerFace } from './campaignFace.js
 import { BACK_ID, BOARD_H, BOARD_PANE, BOARD_W, CHIP, CONTENT, COG_ID, FULL, RailMarker, boardButtons, drawBoard, type BoardState, type RailTab } from './board.js';
 import { PLAY_H, PLAY_W, playAction, playPageFace, selectMode } from './playPage.js';
 import { roomPageFace, roomWanted } from './roomPage.js';
+import { customization } from './customization.js';
+import { CUSTOMIZE_TITLE, CUST_H, CUST_W, LOADOUT_RECT, customizePageFace, customizeRoute, section } from './customizePage.js';
+import { ballsClick, ballsDrag, ballsFace, BALLS_H, BALLS_W } from './ballsFace.js';
 
 /** One face of a wrap panel: everything Panel.paint needs. */
 interface Face {
@@ -264,9 +270,9 @@ function boardState(): BoardState {
     tabs: railTabs(),
     // SETTINGS is off the rail (the cog): it parks no marker.
     active: wrapNav.page === 'settings' ? null : `board:${wrapNav.page}`,
-    full: wrapNav.full === 'career' ? 'CAMPAIGN' : null,
+    full: customization.open ? CUSTOMIZE_TITLE : wrapNav.full === 'career' ? 'CAMPAIGN' : null,
     status: boardStatus(),
-    cogOpen: wrapNav.page === 'settings' && !wrapNav.full,
+    cogOpen: wrapNav.page === 'settings' && !wrapNav.full && !customization.open,
     profileOpen: profilePop.open,
   };
 }
@@ -287,7 +293,7 @@ declare global {
         snap: (id: string) => string;
         act: (action: string) => void;
         redraw: () => void;
-        nav: () => { page: BoardPage; full: 'career' | null; town: TownTab; you: YouTab; club: boolean };
+        nav: () => { page: BoardPage; full: 'career' | null; town: TownTab; you: YouTab; club: boolean; customize: string | null; pad: string; trying: string | null };
         visible: (id: string) => boolean;
       };
     };
@@ -297,6 +303,9 @@ declare global {
 /** Where the board hangs: dead ahead, its width and its metres per px. */
 const BOARD_POS = { x: 0, y: 1.45, z: -1.2 };
 const BOARD_WIDTH_M = 1.56;
+/** Where the board stands aside while CUSTOMIZE is up: its offset from
+ *  home, its turn toward you and its scale (MenuSystem.cs BoardAside). */
+const BOARD_ASIDE = { x: 0.24, dy: 0.02, dz: -0.08, yaw: -0.22, scale: 0.86 };
 const MPP = BOARD_WIDTH_M / BOARD_W;
 
 /**
@@ -354,8 +363,8 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
         act?.('open-gazette');
         return;
       case 'board:locker':
-        // LOCKER and STORE open the customization plate on their own tab in
-        // one press — no page in between.
+        // LOCKER and STORE open THE CUSTOMIZE PAGE on their own tab in one
+        // press — no page in between.
         if (sealed()) return;
         act?.('open-custom');
         return;
@@ -364,12 +373,15 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
         act?.('open-shop');
         return;
       case COG_ID:
-        // The cog opens SETTINGS from anywhere, the whole-board CAREER included.
+        // The cog opens SETTINGS from anywhere, a whole-board page included.
+        if (customization.open) act?.('custom-close');
         wrapNav.full = null;
         act?.('open-settings');
         return;
       case BACK_ID:
-        wrapNav.full = null;
+        // CUSTOMIZE's ‹ BACK closes it (back to the page it was opened from).
+        if (customization.open) act?.('custom-close');
+        else wrapNav.full = null;
         return;
       case 'wrap:back':
         return;
@@ -413,7 +425,9 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
     return p;
   };
 
-  const inPage = (page: BoardPage): boolean => !wrapNav.full && wrapNav.page === page;
+  /** A whole-board page is up: the CAREER, or CUSTOMIZE. */
+  const fullUp = (): boolean => !!wrapNav.full || customization.open;
+  const inPage = (page: BoardPage): boolean => !fullUp() && wrapNav.page === page;
   // eslint-disable-next-line prefer-const
   let play: KitMenuPanel;
   play = host(
@@ -440,7 +454,7 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
   // flows (under VERSUS) take the content region, in the PLAY page's format.
   // eslint-disable-next-line prefer-const
   let room: KitMenuPanel;
-  room = host('room', PLAY_W, PLAY_H, CONTENT, () => roomPageFace((id) => room.kit.hoverOf(id)), () => !wrapNav.full && roomWanted(wrapNav.page === 'versus'));
+  room = host('room', PLAY_W, PLAY_H, CONTENT, () => roomPageFace((id) => room.kit.hoverOf(id)), () => !fullUp() && roomWanted(wrapNav.page === 'versus'));
   const wide = host('train', CW, 1024 - STRIP, CONTENT, () => crop(clubFace(), 0, STRIP), () => inPage('club') && !app.lobbyMode);
   const career = host(
     'career',
@@ -448,8 +462,39 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
     CAREER_BOTTOM - CAREER_TOP,
     FULL,
     () => crop(careerFace(), 0, CAREER_TOP),
-    () => wrapNav.full === 'career' && !sealed(),
+    () => wrapNav.full === 'career' && !customization.open && !sealed(),
   );
+  // THE CUSTOMIZE PAGE takes the whole board too. Its presses settle on the
+  // page first (the selection, the CTA), then run as the plate's always did.
+  // eslint-disable-next-line prefer-const
+  let custom: KitMenuPanel;
+  custom = host(
+    'custom',
+    CUST_W,
+    CUST_H,
+    FULL,
+    () => customizePageFace((id) => custom.kit.hoverOf(id)),
+    () => customization.open && !sealed(),
+    (id) => {
+      const run = customizeRoute(id);
+      if (run) dispatch(run);
+    },
+  );
+  // THE LOADOUT section: the ball panel hung over the page under its tabs;
+  // it settles its own `ball:*` ids and its BEND slider's scrub.
+  const balls = host(
+    'balls',
+    BALLS_W,
+    BALLS_H,
+    { x: FULL.x + LOADOUT_RECT.x, y: FULL.y + LOADOUT_RECT.y, w: LOADOUT_RECT.w, h: LOADOUT_RECT.h },
+    ballsFace,
+    () => customization.open && section() === 'loadout' && !sealed(),
+    (id) => {
+      if (!ballsClick(id)) dispatch(id);
+    },
+  );
+  balls.drag = ballsDrag;
+  balls.mesh.position.z += 0.002; // over the page
   const town = host('duel', LW, 1024 - STRIP, CONTENT, () => crop(townFace(), 0, STRIP), () => !app.lobbyMode && (inPage('news') || (inPage('rankings') && !sealed())));
   const you = host('info', LW, 1024 - STRIP, CONTENT, () => crop({ title: '', ...settingsFace() }, 0, STRIP), () => !app.lobbyMode && inPage('settings'));
 
@@ -465,16 +510,23 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
   card.mesh.renderOrder = 32; // over the board and its pages, whatever the sort says
   card.mesh.visible = false;
 
-  const panels = [board, play, room, wide, career, town, you, card];
+  const panels = [board, play, room, wide, career, custom, balls, town, you, card];
   for (const id of ['train', 'duel', 'info'] as const) {
     const i = menu.panels.findIndex((old) => old.id === id);
     if (i < 0) continue;
     menu.panels[i].mesh.removeFromParent();
     menu.panels.splice(i, 1);
   }
+  // THE BOARD RIG: the board, its pages and the card move as one — home
+  // dead ahead, or aside (right, turned in a touch, a shade smaller) while
+  // CUSTOMIZE is up, so the mirror stands clear on its left (MenuSystem.cs
+  // EaseBoard in the Quest build).
+  const rig = new Group();
+  rig.name = 'board-rig';
+  menu.group.add(rig);
   for (const p of panels) {
     menu.panels.push(p);
-    menu.group.add(p.mesh);
+    rig.add(p.mesh);
     p.redraw(null);
   }
 
@@ -491,21 +543,47 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
         else if (action === 'play-go') {
           const a = playAction();
           if (a) dispatch(a);
+        } else if (customization.open && !action.startsWith('board:')) {
+          // …and THE CUSTOMIZE PAGE's settle on the page (the selection, the CTA).
+          const run = customizeRoute(action);
+          if (run && !(action.startsWith('ball:') && ballsClick(action))) dispatch(run);
         } else dispatch(action);
         for (const p of panels) p.redraw(null);
       },
       redraw: () => {
         for (const p of panels) p.redraw(null);
       },
-      nav: () => ({ ...wrapNav, club: wrapNav.page === 'club' }),
+      nav: () => ({ ...wrapNav, club: wrapNav.page === 'club', customize: customization.open ? section() : null, pad: customization.platform, trying: customization.preview?.id ?? null }),
       visible: (id) => byId(id)?.mesh.visible ?? false,
     },
   };
 
   let clock = 0;
+  let aside = -1;
+  /** Ease the rig toward aside (CUSTOMIZE up) or home, over a quarter second. */
+  const easeRig = (delta: number): void => {
+    const target = customization.open ? 1 : 0;
+    const t = aside < 0 ? target : target > aside ? Math.min(target, aside + delta / 0.25) : Math.max(target, aside - delta / 0.25);
+    if (t === aside) return;
+    aside = t;
+    const e = t * t * (3 - 2 * t);
+    const k = 1 + (BOARD_ASIDE.scale - 1) * e;
+    const yaw = BOARD_ASIDE.yaw * e;
+    rig.rotation.y = yaw;
+    rig.scale.setScalar(k);
+    // Turn and scale about the board's centre, then move it by the offset.
+    const c = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    rig.position.set(
+      BOARD_POS.x - (BOARD_POS.x * c + BOARD_POS.z * sn) * k + BOARD_ASIDE.x * e,
+      BOARD_POS.y - BOARD_POS.y * k + BOARD_ASIDE.dy * e,
+      BOARD_POS.z - (-BOARD_POS.x * sn + BOARD_POS.z * c) * k + BOARD_ASIDE.dz * e,
+    );
+  };
   return {
     tick(delta: number): void {
       clock += delta;
+      easeRig(delta);
       const pulse = 0.5 + 0.5 * Math.sin((clock * 2 * Math.PI) / 6);
       for (const p of panels) p.tick(delta, pulse);
       // The rail's marker slides on its own clock: repaint while it moves.

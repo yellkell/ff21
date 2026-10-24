@@ -66,9 +66,9 @@ the brief:
 but `todo` never suggests a ranked fight. Point people at the campaign first
 (`CAREER`), then QUICK MATCH (`VERSUS › QUICK MATCH`).
 
-**The Quest Store notice is built in.** The NEWS page wears a standing strap,
-NOW AVAILABLE ON THE META QUEST STORE, over every edition, so an edition never
-needs to announce it.
+**The Quest Store notice is built in.** The NEWS page leads every edition with
+a standing TOP STORY, FIRE FIGHT 2 IS NOW ON THE QUEST STORE, above the
+edition's own headline, so an edition never needs to announce it.
 
 **Never punch down.** The brief only reports climbers and clears. Nobody who
 dropped places or lost is named. The game never records a failed run, so

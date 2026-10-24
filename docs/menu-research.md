@@ -101,8 +101,8 @@ The native Meta Quest build iterated on this lobby on a headset, and its board c
 | 04 | Club | A door: one press knocks, and the page reads out the wait while the house wakes. |
 | 05 | Rankings | The ladder, unchanged, in the content region. |
 | 06 | News | The paper, plus a standing NOW AVAILABLE ON THE META QUEST STORE strap over every edition. |
-| 07 | Locker | A door onto the customization plate. |
-| 08 | Store | A door onto the catalogue. |
+| 07 | Locker | Opens the CUSTOMIZE page on its LOCKER tab. |
+| 08 | Store | Opens the CUSTOMIZE page on its STORE tab. |
 | cog | Settings | In the header, not on the rail. |
 
 Activity left the board. Its three counts ride the places they describe: the queue on Quick Match's plate, forming squads on Co-op Raid's, the club's head count under CLUB on the rail. The menus never say "bots": the opponent while a quick match searches is a rival, the lobby's no-wait button is FIGHT NOW, the bout panel is THE BOUT.
@@ -121,7 +121,20 @@ The ROOMS page (`menu/roomPage.ts`) is a board page too: the arcade lobby (the r
 
 THE CLUB MENU (right Ⓐ on the club floor, `rave/club/clubMenu.ts`) is the same board in the club's own colours: 01 THE ROOM (everyone on the floor, MUTE / BLOCK), 02 DISCO BALL (the old THE BELL: FIGHT or RAVE, the tier list and the record list inline, one CTA), 03 SOUND (mic, voice chat, music), 04 LEAVE.
 
-Still to come back from the Quest build: CAREER and CUSTOMIZE as redesigned full pages, the RANKINGS redesign and the BELTS row on the card. The board hosts the web's own faces for those meanwhile.
+THE CUSTOMIZE PAGE (`menu/customizePage.ts`, from the Quest build's CustomizePage.cs) replaces the floating customization plate. It takes the whole board as the CAREER does: ‹ BACK and CUSTOMIZE in the header, the wallet on THE PROFILE chip. Under it, the section tabs LOCKER · STORE · PAINT · LOADOUT, then the section's own row: the boards (PLATFORMS · GEAR · BODY in the locker, PLATFORMS · GEAR · BANK in the store) and the shelves after a divider; PAINT's row is its tool strip. Each shelf is a 5 × 3 grid of big square tiles with one badge each (WORN, the price, EARNED). One data plate on the right shows the hovered tile, otherwise the selected one, and ONE CTA sits under it: EQUIP / TAKE OFF / STAND ON in the locker, BUY $N in the store, PUT BACK with paint on the pointer. LOADOUT hangs the ball panel over the page. While the page is up the board slides right and turns in, so the mirror stands clear on its left.
+
+THE PLATFORMS shelf is open again, for the Quest build's four modelled pads: HELIPAD 600, AFTERGLOW 800, MAINFRAME 1000 and DEAD SMILEY 1200 (`arena/nativePads.ts`). They sit on the STREET shelf, and a STORE try-on shows on the rival's pad across the gap. The deck materials (walnut … meteorite) stay paused and unlisted. The LOCKER holds the STANDARD pad, the pads you own and, on HONOURS once earned, the trophies. A tap on the pad you are wearing takes it off and puts you back on STANDARD.
+
+| Task | Customization plate | CUSTOMIZE page |
+| --- | --- | --- |
+| Buy a cosmetic | Store, tile, tile's BUY: 3 | Store, tile, BUY: 3 |
+| Equip owned gear | Locker, tile: 2 | Locker, tile: 2 |
+| Paint | Locker, PAINT: 2 | Locker, PAINT: 2 |
+| Ball loadout | Locker (beside it): 1 | Locker, LOADOUT: 2 |
+
+The loadout gains a press because it no longer floats beside the locker; it has its own tab.
+
+Still to come back from the Quest build: CAREER as a redesigned full page, the RANKINGS redesign and the BELTS row on the card. The board hosts the web's own faces for those meanwhile.
 
 ## Validation and next iteration
 

@@ -25,6 +25,7 @@
  */
 import { DoubleSide, Group, MeshStandardMaterial, type Material, type Mesh, type Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { applyNativeHides } from './nativePads.js';
 
 export interface PadParts {
   group: Group;
@@ -38,6 +39,13 @@ export interface PadParts {
   /** The kit's two dresses, once it has landed (setPadStreet picks one). */
   machined?: Group;
   street?: Group;
+  /** THE STREET PADS (nativePads.ts): the modelled skin this pad wears, its
+   *  sets built so far (kept hidden after), and whether the standard deck,
+   *  frame and tube are hidden under one. */
+  nativeId?: string | null;
+  nativeSets?: Map<string, Object3D>;
+  nativeBuilding?: Set<string>;
+  nativeHid?: boolean;
 }
 
 /** The street set's own surfaces, finished once (shared by every clone):
@@ -80,6 +88,8 @@ function wearStreet(p: PadParts): void {
   p.rim.visible = !streetOn;
   const plinth = p.group.getObjectByName('stage-plinth');
   if (plinth && streetOn) plinth.visible = false;
+  // A modelled pad (nativePads.ts) keeps the frame and tube it hides hidden.
+  applyNativeHides(p);
 }
 
 /** Dress every pad (now and when the kit lands) for a road, or not. */

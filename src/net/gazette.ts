@@ -90,7 +90,6 @@ export const WELCOME_EDITION: GazetteArticle = {
     'CAREER has the CAMPAIGN: five titans back to back, CHROMEHOOK, PISTONKAISER, VULTURE, JUGGERNAUT and GOLIATH. Beat them in one go and you unlock HARDCORE, the same run with no healing between bosses. CO-OP RAID, under VERSUS, sends a squad of two to five after the titans together, and GOOPLIATH is a raid boss of its own. Every full run is timed on NORMAL, HARD or BLAZING, and each difficulty, hardcore or not, keeps its own leaderboard under RANKINGS. EASY runs are for practice and never rank.',
     'RAVE RAID is the rhythm mode, with a tour, solo tracks and multiplayer. CLUB takes you to the club to hang out and meet other players, and games started from the club pay extra coins when you come back to the floor.',
     'Every game you finish pays 10 coins, win or lose. Spend them in the STORE on gear, heads and platforms, and paint your fighter however you like from the LOCKER. Some platforms can only be earned: CHAMPION for beating GOLIATH, TIDEBREAKER for beating GOOPLIATH in a raid, and BLAZING for a win on BLAZING.',
-    'FIRE FIGHT 2 is now available on the Meta Quest Store as a native app for Quest 3 and Quest 3S, free to download. It is its own app with its own progress: search for FIRE FIGHT 2 in the Store on your headset.',
     'This paper comes out daily with who climbed, which records fell and what is worth playing next. A red dot on the NEWS tab means a new edition is in.',
   ].join('\n\n'),
   byline: 'The Gazette Desk',

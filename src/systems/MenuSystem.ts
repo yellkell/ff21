@@ -49,8 +49,10 @@ import {
 import { createNameKeyboard, type NameKeyboard } from '../menu/keyboard.js';
 import { installWrap, showCampaign, wrapNav, type Wrap } from '../menu/wrap.js';
 import { clearReportSent, markReportSent, musicVolFromU, setCreditsOpen, sfxVolFromU } from '../menu/settingsFace.js';
-// MENUS 3: the modals are kit faces now, each in its own module.
-import { lockerFace, LOCKER_H, LOCKER_W } from '../menu/lockerFace.js';
+// MENUS 3: the modals are kit faces now, each in its own module. (THE
+// LOCKER, THE STORE, PAINT and the ball loadout are THE CUSTOMIZE PAGE on
+// the board now — menu/customizePage.ts, hosted by menu/wrap.ts.)
+import { customizeKey, customizePage } from '../menu/customizePage.js';
 import {
   bank,
   cancelCheckout,
@@ -65,7 +67,7 @@ import {
   whoami,
 } from '../net/bank.js';
 import { campaignFace, campaignModal, CAMP_H, CAMP_W } from '../menu/campaignFace.js';
-import { ballsClick, ballsDrag, ballsFace, ballsFaceKey, ballsHit, BALLS_H, BALLS_W } from '../menu/ballsFace.js';
+import { ballsClick, ballsDrag, ballsFaceKey, ballsHit } from '../menu/ballsFace.js';
 import { profilePop } from '../menu/profilePop.js';
 import { audienceStands } from '../arena/desert/audience.js';
 import { audienceView } from './AudienceSystem.js';
@@ -81,7 +83,7 @@ import { beltOf, heldBelts } from '../campaign/belts.js';
 import { botGradeLine, botLive, installBotBrainDevHook } from '../combat/botBrain.js';
 import { KitMenuPanel } from '../menu/wrap.js';
 import type { PanelButton } from '../ui/kit/panel.js';
-import { BAY_H, BAY_W, bayClick, bayFace, bayFaceKey, bayFaceState } from '../menu/paintbay.js';
+import { bayClick, bayFaceKey, bayFaceState } from '../menu/paintbay.js';
 import {
   avatarOwned,
   clearShopPreview,
@@ -112,6 +114,7 @@ import {
   OPPONENT_DEFAULT_PLATFORM,
   PLATFORM_SKINS,
   PLATFORMS_OPEN,
+  platformListed,
   applyAvatarSkin,
   applyPlatformSkin,
   platformSkin,
@@ -231,11 +234,13 @@ const BAY_STEADY = { base: 18, chase: 1600 };
 /** THE TRIGGER'S JOLT: pulling a trigger tugs the controller, so a mark
  *  lands where the ray was this long BEFORE the pull registered (ms). */
 const BAY_PULL_LEAD = 70;
-/** Where the mirror stands: at home beside the LOCKER and STORE, and
- *  brought in to arm's reach while you paint — two metres off, a degree of
- *  aim was four centimetres of body. */
-const MIRROR_HOME = { x: -0.75, z: -2.0 };
-const MIRROR_PAINT = { x: -0.42, z: -1.22 };
+/** Where the mirror stands: at home left of THE CUSTOMIZE PAGE (the board
+ *  slides right to clear it), and brought in to arm's reach while you
+ *  paint — two metres off, a degree of aim was four centimetres of body.
+ *  The Quest build's places (CustomizeSystem.cs MirrorHome / MirrorPaint),
+ *  clear of the board where it stands aside. */
+const MIRROR_HOME = { x: -0.95, z: -1.45 };
+const MIRROR_PAINT = { x: -0.62, z: -1.0 };
 /** How fast the thumbstick spins the blank in the bay (rad/s at full tilt),
  *  and turns a held mark (turns/s). */
 const BAY_SPIN_RATE = 2.4;
@@ -244,13 +249,14 @@ const wrapAngle = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 /** The faces that draw the player's look — what a skin change repaints.
  *  (Not the BALLS board: it draws nothing a pick changes, and repainted
  *  its 768² texture three times on every head swap.) */
-const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'shop', 'loadout', 'board', 'profilecard', 'paintbay']);
+const SKIN_PANELS: ReadonlySet<PanelId> = new Set<PanelId>(['custom', 'loadout', 'board', 'profilecard']);
 
 export class MenuSystem extends createSystem({}) {
   private menu!: Menu;
   private wrap!: Wrap;
   private paintVersionSeen = 0;
-  private bayPanel!: KitMenuPanel;
+  /** THE CUSTOMIZE PAGE's repaint key (menu/customizePage.ts). */
+  private customKey = '';
   /** The kit modals (MENUS 3) — ticked with the wrap so their hovers ease. */
   private modals: KitMenuPanel[] = [];
   /** Last loadout state the ball panel was drawn at (its own repaint key). */
@@ -393,24 +399,10 @@ export class MenuSystem extends createSystem({}) {
     // place (same ids, same slots) — see menu/wrap.ts. The second argument
     // lets the headless dev hook (__ff2.wrap.act) fire real actions.
     this.wrap = installWrap(this.menu, (a) => this.run(a));
-    // THE PAINT BAY: a kit modal panel beside the locker mirror. Local
-    // pb:* ids settle in bayClick; real actions go through run().
-    // The PAINT tab of the one customization plate: the same size and
-    // place as the LOCKER and the STORE, so the tabs swap faces, not rooms.
-    this.bayPanel = new KitMenuPanel('paintbay', 0.94, 0.94 * (BAY_H / BAY_W), BAY_W, BAY_H, bayFace, (id) => {
-      if (!bayClick(id)) this.run(id as MenuAction);
-    });
-    this.bayPanel.mesh.position.set(0.5, 1.52, -1.1);
-    this.bayPanel.mesh.rotation.y = -0.3;
-    this.bayPanel.mesh.visible = false;
-    this.menu.panels.push(this.bayPanel);
-    this.menu.group.add(this.bayPanel.mesh);
-    // THE MODALS (MENUS 3), all on the kit: the locker and the store, the
-    // titan line-up, the arcade lobby and the ball loadout. Same panel ids
-    // as the plates they replace, so every bit of the visibility and
-    // routing machinery below is untouched — only the faces changed.
-    this.addModal('custom', 0.94, 0.94, LOCKER_W, LOCKER_H, () => lockerFace(true), [0.5, 1.52, -1.1], -0.3);
-    this.addModal('shop', 0.94, 0.94, LOCKER_W, LOCKER_H, () => lockerFace(false), [0.5, 1.52, -1.1], -0.3);
+    // THE MODALS (MENUS 3), all on the kit: the titan line-up and the
+    // reader. (THE LOCKER, THE STORE, PAINT and the ball loadout are THE
+    // CUSTOMIZE PAGE on the board — menu/wrap.ts hosts it; its pb:* ids
+    // settle in bayClick from run().)
     this.addModal('campaign', 1.5, 1.5 * (CAMP_H / CAMP_W), CAMP_W, CAMP_H, campaignFace, [0, 1.5, -1.2], 0);
     // (THE ARCADE LOBBY is a page of the board now — menu/roomPage.ts.)
     // THE READER: the Gazette held up large, straight ahead, where the slab
@@ -418,10 +410,6 @@ export class MenuSystem extends createSystem({}) {
     // the thumbstick scrolls it as it does on the wing, and tapping the page
     // (or CLOSE) puts it back.
     this.addModal('reader', 1.2, 1.2 * (READER_H / READER_W), READER_W, READER_H, readerFace, [0, 1.5, -1.12], 0);
-    // The loadout hangs out on the RIGHT, clear of the mirror on the left,
-    // and answers its own `ball:*` ids before anything global.
-    // …and settles its own scrub: the BEND slider on its ADVANCED face.
-    this.addModal('balls', 0.8, 0.8, BALLS_W, BALLS_H, ballsFace, [1.32, 1.18, -0.66], -0.6, (id) => ballsClick(id), ballsDrag);
     // THE MODALS, readable headlessly: what each one is offering, and its
     // canvas, so a probe can walk every face without a headset.
     // __ff2.bank — THE BANK's probe verbs (tools/bank-check.mjs): the
@@ -701,7 +689,6 @@ export class MenuSystem extends createSystem({}) {
     // Advance the wrap's kit transitions (hover eases, press flashes, the
     // halo breath) every frame — a no-op while nothing moves.
     this.wrap.tick(delta);
-    this.bayPanel?.tick(delta, 0);
     for (const m of this.modals) if (m.mesh.visible) m.tick(delta, 0);
     this.updateBeltShow(delta);
     // The loadout answers its own clicks, so nothing else knows to repaint it.
@@ -709,6 +696,12 @@ export class MenuSystem extends createSystem({}) {
     if (bk !== this.ballsKey) {
       this.ballsKey = bk;
       this.redrawPanel('balls');
+    }
+    // THE CUSTOMIZE PAGE repaints on any pick, purchase or section change.
+    const ck = customizeKey();
+    if (ck !== this.customKey) {
+      this.customKey = ck;
+      this.redrawPanel('custom');
     }
 
     // The BOOT INTRO owns the view: the lobby is live behind the black shade,
@@ -752,16 +745,14 @@ export class MenuSystem extends createSystem({}) {
       return;
     }
 
-    // Customisation, the campaign's launch card / belt rack, the arcade
-    // lobby and the paint bay are modal: the lobby arc swaps out for the open panel. (The
-    // paper and settings are TABS on the wings now — MENUS 2.) The shop is
-    // a sub-modal of customisation: while it's up the customise plate (and
-    // its mirror/loadout) step aside for the shop face.
-    const shopOpen = customization.open && customization.shopOpen && !app.paintBayOpen;
-    const modalCustom = customization.open && !customization.shopOpen && !app.paintBayOpen;
+    // The campaign's launch card / belt rack and the reader are modal: the
+    // board swaps out for the open panel. CUSTOMIZE is a page of the board
+    // (menu/wrap.ts shows it and slides the board aside for the mirror);
+    // the podium steps aside for it.
     const modalCampaign = campaignModal.pending !== null;
     const modalReader = app.readerOpen;
-    const arcUp = !customization.open && !modalCampaign && !app.paintBayOpen && !modalReader;
+    const arcUp = !modalCampaign && !modalReader;
+    const customUp = customization.open || app.paintBayOpen;
     let visChanged = this.rayTargets.length === 0; // first frame: build the list
     for (const p of this.menu.panels) {
       let show: boolean;
@@ -769,18 +760,8 @@ export class MenuSystem extends createSystem({}) {
         case 'profilecard':
           show = arcUp && profilePop.open; // dropped out of the chip
           break;
-        case 'custom': // the LOCKER
-        case 'balls':
-          show = modalCustom;
-          break;
-        case 'shop':
-          show = shopOpen;
-          break;
         case 'campaign':
           show = modalCampaign;
-          break;
-        case 'paintbay':
-          show = app.paintBayOpen;
           break;
         case 'reader':
           show = modalReader;
@@ -807,9 +788,10 @@ export class MenuSystem extends createSystem({}) {
     // The podium shows with the lobby arc and steps aside for every modal
     // (the locker brings its own mirror); it turns like a display stand.
     if (this.podium) {
-      this.podium.visible = arcUp;
+      const podiumUp = arcUp && !customUp;
+      this.podium.visible = podiumUp;
       this.podium.userData.beat = (this.podium.userData.beat ?? 0) + 1;
-      if (arcUp) {
+      if (podiumUp) {
         this.podium.rotation.y += delta * 0.3;
         if (this.plinth) tickPlinth(this.plinth, delta);
       }
@@ -951,7 +933,7 @@ export class MenuSystem extends createSystem({}) {
       this.draggingHue = true;
       for (const p of this.menu.panels) {
         if (!p.mesh.visible) continue;
-        if (p.id === 'custom' || p.id === 'balls' || p.id === 'shop' || p.id === this.sliderGrab?.panel) {
+        if (p.id === 'custom' || p.id === 'balls' || p.id === this.sliderGrab?.panel) {
           p.redraw(p.id === this.hovered ? this.hoveredAction : null);
         }
       }
@@ -964,7 +946,7 @@ export class MenuSystem extends createSystem({}) {
       const key = bayFaceKey();
       if (key !== this.bayKey) {
         this.bayKey = key;
-        this.bayPanel.redraw(this.hovered === 'paintbay' ? this.hoveredAction : null);
+        this.redrawPanel('custom');
       }
       this.bayUpkeep();
     }
@@ -1101,6 +1083,8 @@ export class MenuSystem extends createSystem({}) {
   private run(action: MenuAction): void {
     sfx.ensureAudio();
     sfx.uiClick();
+    // THE PAINT section's own ids (the CUSTOMIZE page): the bay settles them.
+    if (action.startsWith('pb:') && bayClick(action)) return;
     // A belt held up off the rack goes back on any other click.
     if (!action.startsWith('badge-belt-')) this.hideBelt();
     // THE PROFILE card folds on any action that isn't its own.
@@ -1531,10 +1515,12 @@ export class MenuSystem extends createSystem({}) {
         break;
       case 'paintbay-close':
       case 'custom-close':
-        // CLOSE on any face closes the whole plate.
+        // ‹ BACK (or CLOSE) on any section closes the whole page.
         this.leavePaint();
         customization.open = false;
         customization.shopOpen = false;
+        customizePage.loadout = false;
+        customizePage.selected = '';
         clearShopPreview(); // the try-on goes back on the rack
         break;
       case 'open-custom':
@@ -1542,12 +1528,23 @@ export class MenuSystem extends createSystem({}) {
         this.leavePaint();
         customization.open = true;
         customization.shopOpen = false;
+        customizePage.loadout = false;
+        this.ensureMirror();
+        break;
+      case 'cz:loadout':
+        // THE LOADOUT section: the ball panel hung over the page.
+        this.leavePaint();
+        customization.open = true;
+        customization.shopOpen = false;
+        clearShopPreview();
+        customizePage.loadout = true;
         this.ensureMirror();
         break;
       case 'open-shop':
         this.leavePaint();
         customization.open = true;
         customization.shopOpen = true;
+        customizePage.loadout = false;
         if (customization.tab === 'bank' || customization.tab === 'colour') customization.tab = 'platforms';
         this.ensureMirror();
         break;
@@ -1709,7 +1706,7 @@ export class MenuSystem extends createSystem({}) {
         }
         if (action.startsWith('shop-buy-pf-')) {
           const skin = PLATFORM_SKINS[Number(action.slice('shop-buy-pf-'.length))];
-          if (PLATFORMS_OPEN && skin && !skin.earnedBy && !platformOwned(skin.id)) {
+          if (PLATFORMS_OPEN && skin && platformListed(skin) && !skin.earnedBy && !platformOwned(skin.id)) {
             this.buyOrEquipPlatform(skin.id, skin.price ?? 0);
             if (platformOwned(skin.id)) clearShopPreview();
           }
@@ -1727,11 +1724,16 @@ export class MenuSystem extends createSystem({}) {
         }
         if (action.startsWith('shop-pf-')) {
           const skin = PLATFORM_SKINS[Number(action.slice(8))];
-          if (!skin || !PLATFORMS_OPEN) break; // paused (avatar/skins.ts)
+          // Only the listed pads (avatar/skins.ts platformListed): the deck
+          // materials are paused.
+          if (!skin || !PLATFORMS_OPEN || !platformListed(skin)) break;
           if (customization.shopOpen && !platformOwned(skin.id)) {
             // Even the earned-only CHAMPION pad can be tried on — its tile
             // just never grows a BUY button (the campaign awards it).
             setShopPreview('platform', skin.id);
+          } else if (!customization.shopOpen && customization.platform === skin.id && skin.id !== 'ember') {
+            // A worn pad taps off, back to the STANDARD deck (the Quest build).
+            setPlatformSkin('ember');
           } else if (!skin.earnedBy || platformOwned(skin.id)) {
             this.buyOrEquipPlatform(skin.id, skin.price ?? 0);
           }

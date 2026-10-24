@@ -73,7 +73,7 @@ export function drawPlatformIcon(ctx: CanvasRenderingContext2D, skin: PlatformSk
   // thing the tile is selling, at thumbnail size.
   ctx.save();
   ctx.clip();
-  drawDeckSwatch(ctx, skin.deck, cx, cy, r);
+  drawDeckSwatch(ctx, skin.deck === 'native' ? 'iron' : skin.deck, cx, cy, r);
   ctx.restore();
   ctx.lineWidth = Math.max(2, r * 0.16);
   ctx.strokeStyle = hex(skin.neon);
