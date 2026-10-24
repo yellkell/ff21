@@ -11,7 +11,7 @@
  * (window.__ff2.wrap): the rail's CAREER / VERSUS / RAVE RAID / CLUB /
  * RANKINGS / NEWS / LOCKER / STORE, the pages hosted beside it (VERSUS's
  * PLAY page, the custom-game flows and the club's door, the career, the
- * ladder and the paper, settings), the header's cog, and THE PROFILE chip
+ * CUSTOMIZE page, the ladder and the paper, settings), the header's cog, and THE PROFILE chip
  * + card under the right
  * wing. --shots saves each face's canvas as a PNG beside this script.
  */
@@ -37,10 +37,11 @@ async function launch() {
 const browser = await launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
 // Enough in the wallet that the STORE's BUY is live: a disabled BUY never
-// hit-tests, and the walk below has to prove it is the BUY that answers.
+// hit-tests, and the walk below has to prove it is the BUY that answers
+// (a HELIPAD is 600).
 await page.addInitScript(() => {
   try {
-    if (parseInt(localStorage.getItem('ff-coins') ?? '0', 10) < 200) localStorage.setItem('ff-coins', '500');
+    if (parseInt(localStorage.getItem('ff-coins') ?? '0', 10) < 900) localStorage.setItem('ff-coins', '1500');
   } catch {
     /* no storage — the store check will say so */
   }
@@ -302,34 +303,34 @@ check('LADDER › XP: no sub-row', !town.includes('lb-ranked') && !town.includes
   await page.evaluate(() => window.__ff2.gazette.close());
 }
 
-console.log('\n=== LOCKER · STORE: doors onto the customization plate ===');
+console.log('\n=== LOCKER · STORE: THE CUSTOMIZE PAGE ===');
 let you;
-await wrap(`act('board:store')`);
-await page.waitForTimeout(200);
-check('STORE: one press opens the catalogue', await page.evaluate(() => window.__ff2.modals.up('shop')));
-await wrap(`act('custom-close')`);
-await page.waitForTimeout(200);
-check('closing the catalogue hands the board back', !(await page.evaluate(() => window.__ff2.modals.up('shop'))) && (await wrap(`visible('board')`)));
-await wrap(`act('board:locker')`);
-await page.waitForTimeout(200);
-check('LOCKER: one press opens the locker', await page.evaluate(() => window.__ff2.modals.up('custom')));
-await wrap(`act('custom-close')`);
-await page.waitForTimeout(200);
-
-// THE HUB: one customization plate, three tabs — LOCKER · STORE · PAINT —
-// the same plate in the same place, the faces swapping under the tabs.
 {
   const up = (id) => page.evaluate((i) => window.__ff2.modals.up(i), id);
   const btns = (id) => page.evaluate((i) => window.__ff2.modals.buttons(i), id);
-  const tabs = ['open-locker', 'open-shop', 'open-paintbay'];
-  await wrap(`act('open-custom')`);
-  await page.waitForTimeout(200);
-  check('HUB: CUSTOMIZE opens the LOCKER face, wearing all three tabs', (await up('custom')) && (await btns('custom')).filter((b) => tabs.includes(b)).length === 3);
+  await wrap(`act('board:store')`);
+  await page.waitForTimeout(300);
+  nav = await wrap(`nav()`);
+  board = await wrap(`buttons('board')`);
+  check('STORE: one press opens CUSTOMIZE on the STORE, the whole board (‹ BACK, no rail)', (await up('custom')) && nav.customize === 'store' && (await wrap(`visible('board')`)) && board.includes('board:back') && tabsOf(board).filter((b) => RAIL.includes(b)).length === 0, JSON.stringify(nav));
+  check('and no other page is up beside it', !(await wrap(`visible('play')`)) && !(await wrap(`visible('duel')`)) && !(await wrap(`visible('career')`)));
+  save('customize-store', await wrap(`snap('custom')`));
+  await wrap(`act('board:back')`);
+  await page.waitForTimeout(300);
+  board = await wrap(`buttons('board')`);
+  check('‹ BACK closes it and hands the rail back', !(await up('custom')) && (await wrap(`visible('board')`)) && RAIL.every((id) => board.includes(id)));
+  await wrap(`act('board:locker')`);
+  await page.waitForTimeout(300);
+  nav = await wrap(`nav()`);
+  const tabs = ['open-locker', 'open-shop', 'open-paintbay', 'cz:loadout'];
+  const ids = await btns('custom');
+  check('LOCKER: one press opens CUSTOMIZE on the LOCKER, wearing LOCKER · STORE · PAINT · LOADOUT', (await up('custom')) && nav.customize === 'locker' && tabs.every((t) => ids.includes(t)), ids.slice(0, 8).join(','));
   await wrap(`act('open-paintbay')`);
-  await page.waitForTimeout(200);
-  const bayBtns = await btns('paintbay');
-  check('HUB: the PAINT tab swaps the face — the bay is up, the locker is not', (await up('paintbay')) && !(await up('custom')) && !(await up('shop')));
-  check('HUB: the PAINT face wears the same tabs, the four shapes and the colour grid', tabs.every((t) => bayBtns.includes(t)) && ['stripe', 'dot', 'square', 'triangle'].every((k) => bayBtns.includes(`pb:kind-${k}`)) && !bayBtns.includes('pb:kind-splotch') && bayBtns.includes('pb:take-0') && bayBtns.includes('pb:undo'), bayBtns.filter((b) => b.startsWith('pb:kind')).join(','));
+  await page.waitForTimeout(300);
+  nav = await wrap(`nav()`);
+  const bayBtns = await btns('custom');
+  check('PAINT: the section swaps on the same page', nav.customize === 'paint' && (await up('custom')), JSON.stringify(nav));
+  check('PAINT wears the tabs, the four shapes, the colour grid and the hand', tabs.every((t) => bayBtns.includes(t)) && ['stripe', 'dot', 'square', 'triangle'].every((k) => bayBtns.includes(`pb:kind-${k}`)) && !bayBtns.includes('pb:kind-splotch') && bayBtns.includes('pb:take-0') && bayBtns.includes('pb:undo'), bayBtns.filter((b) => b.startsWith('pb:kind')).join(','));
   // One tap on a colour you don't own buys ONE and puts it on the pointer.
   const bought = await page.evaluate(() => {
     const p = window.__ff2.paint;
@@ -337,10 +338,14 @@ await page.waitForTimeout(200);
     window.__ff2.bayClick('pb:kind-triangle');
     window.__ff2.bayClick('pb:take-13');
     const held = p.held();
-    window.__ff2.bayClick('pb:return');
-    return { before, held: held ? `${held.kind}:${held.colour}` : null, after: p.owned('triangle', 13) };
+    // The bought unit is on the pointer (PUT BACK is checked next), so it counts as owned.
+    return { before, held: held ? `${held.kind}:${held.colour}` : null, after: p.owned('triangle', 13) + (held ? 1 : 0) };
   });
-  check('HUB: tapping an unowned colour buys one and puts it on the pointer', bought.held === 'triangle:13' && bought.after === bought.before + 1, JSON.stringify(bought));
+  check('PAINT: tapping an unowned colour buys one and puts it on the pointer', bought.held === 'triangle:13' && bought.after === bought.before + 1, JSON.stringify(bought));
+  await wrap(`redraw()`);
+  check('PAINT: with paint on the pointer the CTA is PUT BACK', (await btns('custom')).includes('pb:return'));
+  save('customize-paint', await wrap(`snap('custom')`));
+  await wrap(`act('pb:return')`);
   // RESET TO BASE: two taps take every mark off and put each back in the locker.
   const reset = await page.evaluate(() => {
     const p = window.__ff2.paint;
@@ -360,15 +365,22 @@ await page.waitForTimeout(200);
     p.set(p.unpack(prev));
     return out;
   });
-  check('HUB: RESET arms on one tap and strips every mark back to the locker on the second', reset.afterOne === reset.marks && reset.afterTwo === 0 && reset.refunded === reset.marks, JSON.stringify(reset));
-  save('paint-tab', await page.evaluate(() => window.__ff2.modals.snap('paintbay')));
+  check('PAINT: RESET arms on one tap and strips every mark back to the locker on the second', reset.afterOne === reset.marks && reset.afterTwo === 0 && reset.refunded === reset.marks, JSON.stringify(reset));
   await wrap(`act('open-shop')`);
+  await page.waitForTimeout(300);
+  const shopBtns = await btns('custom');
+  check('the STORE sells no paint — paint is bought on PAINT', (await wrap(`nav()`)).customize === 'store' && !shopBtns.includes('tab-paint') && !shopBtns.some((b) => b.startsWith('pb:')), shopBtns.join(','));
+  await wrap(`act('cz:loadout')`);
+  await page.waitForTimeout(300);
+  check('LOADOUT: the ball panel hangs over the page', (await wrap(`nav()`)).customize === 'loadout' && (await up('balls')) && (await up('custom')));
+  save('customize-loadout', await wrap(`snap('balls')`));
+  await wrap(`act('open-locker')`);
   await page.waitForTimeout(200);
-  const shopBtns = await btns('shop');
-  check('HUB: the STORE sells no paint — paint is bought on the PAINT tab', (await up('shop')) && !(await up('paintbay')) && !shopBtns.includes('tab-paint') && !shopBtns.some((b) => b.startsWith('pb:')), shopBtns.join(','));
-  await wrap(`act('custom-close')`);
-  await page.waitForTimeout(200);
-  check('HUB: CLOSE on any face closes the plate', !(await up('custom')) && !(await up('shop')) && !(await up('paintbay')));
+  check('and goes with the LOADOUT tab', !(await up('balls')));
+  await wrap(`act('open-paintbay')`);
+  await wrap(`act('board:back')`);
+  await page.waitForTimeout(300);
+  check('‹ BACK closes the page from any section', !(await up('custom')) && !(await up('balls')) && (await wrap(`nav()`)).customize === null);
 }
 
 await wrap(`act('board:settings')`);
@@ -401,7 +413,7 @@ console.log('\n=== WHO HEARS WHOM (net/voiceRules.ts) ===');
   check('the table: club hears the room, the audience hears everyone, ranked nobody', v.table.club === 'mic/room' && v.table.audience === 'mic/everyone' && v.table.ranked === 'no mic/nobody', JSON.stringify(v.table));
 }
 
-console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
+console.log('\n=== THE MODALS: the CUSTOMIZE page\'s boards, line-up, lobby ===');
 {
   const m = (expr) => page.evaluate(`window.__ff2.modals.${expr}`);
   const shot = async (id, name = id) => save(name, await m(`snap('${id}')`));
@@ -409,53 +421,79 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
   await wrap(`act('open-custom')`);
   await page.waitForTimeout(400);
   let ids = await m(`buttons('custom')`);
-  check('the LOCKER wears LOCKER · STORE and its three boards', has(ids, 'open-locker', 'open-shop', 'tab-platforms', 'tab-gear', 'tab-colour') && !ids.includes('tab-arena'), ids.slice(0, 8).join(','));
-  check('and the loadout stands beside it', await m(`up('balls')`), String(await m(`up('balls')`)));
-  await shot('custom');
-  await shot('balls');
+  check('the LOCKER wears its three boards', has(ids, 'open-locker', 'open-shop', 'tab-platforms', 'tab-gear', 'tab-colour') && !ids.includes('tab-arena') && !ids.includes('tab-bank'), ids.slice(0, 10).join(','));
+  await shot('custom', 'locker');
 
   await wrap(`act('tab-colour')`);
   await page.waitForTimeout(300);
   ids = await m(`buttons('custom')`);
   check(
-    'COLOUR: the two base tones, and no neon tracks left',
-    has(ids, 'base-white', 'base-black') && !has(ids, 'accent-color') && !has(ids, 'accent-light') && !has(ids, 'accent-default'),
+    'BODY: the two base tones and the four frames, and no neon tracks left',
+    has(ids, 'base-white', 'base-black', 'frame-standard', 'frame-lean', 'frame-heavy', 'frame-curved') && !has(ids, 'accent-color') && !has(ids, 'accent-light') && !has(ids, 'accent-default'),
     ids.filter((b) => !b.startsWith('tab-')).join(','),
   );
-  await shot('custom', 'locker-colour');
+  await shot('custom', 'locker-body');
 
   await wrap(`act('tab-platforms')`);
   await wrap(`act('open-shop')`);
   await page.waitForTimeout(400);
-  ids = await m(`buttons('shop')`);
-  check('the STORE is up, with no COLOUR to sell', (await m(`up('shop')`)) && !ids.includes('tab-colour'), ids.slice(0, 6).join(','));
-  await shot('shop', 'store');
+  ids = await m(`buttons('custom')`);
+  check('the STORE is up, with a BANK and no BODY to sell', (await wrap(`nav()`)).customize === 'store' && ids.includes('tab-bank') && !ids.includes('tab-colour'), ids.slice(0, 10).join(','));
 
-  // THE BUY ANSWERS. A tried-on tile grows its BUY INSIDE the tile's own
-  // ghost button, so the panel's hit-test has to give the press to the
-  // BUY and not to the tile under it — which only re-tries-on what is
-  // already tried on, and buys nothing (the report: "I tried to buy a
-  // hands equip, it doesn't do anything").
+  // THE PLATFORMS: the Quest build's four modelled pads, and nothing else.
+  const pads = ['shop-pf-17', 'shop-pf-18', 'shop-pf-19', 'shop-pf-20'];
+  const shelf = ids.filter((b) => b.startsWith('shop-pf-'));
+  check('PLATFORMS on the STREET shelf sells HELIPAD · AFTERGLOW · MAINFRAME · DEAD SMILEY, no deck materials', has(ids, 'shelf-street') && pads.every((p) => shelf.includes(p)) && shelf.length === pads.length, shelf.join(','));
+  check('the STORE has no HONOURS shelf', !ids.includes('shelf-honours'));
+  await wrap(`act('shop-pf-17')`);
+  await page.waitForTimeout(300);
+  nav = await wrap(`nav()`);
+  let live = await m(`live('custom')`);
+  check('a tap tries HELIPAD on (the rival\'s pad models it) and the CTA is a live BUY', nav.trying === 'helipad' && live.includes('cz:go'), JSON.stringify(nav));
+  await shot('custom', 'store-pad');
+  await wrap(`act('cz:go')`);
+  await page.waitForTimeout(300);
+  nav = await wrap(`nav()`);
+  ids = await m(`buttons('custom')`);
+  check('BUY buys it and you stand on it: HELIPAD leaves the store shelf', nav.pad === 'helipad' && nav.trying === null && !ids.includes('shop-pf-17'), JSON.stringify(nav));
+  await wrap(`act('open-locker')`);
+  await wrap(`act('tab-platforms')`);
+  await page.waitForTimeout(300);
+  ids = await m(`buttons('custom')`);
+  check('the LOCKER\'s STREET shelf holds the STANDARD pad and HELIPAD', has(ids, 'shop-pf-0', 'shop-pf-17') && !ids.includes('shop-pf-1'), ids.filter((b) => b.startsWith('shop-pf-')).join(','));
+  await shot('custom', 'locker-pads');
+  await wrap(`act('shop-pf-17')`);
+  await page.waitForTimeout(200);
+  check('a tap on the worn pad takes it off, back to STANDARD', (await wrap(`nav()`)).pad === 'ember');
+  await wrap(`act('shop-pf-17')`);
+  await page.waitForTimeout(200);
+  check('and another stands on it again', (await wrap(`nav()`)).pad === 'helipad');
+  await wrap(`act('shop-pf-0')`);
+  await page.waitForTimeout(200);
+  check('the STANDARD pad is a tap away', (await wrap(`nav()`)).pad === 'ember');
+  await wrap(`act('open-shop')`);
+  await page.waitForTimeout(200);
+
+  // THE BUY ANSWERS: the tile tap tries a piece on; the CTA buys it.
   await wrap(`act('tab-gear')`);
   await wrap(`act('gear-hands')`);
   await page.waitForTimeout(200);
-  ids = await m(`buttons('shop')`);
+  ids = await m(`buttons('custom')`);
   const cuffs = ids.includes('shop-gr-10'); // CUFFS: hands, $60
   check('HANDS on the store shelf offers CUFFS', cuffs, ids.filter((b) => b.startsWith('shop-')).join(','));
   if (cuffs) {
     await wrap(`act('shop-gr-10')`);
     await page.waitForTimeout(300);
-    ids = await m(`buttons('shop')`);
-    const live = await m(`live('shop')`);
-    check('tried on, the tile grows a live BUY', has(ids, 'shop-buy-gr-10') && live.includes('shop-buy-gr-10'), ids.filter((b) => b.startsWith('shop-')).join(','));
-    const buy = await m(`rect('shop', 'shop-buy-gr-10')`);
-    const under = buy ? await m(`at('shop', ${buy.x + buy.w / 2}, ${buy.y + buy.h / 2})`) : null;
-    check('and a press on the BUY lands on the BUY, not on the tile beneath it', under === 'shop-buy-gr-10', String(under));
-    await shot('shop', 'store-buy');
-    await wrap(`act('shop-buy-gr-10')`);
+    live = await m(`live('custom')`);
+    check('tried on, the CTA is a live BUY', live.includes('cz:go'), live.filter((b) => b.startsWith('cz:') || b.startsWith('shop-')).join(','));
+    const buy = await m(`rect('custom', 'cz:go')`);
+    const under = buy ? await m(`at('custom', ${buy.x + buy.w / 2}, ${buy.y + buy.h / 2})`) : null;
+    check('and a press on the BUY lands on the BUY', under === 'cz:go', String(under));
+    await shot('custom', 'store-buy');
+    await wrap(`act('cz:go')`);
     await page.waitForTimeout(300);
-    ids = await m(`buttons('shop')`);
-    check('bought, CUFFS leave the store shelf', !ids.includes('shop-gr-10') && !ids.includes('shop-buy-gr-10'), ids.filter((b) => b.startsWith('shop-')).join(','));
+    ids = await m(`buttons('custom')`);
+    check('bought, CUFFS leave the store shelf', !ids.includes('shop-gr-10'), ids.filter((b) => b.startsWith('shop-')).join(','));
     await wrap(`act('open-locker')`);
     await page.waitForTimeout(300);
     ids = await m(`buttons('custom')`);
@@ -463,6 +501,12 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
     // Bare again for the GEAR walk further down, which starts from nothing worn.
     await page.evaluate(() => window.__ff2.gear?.clear?.('hands'));
   }
+  await wrap(`act('open-shop')`);
+  await wrap(`act('tab-bank')`);
+  await page.waitForTimeout(300);
+  ids = await m(`buttons('custom')`);
+  check('the BANK board stands under the STORE\'s rows', ids.includes('tab-bank') && ids.some((b) => b.startsWith('bank-')), ids.filter((b) => b.startsWith('bank-')).join(','));
+  await shot('custom', 'store-bank');
   await wrap(`act('tab-platforms')`);
   await wrap(`act('custom-close')`);
 

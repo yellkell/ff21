@@ -1,0 +1,186 @@
+<!doctype html>
+<!-- DEV-ONLY harness: THE STREET PADS (src/arena/nativePads.ts) — the Quest
+     build's modelled platform skins worn by real web pads (makePlatform → the
+     machined kit lands → applyPlatformSkin), for screenshots and side-by-side
+     checks against the native locker icons (public/forge/icons/pad_<id>.webp).
+     ?pad=helipad|afterglow|mainframe|smiley|ember|all   which pad(s)
+     &dress=kit|street   the machined kit or the street set (setPadStreet)
+     &view=34|top|stand|low|icon   34 = the icon's camera on a wide canvas;
+                                   icon = the icon's camera on a 400² canvas
+     &light=studio|night   skin-preview's studio, or a dark street's share
+     &env=0.45   the pads' share of the studio environment (nativePads.ts ENV_SCALE)
+     &t=12.5   freeze the clock at that many seconds (default: running)
+     The buttons along the top switch the same things live.
+     Not part of the game; never ship or link this page. -->
+<html>
+  <head>
+    <style>
+      body { margin: 0; background: #14151b; font: 12px/1.2 system-ui, sans-serif; color: #ccd; overflow: hidden; }
+      #ui { position: fixed; left: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: calc(100vw - 16px); z-index: 2; }
+      #ui button { background: #262833; color: #ccd; border: 1px solid #3a3d4c; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
+      #ui button.on { background: #4a5170; color: #fff; border-color: #7c86b5; }
+      #ui span { padding: 4px 2px 0 8px; opacity: 0.6; }
+      #icon { position: fixed; right: 8px; bottom: 8px; width: 200px; height: 200px; background: #0d0e12; border: 1px solid #333; z-index: 2; }
+      #icon img { width: 100%; height: 100%; }
+      #icon div { position: absolute; left: 4px; top: 4px; opacity: 0.6; }
+      /* view=icon: the web render and the native icon side by side, both 400² */
+      body.icon canvas { position: fixed; left: 8px; top: 44px; }
+      body.icon #icon { left: 416px; top: 44px; right: auto; bottom: auto; width: 400px; height: 400px; }
+    </style>
+  </head>
+  <body>
+    <div id="ui"></div>
+    <div id="icon"><img alt="" /><div>native icon</div></div>
+    <script type="module">
+      import {
+        Color,
+        DirectionalLight,
+        HemisphereLight,
+        PerspectiveCamera,
+        PMREMGenerator,
+        Scene,
+        WebGLRenderer,
+      } from 'three';
+      import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+      import { makePlatform } from '/src/arena/arena.ts';
+      import { setPadStreet, allPads } from '/src/arena/padKit.ts';
+      import { freezeNativePadClock, nativePadEnvScale, setNativePadEnvScale } from '/src/arena/nativePads.ts';
+      import { applyPlatformSkin, platformSkin, setStreetDecks } from '/src/avatar/skins.ts';
+
+      const params = new URLSearchParams(location.search);
+      const state = {
+        pad: params.get('pad') ?? 'helipad',
+        dress: params.get('dress') ?? 'kit',
+        view: params.get('view') ?? '34',
+        light: params.get('light') ?? 'studio',
+        env: params.get('env') ?? 'default',
+      };
+      const frozen = params.has('t') ? Number(params.get('t')) : null;
+      const ENV_DEFAULT = nativePadEnvScale();
+      const IDS = ['ember', 'helipad', 'afterglow', 'mainframe', 'smiley'];
+
+      const scene = new Scene();
+      scene.background = new Color(0x14151b);
+      const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      document.body.appendChild(renderer.domElement);
+      const env = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = env;
+      const hemi = new HemisphereLight(0xbfd4ff, 0x2a241c, 1.1);
+      const key = new DirectionalLight(0xfff1dd, 2.0);
+      key.position.set(2, 3, 2.5);
+      const fill = new DirectionalLight(0x9ab8ff, 0.7);
+      fill.position.set(-2.5, 1.5, 1);
+      scene.add(hemi, key, fill);
+
+      // One pad per id, side by side; 'all' shows the row, else one at the origin.
+      const pads = {};
+      for (const id of IDS) {
+        const pad = makePlatform(0xff7a18);
+        pad.name = 'pad-' + id;
+        scene.add(pad);
+        pads[id] = pad;
+      }
+      const camera = new PerspectiveCamera(38.2, 1, 0.05, 40);
+
+      function layout() {
+        setPadStreet(state.dress === 'street');
+        setStreetDecks(state.dress === 'street');
+        IDS.forEach((id, i) => {
+          const pad = pads[id];
+          const all = state.pad === 'all';
+          pad.visible = all || state.pad === id;
+          pad.position.set(all ? (i - 2) * 2.0 : 0, 0, 0);
+          applyPlatformSkin(pad, platformSkin(id));
+        });
+        setNativePadEnvScale(state.env === 'default' ? ENV_DEFAULT : Number(state.env));
+        const night = state.light === 'night';
+        hemi.intensity = night ? 0.35 : 1.1;
+        key.intensity = night ? 0.6 : 2.0;
+        fill.intensity = night ? 0.3 : 0.7;
+        scene.environmentIntensity = night ? 0.35 : 0.85;
+        resize();
+        const img = document.querySelector('#icon img');
+        const icon = state.pad === 'all' ? null : 'pad_' + state.pad;
+        document.getElementById('icon').style.display = icon ? '' : 'none';
+        if (icon) img.src = 'forge/icons/' + icon + '.webp';
+      }
+
+      function resize() {
+        const square = state.view === 'icon';
+        document.body.classList.toggle('icon', square);
+        const w = square ? 400 : window.innerWidth;
+        const h = square ? 400 : window.innerHeight;
+        renderer.setSize(w, h);
+        camera.aspect = w / h;
+        const all = state.pad === 'all';
+        camera.fov = 38.2;
+        // The native icon camera (make_pads.py shoot): Blender (0, −2.2, 2.0)
+        // looking at (0, 0.02, −0.03), lens 52 mm → web (0, 2.0, 2.2) at
+        // (0, −0.03, −0.02): from behind your own pad, toward the rival (−z).
+        if (state.view === '34' || state.view === 'icon') {
+          const k = all ? 5.4 / Math.min(1.6, camera.aspect) : 1;
+          camera.position.set(0, 2.0 * k, 2.2 * k);
+          camera.lookAt(0, -0.03, -0.02);
+          if (!square && !all) camera.fov = 38.2 / Math.min(1, camera.aspect);
+        } else if (state.view === 'top') {
+          camera.position.set(0, all ? 9 : 3.4, 0.001);
+          camera.lookAt(0, 0, 0);
+        } else if (state.view === 'stand') {
+          // the fighter's own eye, standing on the pad looking at the foe
+          camera.fov = 70;
+          camera.position.set(0, 1.6, 0.35);
+          camera.lookAt(0, 0, -0.9);
+        } else if (state.view === 'low') {
+          camera.fov = 30;
+          camera.position.set(1.9, 0.18, 1.6);
+          camera.lookAt(0, 0.0, 0);
+        }
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener('resize', resize);
+
+      const ui = document.getElementById('ui');
+      const groups = {
+        pad: [...IDS, 'all'],
+        dress: ['kit', 'street'],
+        view: ['34', 'top', 'stand', 'low', 'icon'],
+        light: ['studio', 'night'],
+        env: ['default', '0.25', '0.45', '0.7', '1'],
+      };
+      function drawUi() {
+        ui.innerHTML = '';
+        for (const [k, opts] of Object.entries(groups)) {
+          const label = document.createElement('span');
+          label.textContent = k;
+          ui.appendChild(label);
+          for (const o of opts) {
+            const b = document.createElement('button');
+            b.textContent = o === 'ember' ? 'standard' : o;
+            b.className = state[k] === o ? 'on' : '';
+            b.id = `b-${k}-${o}`;
+            b.onclick = () => {
+              state[k] = o;
+              const q = new URLSearchParams(location.search);
+              q.set(k, o);
+              history.replaceState(null, '', '?' + q.toString());
+              drawUi();
+              layout();
+            };
+            ui.appendChild(b);
+          }
+        }
+      }
+      drawUi();
+      layout();
+
+      if (frozen !== null) freezeNativePadClock(frozen);
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+        const shown = allPads().filter((p) => p.nativeId && p.nativeHid).length;
+        document.title = `pads ${state.pad} ${state.dress} ${state.view} shown=${shown}`;
+      });
+      window.__pads = { pads, allPads, state, layout, camera, scene, renderer, applyPlatformSkin, platformSkin, setPadStreet };
+    </script>
+  </body>
+</html>

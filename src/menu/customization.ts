@@ -243,8 +243,8 @@ export const customization = {
    *  locker-only; 'bank' (iron-dollars for money) is the store's alone. */
   tab: 'platforms' as 'avatars' | 'platforms' | 'gear' | 'colour' | 'arena' | 'bank',
   /** Which SHELF of the PLATFORMS board is out (avatar/skins.ts
-   *  DECK_SHELVES) — the woods, the stones, the forge, the honours. */
-  platformShelf: 'timber' as DeckShelf,
+   *  DECK_SHELVES) — the street, the honours. */
+  platformShelf: 'street' as DeckShelf,
   /** Which of the GEAR board's shelves is out — heads, headgear,
    *  shoulders, body or hands. Fifteen pieces on one board crushed the
    *  tiles until the prices fell off them; a shelf holds six at full size. */

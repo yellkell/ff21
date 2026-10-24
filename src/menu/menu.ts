@@ -177,6 +177,8 @@ export type MenuAction =
    *  from it — which closes the whole plate, like the other two faces'. */
   | 'open-paintbay'
   | 'paintbay-close'
+  /** THE CUSTOMIZE PAGE's LOADOUT tab (the ball panel over the page). */
+  | 'cz:loadout'
   /** The header tabs: LOCKER (what you own) · STORE (what you don't) ·
    *  PAINT (the paint tab above). */
   | 'open-shop'
@@ -1314,7 +1316,7 @@ function drawMastheadMark(ctx: CanvasRenderingContext2D, cx: number, cy: number,
 }
 
 /** Where the scrolling article column begins (just below the dateline rule). */
-const NEWS_CONTENT_TOP = 334; // under the dateline and THE QUEST STRAP
+const NEWS_CONTENT_TOP = 272;
 
 /** A section's head: a heavy rule over a thin one, the label letterspaced
  *  between rules. Returns the y the section's content starts at. */
@@ -1336,12 +1338,51 @@ function newsSection(ctx: CanvasRenderingContext2D, label: string, y: number, dr
   return y + 72;
 }
 
-/** Lay out the whole article — headline, subhead, the numbers, the body, the
- *  byline, THE RECORD BOOK and WHAT TO DO TODAY — from `top` downward,
+/**
+ * THE TOP STORY — a standing lead over every edition, filed or welcome:
+ * the presses overwrite the article daily, so the Quest Store launch lives
+ * here, above the day's own headline.
+ */
+const TOP_STORY = {
+  headline: 'FIRE FIGHT 2 IS NOW ON THE QUEST STORE',
+  body: 'The native app for Quest 3 and Quest 3S is free to download. It is its own app with its own progress: search for FIRE FIGHT 2 in the Store on your headset.',
+};
+
+/** Lay out THE TOP STORY from `top`; returns the y the edition starts at. */
+function layoutTopStory(ctx: CanvasRenderingContext2D, top: number, draw: boolean): number {
+  ctx.textAlign = 'center';
+  if (draw) {
+    ctx.fillStyle = NEWS_HOT;
+    ctx.font = `700 16px ${NEWS_MONO}`;
+    ctx.letterSpacing = '5px';
+    ctx.shadowColor = 'rgba(255,61,166,0.8)';
+    ctx.shadowBlur = 8;
+    ctx.fillText('// TOP STORY', NW / 2, top - 8);
+    ctx.letterSpacing = '0px';
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `700 46px ${NEWS_HEAD}`;
+  ctx.shadowColor = 'rgba(255,61,166,0.85)';
+  ctx.shadowBlur = draw ? 12 : 0;
+  let y = flowParagraph(ctx, TOP_STORY.headline, NW / 2, top + 44, NW - 110, 50, draw);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = NEWS_INK;
+  ctx.font = `22px ${NEWS_SERIF}`;
+  y = flowParagraph(ctx, TOP_STORY.body, NW / 2, y + 4, NW - 130, 30, draw);
+  if (draw) {
+    newsRule(ctx, y + 14, 3);
+    newsRule(ctx, y + 20, 1);
+  }
+  return y + 66;
+}
+
+/** Lay out the whole article — THE TOP STORY, then the headline, subhead,
+ *  the numbers, the body, the byline, THE RECORD BOOK and WHAT TO DO TODAY — from `top` downward,
  *  returning the y past the last line. `draw = false` measures only (for
  *  scroll clamping); the y arithmetic is identical either way so the
  *  measured height matches what's drawn. */
 function layoutArticle(ctx: CanvasRenderingContext2D, art: GazetteArticle, top: number, draw: boolean): number {
+  top = layoutTopStory(ctx, top, draw);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffffff';
   ctx.font = `700 46px ${NEWS_HEAD}`;
@@ -1554,25 +1595,6 @@ function drawNews(ctx: CanvasRenderingContext2D): void {
   ctx.fillText(dateText.toUpperCase(), NW / 2, 216, NW - 340);
   newsRule(ctx, 228, 2);
 
-  // THE QUEST STRAP — a standing notice over every edition, filed or
-  // welcome: the presses overwrite the article daily, so it lives here.
-  ctx.save();
-  ctx.fillStyle = NEWS_HOT;
-  ctx.shadowColor = 'rgba(255,61,166,0.8)';
-  ctx.shadowBlur = 14;
-  ctx.beginPath();
-  ctx.roundRect(48, 240, NW - 96, 34, 6);
-  ctx.fill();
-  ctx.restore();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#12051a';
-  ctx.font = `700 21px ${NEWS_HEAD}`;
-  ctx.letterSpacing = '3px';
-  ctx.fillText('NOW AVAILABLE ON THE META QUEST STORE', NW / 2, 258, NW - 120);
-  ctx.letterSpacing = '0px';
-  ctx.textBaseline = 'alphabetic';
-
   ctx.textAlign = 'center';
   if (!art) {
     ctx.font = `600 24px ${NEWS_MONO}`;
@@ -1585,7 +1607,7 @@ function drawNews(ctx: CanvasRenderingContext2D): void {
     // The WHOLE article — headline, subhead, body, byline — scrolls together
     // as one column under the fixed masthead (thumbstick, like the leaderboard).
     const viewBottom = NEWS_VIEW_BOTTOM;
-    const clipTop = 290; // just under THE QUEST STRAP, above the headline tops
+    const clipTop = 238; // just under the dateline rule, above the headline tops
 
     // Measure the full article height (no draw) to clamp the scroll.
     const contentBottom = layoutArticle(ctx, art, NEWS_CONTENT_TOP, false);
