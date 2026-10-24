@@ -65,7 +65,6 @@ import {
   whoami,
 } from '../net/bank.js';
 import { campaignFace, campaignModal, CAMP_H, CAMP_W } from '../menu/campaignFace.js';
-import { lobbyFace, LOBBY_H, LOBBY_W } from '../menu/lobbyFace.js';
 import { ballsClick, ballsDrag, ballsFace, ballsFaceKey, ballsHit, BALLS_H, BALLS_W } from '../menu/ballsFace.js';
 import { profilePop } from '../menu/profilePop.js';
 import { audienceStands } from '../arena/desert/audience.js';
@@ -413,7 +412,7 @@ export class MenuSystem extends createSystem({}) {
     this.addModal('custom', 0.94, 0.94, LOCKER_W, LOCKER_H, () => lockerFace(true), [0.5, 1.52, -1.1], -0.3);
     this.addModal('shop', 0.94, 0.94, LOCKER_W, LOCKER_H, () => lockerFace(false), [0.5, 1.52, -1.1], -0.3);
     this.addModal('campaign', 1.5, 1.5 * (CAMP_H / CAMP_W), CAMP_W, CAMP_H, campaignFace, [0, 1.5, -1.2], 0);
-    this.addModal('lobby', 1.05, 1.05 * (LOBBY_H / LOBBY_W), LOBBY_W, LOBBY_H, lobbyFace, [0, 1.5, -1.18], 0);
+    // (THE ARCADE LOBBY is a page of the board now — menu/roomPage.ts.)
     // THE READER: the Gazette held up large, straight ahead, where the slab
     // was. The page renders at 2× so the type is sharp at reading distance;
     // the thumbstick scrolls it as it does on the wing, and tapping the page
@@ -761,9 +760,8 @@ export class MenuSystem extends createSystem({}) {
     const shopOpen = customization.open && customization.shopOpen && !app.paintBayOpen;
     const modalCustom = customization.open && !customization.shopOpen && !app.paintBayOpen;
     const modalCampaign = campaignModal.pending !== null;
-    const modalLobby = app.lobbyMode !== null;
     const modalReader = app.readerOpen;
-    const arcUp = !customization.open && !modalCampaign && !modalLobby && !app.paintBayOpen && !modalReader;
+    const arcUp = !customization.open && !modalCampaign && !app.paintBayOpen && !modalReader;
     let visChanged = this.rayTargets.length === 0; // first frame: build the list
     for (const p of this.menu.panels) {
       let show: boolean;
@@ -780,9 +778,6 @@ export class MenuSystem extends createSystem({}) {
           break;
         case 'campaign':
           show = modalCampaign;
-          break;
-        case 'lobby':
-          show = modalLobby;
           break;
         case 'paintbay':
           show = app.paintBayOpen;

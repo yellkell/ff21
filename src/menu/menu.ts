@@ -40,6 +40,8 @@ export type PanelId =
   | 'play'
   /** THE BOARD's CAREER, the whole board wide. */
   | 'career'
+  /** THE BOARD's ROOMS page: the arcade lobby, custom games, ranked (menu/roomPage.ts). */
+  | 'room'
   /** THE READER: the paper held up large in front of you (MenuSystem). */
   | 'reader'
   /** THE PAINT BAY (a kit panel modal — src/menu/paintbay.ts). */

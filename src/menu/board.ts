@@ -40,6 +40,7 @@ export const CONTENT = { x: 320, y: 150, w: 1300, h: 850 };
 export const FULL = { x: 40, y: 150, w: 1580, h: 850 };
 /** The board's own pane: near-opaque, so the street behind never muddies the type. */
 export const BOARD_PANE = 'rgba(5,9,20,0.975)';
+export const WORD_PX = 64;
 
 const WORD_X = 44;
 const WORD_Y = 68;
@@ -52,9 +53,50 @@ const COG_S = 58;
 const COG = { x: CHIP.x - 16 - COG_S, y: CHIP.y + (CHIP.h - COG_S) / 2 };
 export const COG_ID = 'board:settings';
 
-const WELL = 'rgba(0,6,16,0.42)';
+/**
+ * A board's palette — the FORMAT is shared, the colours are each area's own
+ * (BoardLook in the Quest build): FIRE FIGHT's glass cyan, the club's LED
+ * cyan over violet.
+ */
+export interface BoardLook {
+  /** The hairlines' colour (r,g,b) and their base alpha. */
+  lineRgb: string;
+  lineA: number;
+  /** The rail's recessed well. */
+  well: string;
+  /** The wordmark's two misregistered ghosts and its glow. */
+  ghostA: string;
+  ghostB: string;
+  glow: string;
+  /** The board's own near-opaque pane. */
+  pane: string;
+}
+
+export const FF_LOOK: BoardLook = {
+  lineRgb: '90,230,255',
+  lineA: 0.3,
+  well: 'rgba(0,6,16,0.42)',
+  ghostA: `rgba(${ACCENT_RGB},0.85)`,
+  ghostB: `rgba(${HOLO_HOT_RGB},0.85)`,
+  glow: `rgba(${ACCENT_RGB},0.55)`,
+  pane: 'rgba(5,9,20,0.975)',
+};
+
+/** THE CLUB's: the venue's LED cyan, its violet, a violet-black pane. */
+export const CLUB_LOOK: BoardLook = {
+  lineRgb: '143,123,255',
+  lineA: 0.34,
+  well: 'rgba(10,4,30,0.5)',
+  ghostA: `rgba(${ACCENT_RGB},0.85)`,
+  ghostB: 'rgba(179,92,255,0.85)',
+  glow: 'rgba(179,92,255,0.55)',
+  pane: 'rgba(8,5,22,0.975)',
+};
+
 const accent = (a: number): string => `rgba(${ACCENT_RGB},${a.toFixed(3)})`;
-const line = (a: number): string => `rgba(90,230,255,${a.toFixed(3)})`;
+/** A hairline at `a` of FIRE FIGHT's line strength, in the look's colour. */
+export const line = (look: BoardLook, a: number): string => `rgba(${look.lineRgb},${((a / 0.3) * look.lineA).toFixed(3)})`;
+const stroke = (look: BoardLook): string => `rgba(${look.lineRgb},${look.lineA})`;
 
 /** One rail entry. */
 export interface RailTab {
@@ -80,13 +122,13 @@ export interface BoardState {
   profileOpen: boolean;
 }
 
-interface Slot {
+export interface Slot {
   tab: RailTab;
   y: number;
   h: number;
 }
 
-function layout(tabs: RailTab[]): Slot[] {
+export function layout(tabs: RailTab[]): Slot[] {
   const GAP = 14;
   let groups = 0;
   tabs.forEach((t, i) => {
@@ -104,11 +146,14 @@ function layout(tabs: RailTab[]): Slot[] {
   });
 }
 
+/** The rail's ghost buttons (the body paints the tabs). */
+export function railButtons(tabs: RailTab[]): PanelButton[] {
+  return layout(tabs).map((s) => ({ id: s.tab.id, label: s.tab.label, ghost: true, disabled: s.tab.disabled, x: RAIL_X + 8, y: s.y, w: RAIL_W - 16, h: s.h }));
+}
+
 /** The board's buttons: the rail (or ‹ BACK on a full page), the cog, THE PROFILE. */
 export function boardButtons(st: BoardState): PanelButton[] {
-  const out: PanelButton[] = st.full
-    ? [{ id: BACK_ID, label: 'BACK', ghost: true, ...BACK }]
-    : layout(st.tabs).map((s) => ({ id: s.tab.id, label: s.tab.label, ghost: true, disabled: s.tab.disabled, x: RAIL_X + 8, y: s.y, w: RAIL_W - 16, h: s.h }));
+  const out: PanelButton[] = st.full ? [{ id: BACK_ID, label: 'BACK', ghost: true, ...BACK }] : railButtons(st.tabs);
   out.push(
     { id: COG_ID, label: '', ghost: true, x: COG.x, y: COG.y, w: COG_S, h: COG_S },
     { id: 'profile-toggle', label: '', ghost: true, ...CHIP },
@@ -146,24 +191,24 @@ export class RailMarker {
 
 /** Paint the board's chrome: header, wordmark or ‹ BACK, the rail, the chips. */
 export function drawBoard(g: CanvasRenderingContext2D, st: BoardState, hoverOf: (id: string) => number, marker: RailMarker): void {
-  drawHeaderRule(g);
+  drawHeaderRule(g, FF_LOOK);
   if (st.full) drawBack(g, st.full, hoverOf(BACK_ID));
   else {
-    drawWordmark(g, 'FIRE FIGHT 2', WORD_X, WORD_Y);
-    drawRail(g, layout(st.tabs), st.active, hoverOf, marker);
+    drawWordmark(g, 'FIRE FIGHT 2', FF_LOOK);
+    drawRail(g, st.tabs, st.active, hoverOf, marker, FF_LOOK);
   }
-  drawStatusChip(g, COG.x, st.status.text, st.status.led, st.status.lit);
+  drawStatusChip(g, COG.x, st.status.text, st.status.led, st.status.lit, FF_LOOK);
   drawCog(g, st.cogOpen, hoverOf(COG_ID));
   drawProfileChip(g, st.profileOpen, hoverOf('profile-toggle'));
 }
 
 /** The header rule fading out to the right, an accent lead-in under the
  *  wordmark, and a notch where the two meet. */
-function drawHeaderRule(g: CanvasRenderingContext2D): void {
+export function drawHeaderRule(g: CanvasRenderingContext2D, look: BoardLook): void {
   const rule = g.createLinearGradient(28, 0, BOARD_W - 28, 0);
-  rule.addColorStop(0, line(0.45));
-  rule.addColorStop(0.6, line(0.18));
-  rule.addColorStop(1, line(0.04));
+  rule.addColorStop(0, line(look, 0.45));
+  rule.addColorStop(0.6, line(look, 0.18));
+  rule.addColorStop(1, line(look, 0.04));
   g.fillStyle = rule;
   g.fillRect(28, 128, BOARD_W - 56, 2);
   g.fillStyle = KIT.accent;
@@ -182,8 +227,8 @@ function drawHeaderRule(g: CanvasRenderingContext2D): void {
  * shoved right and a dark seam between (Wordmark.cs). Each half is the
  * two ghosts and the face, clipped.
  */
-function drawWordmark(g: CanvasRenderingContext2D, word: string, x: number, y: number): void {
-  const PX = 64;
+export function drawWordmark(g: CanvasRenderingContext2D, word: string, look: BoardLook, x = WORD_X, y = WORD_Y): void {
+  const PX = WORD_PX;
   const SHIFT = 6;
   const CUT = 5;
   const SEAM = 2;
@@ -198,12 +243,12 @@ function drawWordmark(g: CanvasRenderingContext2D, word: string, x: number, y: n
     g.beginPath();
     g.rect(cx, cy, cw, ch);
     g.clip();
-    g.fillStyle = accent(0.85);
+    g.fillStyle = look.ghostA;
     g.fillText(word, x + shift - 3, y + 1);
-    g.fillStyle = `rgba(${HOLO_HOT_RGB},0.85)`;
+    g.fillStyle = look.ghostB;
     g.fillText(word, x + shift + 3, y - 1);
     g.fillStyle = KIT.textHi;
-    g.shadowColor = accent(0.55);
+    g.shadowColor = look.glow;
     g.shadowBlur = 16;
     g.fillText(word, x + shift, y);
     g.restore();
@@ -255,14 +300,15 @@ function drawBack(g: CanvasRenderingContext2D, title: string, hov: number): void
   g.letterSpacing = '0px';
 }
 
-function drawRail(g: CanvasRenderingContext2D, slots: Slot[], active: string | null, hoverOf: (id: string) => number, marker: RailMarker): void {
+export function drawRail(g: CanvasRenderingContext2D, tabs: RailTab[], active: string | null, hoverOf: (id: string) => number, marker: RailMarker, look: BoardLook): void {
+  const slots = layout(tabs);
   // The rail's recessed well.
   g.beginPath();
   g.roundRect(RAIL_X, RAIL_Y, RAIL_W, RAIL_BOTTOM - RAIL_Y, 20);
-  g.fillStyle = WELL;
+  g.fillStyle = look.well;
   g.fill();
   g.lineWidth = 2;
-  g.strokeStyle = KIT.line;
+  g.strokeStyle = stroke(look);
   g.stroke();
 
   const on = slots.find((s) => s.tab.id === active) ?? null;
@@ -279,7 +325,7 @@ function drawRail(g: CanvasRenderingContext2D, slots: Slot[], active: string | n
     if (lit || hov > 0.01) {
       g.beginPath();
       g.roundRect(rx, s.y, rw, s.h, 14);
-      g.fillStyle = lit ? accent(0.1) : line(0.06 * hov);
+      g.fillStyle = lit ? accent(0.1) : line(look, 0.06 * hov);
       g.fill();
       if (lit) {
         g.lineWidth = 1.5;
@@ -292,7 +338,7 @@ function drawRail(g: CanvasRenderingContext2D, slots: Slot[], active: string | n
     g.textBaseline = 'middle';
     g.font = font(600, 15);
     g.letterSpacing = '2px';
-    g.fillStyle = lit ? KIT.accent : line(0.42);
+    g.fillStyle = lit ? KIT.accent : line(look, 0.42);
     g.fillText(String(idx + 1).padStart(2, '0'), rx + rw - 14, s.y + 18);
     g.textAlign = 'left';
     g.font = font(lit ? 700 : 600, compact ? 26 : 29);
@@ -336,7 +382,7 @@ function drawRail(g: CanvasRenderingContext2D, slots: Slot[], active: string | n
 }
 
 /** The status chip: a square LED and quiet caps, parked left of `rightX`. */
-function drawStatusChip(g: CanvasRenderingContext2D, rightX: number, text: string, led: string, lit: boolean): void {
+export function drawStatusChip(g: CanvasRenderingContext2D, rightX: number, text: string, led: string, lit: boolean, look: BoardLook): void {
   g.font = font(600, 21);
   g.letterSpacing = '2px';
   const tw = g.measureText(text).width + 2;
@@ -346,10 +392,10 @@ function drawStatusChip(g: CanvasRenderingContext2D, rightX: number, text: strin
   const x = rightX - 20 - w;
   g.beginPath();
   g.roundRect(x, y, w, h, 9);
-  g.fillStyle = line(0.1);
+  g.fillStyle = line(look, 0.1);
   g.fill();
   g.lineWidth = 1.5;
-  g.strokeStyle = KIT.line;
+  g.strokeStyle = stroke(look);
   g.stroke();
   if (lit) {
     g.globalAlpha = 0.25;

@@ -148,6 +148,32 @@ const crossed = await page
   .then(() => true)
   .catch(() => false);
 check('CLUB: the door onto the venue floor, in-session', crossed && (await page.evaluate(() => document.body.classList.contains('app-entered'))), JSON.stringify(await page.evaluate(() => ({ place: window.__town?.place }))));
+{
+  // THE CLUB MENU (right Ⓐ): the board in the club's colours.
+  const c = (expr) => page.evaluate(`window.__gdr.menu.${expr}`);
+  await c('show(true)');
+  await page.waitForTimeout(200);
+  let ids = await c('buttons()');
+  check('THE CLUB MENU: one board, its rail THE ROOM · DISCO BALL · SOUND · LEAVE', (await c('shown()')) && has(ids, 'tab-room', 'tab-bell', 'tab-sound', 'tab-leave') && (await c('tab()')) === 'room', ids.join(','));
+  save('club-room', await c('snapSocial()'));
+  await c(`press('tab-bell')`);
+  ids = await c('buttons()');
+  check('DISCO BALL: FIGHT · RAVE, the fights, one CTA', has(ids, 'tab-fight', 'tab-rave', 'fight-2v2', 'fight-raid', 'call'), ids.join(','));
+  await c(`press('fight-raid')`);
+  ids = await c('buttons()');
+  check('a TITAN RAID lists its tiers inline, with HARDCORE', ids.some((b) => b.startsWith('tier:')) && ids.includes('raidhc'), ids.join(','));
+  save('club-bell', await c('snapSocial()'));
+  await c(`press('tab-rave')`);
+  ids = await c('buttons()');
+  check('RAVE lists the records inline', has(ids, 'song:shuffle', 'expert', 'call'), ids.filter((b) => b.startsWith('song:')).slice(0, 4).join(','));
+  await c(`press('tab-sound')`);
+  ids = await c('buttons()');
+  check('SOUND: the mic, voice chat and the music', has(ids, 'mic', 'voice', 'music'), ids.join(','));
+  await c(`press('tab-leave')`);
+  check('LEAVE: the door', (await c('buttons()')).includes('leave'));
+  await c(`press('tab-room')`);
+  await c('show(false)');
+}
 await page.evaluate(() => window.__town.leave());
 await page.waitForFunction(() => window.__town && window.__town.place === 'arena' && !window.__town.busy, { timeout: 40000 });
 await page.waitForTimeout(300);
@@ -159,21 +185,22 @@ check('home again, and VERSUS is the page', nav.page === 'versus' && !nav.club, 
 console.log('\n=== through VERSUS: the flows still drill in and BACK out ===');
 await wrap(`act('mode:custom')`);
 await wrap(`act('play-go')`);
-let face = await wrap(`buttons('train')`);
-check("CUSTOM GAMES' CTA opens the private-room setup in the page's place", has(face, 'private-mode-1v1', 'private-create', 'private-enter') && (await wrap(`visible('train')`)) && !(await wrap(`visible('play')`)), notTabs(face).join(','));
+let face = await wrap(`buttons('room')`);
+check("CUSTOM GAMES' CTA opens the ROOMS page in the PLAY page's place", has(face, 'private-mode-1v1', 'private-create', 'private-enter', 'private-back') && (await wrap(`visible('room')`)) && !(await wrap(`visible('play')`)), notTabs(face).join(','));
+save('room-shape', await wrap(`snap('room')`));
 await wrap(`act('private-enter')`);
-face = await wrap(`buttons('train')`);
+face = await wrap(`buttons('room')`);
 check('keypad face in the page', has(face, 'kp-5', 'kp-join', 'kp-del'), notTabs(face).join(','));
-save('keypad', await wrap(`snap('train')`));
+save('keypad', await wrap(`snap('room')`));
 await wrap(`act('private-back')`);
-face = await wrap(`buttons('train')`);
+face = await wrap(`buttons('room')`);
 check('keypad BACK returns to private-room setup', has(face, 'private-create', 'private-enter'));
 await wrap(`act('private-back')`);
 check('BACK lands on the PLAY page', (await wrap(`visible('play')`)) && (await wrap(`buttons('play')`)).includes('play-go'));
 await wrap(`act('private-open')`);
 await wrap(`act('board:news')`);
 await wrap(`act('board:versus')`);
-check('a rail press backs out of a flow, as its own BACK would', (await wrap(`visible('play')`)) && !(await wrap(`visible('train')`)));
+check('a rail press backs out of a flow, as its own BACK would', (await wrap(`visible('play')`)) && !(await wrap(`visible('room')`)));
 
 // Simulate a pending search without opening a live public room.
 await page.evaluate(async () => {
@@ -193,7 +220,7 @@ check('online raid is open on VERSUS', (await wrap(`live('play')`)).includes('mo
 await wrap(`act('board:career')`);
 await wrap(`act('private-open')`);
 nav = await wrap(`nav()`);
-check('CUSTOM GAMES from anywhere selects its owning VERSUS page', nav.page === 'versus' && !nav.full && (await wrap(`buttons('train')`)).includes('private-create'), JSON.stringify(nav));
+check('CUSTOM GAMES from anywhere selects its owning VERSUS page', nav.page === 'versus' && !nav.full && (await wrap(`buttons('room')`)).includes('private-create'), JSON.stringify(nav));
 await wrap(`act('private-back')`);
 
 console.log('\n=== RANKINGS / NEWS ===');
@@ -458,11 +485,20 @@ console.log('\n=== THE MODALS: locker, store, line-up, lobby, loadout ===');
 
   await wrap(`act('open-raid')`);
   await page.waitForTimeout(500);
-  ids = await m(`buttons('lobby')`);
-  check('THE ARCADE LOBBY: host a raid, and a way out', has(ids, 'lobby-host', 'lobby-close'), ids.join(','));
-  await shot('lobby');
+  ids = await wrap(`buttons('room')`);
+  check('THE ARCADE LOBBY is a page of the board: host a raid, and ‹ BACK', has(ids, 'lobby-host', 'lobby-close') && (await wrap(`visible('room')`)) && (await wrap(`visible('board')`)) && !(await wrap(`visible('play')`)), ids.join(','));
+  save('lobby', await wrap(`snap('room')`));
+  await wrap(`act('board:news')`);
+  await page.waitForTimeout(300);
+  check('a rail press backs out of the lobby', !(await wrap(`visible('room')`)) && (await wrap(`visible('duel')`)));
+  await wrap(`act('arcade-2v2')`);
+  await page.waitForTimeout(300);
+  ids = await wrap(`buttons('room')`);
+  nav = await wrap(`nav()`);
+  check('2V2 opens its room browser under VERSUS: open a room, fight rivals now, ‹ BACK', nav.page === 'versus' && has(ids, 'lobby-host', 'lobby-vsbots', 'lobby-close'), ids.join(','));
   await wrap(`act('lobby-close')`);
   await page.waitForTimeout(300);
+  check('‹ BACK hands VERSUS back', (await wrap(`visible('play')`)) && !(await wrap(`visible('room')`)));
 }
 
 console.log('\n=== THE AUDIENCE: the terrace, the bodies, the roar ===');

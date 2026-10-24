@@ -33,6 +33,7 @@ import { prefetchVenue } from '../rave/club/venue.js';
 import { CAMP_W, CAREER_BOTTOM, CAREER_TOP, careerFace } from './campaignFace.js';
 import { BACK_ID, BOARD_H, BOARD_PANE, BOARD_W, CHIP, CONTENT, COG_ID, FULL, RailMarker, boardButtons, drawBoard, type BoardState, type RailTab } from './board.js';
 import { PLAY_H, PLAY_W, playAction, playPageFace, selectMode } from './playPage.js';
+import { roomPageFace, roomWanted } from './roomPage.js';
 
 /** One face of a wrap panel: everything Panel.paint needs. */
 interface Face {
@@ -138,17 +139,6 @@ function note(text: string, y: number, W: number): (g: CanvasRenderingContext2D)
   };
 }
 
-/** A sub-face's name — the tab strip it rode is gone on the board. */
-function crumb(_text: string, _W: number): (g: CanvasRenderingContext2D) => void {
-  return () => {};
-}
-
-const both =
-  (...fns: Array<((g: CanvasRenderingContext2D, hover: string | null) => void) | undefined>) =>
-  (g: CanvasRenderingContext2D, hover: string | null): void => {
-    for (const f of fns) f?.(g, hover);
-  };
-
 /** A face, moved up and left by (dx, dy): what a hosted panel shows of a
  *  face drawn for a bigger canvas (the strip above a wing face, the air
  *  above the career). Its tabs, and anything above the cut, are dropped. */
@@ -165,126 +155,10 @@ function crop(face: Face, dx: number, dy: number): Face {
   };
 }
 
-/* Wide faces: the custom-game flows and the club's door. */
+/* The club's door, on the wide host. */
 
 const CW = 1536; // canvas
-const M = 96; // margin
-const WIDE = CW - M * 2; // 1344
 const COL = 656; // half column
-const C2 = M + COL + 32; // right column x
-
-const BACK: PanelButton = { id: 'wrap:back', label: 'BACK', x: M, y: 888, w: 320, h: 84, small: true };
-
-function privateFace(): Face {
-  const modes = [
-    { id: 'private-mode-1v1' as MenuAction, label: '1V1', mode: '1v1', seats: '2 seats' },
-    { id: 'private-mode-2v2' as MenuAction, label: '2V2', mode: '2v2', seats: '4 seats' },
-    { id: 'private-mode-ffa' as MenuAction, label: 'FFA', mode: 'ffa', seats: '4 seats' },
-  ];
-  const buttons: PanelButton[] = modes.map((m, i) => ({
-    id: m.id,
-    label: m.label,
-    sub: m.seats,
-    x: C2 + (i % 2) * (COL / 2 + 16), y: 170 + Math.floor(i / 2) * 150, w: COL / 2 - 16, h: 130,
-    small: true,
-    selected: app.privateMode === m.mode,
-  }));
-  buttons.push(
-    {
-      id: 'private-create',
-      label: 'CREATE CODE',
-      sub: 'reserve a room of that shape',
-      x: M, y: 170, w: COL, h: 190,
-      primary: true,
-    },
-    {
-      id: 'private-enter',
-      label: 'ENTER A CODE',
-      sub: 'join whatever your mate opened',
-      x: M, y: 400, w: COL, h: 150,
-    },
-    { ...BACK, id: 'private-back' },
-  );
-  return {
-    title: GAME_TITLE,
-    body: crumb('CUSTOM GAMES', CW),
-    buttons,
-  };
-}
-
-function keypadFace(): Face {
-  const draft = app.codeEntry.padEnd(5, '·').split('').join(' ');
-  const buttons: PanelButton[] = [
-    { id: 'code-draft', label: draft, sub: 'the code', x: M, y: 200, w: COL, h: 170, display: true, px: 72 },
-    {
-      id: 'kp-join',
-      label: 'JOIN',
-      x: M, y: 430, w: COL, h: 170,
-      primary: app.codeEntry.length === 5,
-      disabled: app.codeEntry.length < 5,
-    },
-    { ...BACK, id: 'private-back' },
-  ];
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', ''];
-  const kw = 200;
-  const kh = 130;
-  keys.forEach((k, i) => {
-    if (!k) return;
-    const id = k === '⌫' ? 'kp-del' : `kp-${k}`;
-    buttons.push({
-      id: id as MenuAction,
-      label: k,
-      x: C2 + (i % 3) * (kw + 24), y: 160 + Math.floor(i / 3) * (kh + 20), w: kw, h: kh,
-      px: 44,
-      disabled: k === '⌫' && app.codeEntry.length === 0,
-    });
-  });
-  return { title: GAME_TITLE, body: crumb('ENTER CODE', CW), buttons };
-}
-
-function hostingFace(): Face {
-  return {
-    title: GAME_TITLE,
-    body: both(crumb('CUSTOM GAMES', CW), note('the room launches itself once the seats fill', 700, CW)),
-    buttons: [
-      {
-        id: 'code-live',
-        label: app.privateCode ? app.privateCode.split('').join(' ') : 'RESERVING…',
-        sub: 'your code — shout it, ping it, text it',
-        x: M + 240, y: 240, w: WIDE - 480, h: 240,
-        display: true,
-        px: 110,
-        tone: KIT.accent,
-      },
-      { ...BACK, id: 'private-back', label: 'CANCEL', tone: KIT.danger },
-    ],
-  };
-}
-
-function browserFace(): Face {
-  const hostingOwn = app.rankedRoomId !== '';
-  const rows = app.rankedRooms.slice(0, 5);
-  const buttons: PanelButton[] = rows.map((r, i) => ({
-    id: `ranked-join-${r.id}` as MenuAction,
-    label: r.host,
-    sub: r.id === app.rankedRoomId ? 'your room — holding the door' : 'open — step in',
-    x: M, y: 160 + i * 136, w: 800, h: 118,
-    small: true,
-    disabled: r.id === app.rankedRoomId || hostingOwn,
-    selected: r.id === app.rankedRoomId,
-  }));
-  buttons.push(
-    hostingOwn || app.rankedHost
-      ? { id: 'ranked-cancel', label: 'STAND DOWN', sub: 'close your room', x: 968, y: 160, w: 472, h: 170, tone: KIT.danger }
-      : { id: 'ranked-host', label: 'HOST A ROOM', sub: 'your name on the board', x: 968, y: 160, w: 472, h: 170, primary: true },
-    { ...BACK, id: 'ranked-back' },
-  );
-  return {
-    title: GAME_TITLE,
-    body: both(crumb('RANKED', CW), rows.length === 0 ? note('no open rooms — put your name up', 500, CW) : undefined),
-    buttons,
-  };
-}
 
 /** THE CLUB: its tab is a door (one press knocks — see installWrap), and
  *  this face is what stands behind it while the house wakes, or for a
@@ -348,23 +222,6 @@ function newsFace(): Face {
       g.fillText('tap the page to hold it up', LW / 2, 124 + PH + 22);
     },
   };
-}
-
-/** The wide host's face: a custom-game flow under VERSUS, or the club's door. */
-function wideFace(): Face {
-  if (wrapNav.page === 'club') return clubFace();
-  switch (app.duelView) {
-    case 'private':
-      return privateFace();
-    case 'keypad':
-      return keypadFace();
-    case 'hosting':
-      return hostingFace();
-    case 'browser':
-      return browserFace();
-    default:
-      return { title: '', buttons: [] };
-  }
 }
 
 /* Wing faces: RANKINGS, NEWS and SETTINGS. */
@@ -449,8 +306,10 @@ const MPP = BOARD_WIDTH_M / BOARD_W;
  * ids go through it; the board's own `board:*` navigation is settled here.
  */
 export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wrap {
-  /** Leaving a page backs out of a custom-game flow, as its own ‹ BACK would. */
+  /** Leaving a page backs out of a room screen, as its own ‹ BACK would
+   *  (the arcade lobby's ‹ BACK / LEAVE, a custom game's ‹ BACK / CANCEL). */
   const leaveFlow = (): void => {
+    if (app.lobbyMode) act?.('lobby-close');
     if (app.duelView === 'root') return;
     act?.(app.duelView === 'browser' ? 'ranked-back' : 'private-back');
     app.duelView = 'root';
@@ -515,7 +374,7 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
       case 'wrap:back':
         return;
       default:
-        if (['private-open', 'ranked-match', 'quick-match'].includes(id)) {
+        if (['private-open', 'ranked-match', 'quick-match', 'arcade-2v2', 'arcade-ffa', 'open-raid'].includes(id)) {
           wrapNav.page = 'versus';
           wrapNav.full = null;
         }
@@ -563,7 +422,7 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
     PLAY_H,
     CONTENT,
     () => playPageFace((id) => play.kit.hoverOf(id)),
-    () => inPage('versus') && app.duelView === 'root',
+    () => inPage('versus') && !roomWanted(true),
     (id) => {
       if (id.startsWith('mode:')) {
         selectMode(id.slice('mode:'.length));
@@ -577,7 +436,12 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
       dispatch(id);
     },
   );
-  const wide = host('train', CW, 1024 - STRIP, CONTENT, () => crop(wideFace(), 0, STRIP), () => (inPage('versus') && app.duelView !== 'root') || inPage('club'));
+  // THE ROOMS: the arcade lobby (anywhere) and the custom-game / ranked
+  // flows (under VERSUS) take the content region, in the PLAY page's format.
+  // eslint-disable-next-line prefer-const
+  let room: KitMenuPanel;
+  room = host('room', PLAY_W, PLAY_H, CONTENT, () => roomPageFace((id) => room.kit.hoverOf(id)), () => !wrapNav.full && roomWanted(wrapNav.page === 'versus'));
+  const wide = host('train', CW, 1024 - STRIP, CONTENT, () => crop(clubFace(), 0, STRIP), () => inPage('club') && !app.lobbyMode);
   const career = host(
     'career',
     CAMP_W,
@@ -586,8 +450,8 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
     () => crop(careerFace(), 0, CAREER_TOP),
     () => wrapNav.full === 'career' && !sealed(),
   );
-  const town = host('duel', LW, 1024 - STRIP, CONTENT, () => crop(townFace(), 0, STRIP), () => inPage('news') || (inPage('rankings') && !sealed()));
-  const you = host('info', LW, 1024 - STRIP, CONTENT, () => crop({ title: '', ...settingsFace() }, 0, STRIP), () => inPage('settings'));
+  const town = host('duel', LW, 1024 - STRIP, CONTENT, () => crop(townFace(), 0, STRIP), () => !app.lobbyMode && (inPage('news') || (inPage('rankings') && !sealed())));
+  const you = host('info', LW, 1024 - STRIP, CONTENT, () => crop({ title: '', ...settingsFace() }, 0, STRIP), () => !app.lobbyMode && inPage('settings'));
 
   // THE PROFILE's card drops out under the header chip, in front of the board.
   const CARD_WM = 0.5;
@@ -601,7 +465,7 @@ export function installWrap(menu: Menu, act?: (action: MenuAction) => void): Wra
   card.mesh.renderOrder = 32; // over the board and its pages, whatever the sort says
   card.mesh.visible = false;
 
-  const panels = [board, play, wide, career, town, you, card];
+  const panels = [board, play, room, wide, career, town, you, card];
   for (const id of ['train', 'duel', 'info'] as const) {
     const i = menu.panels.findIndex((old) => old.id === id);
     if (i < 0) continue;

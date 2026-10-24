@@ -15,17 +15,101 @@ import { font } from '../ui/kit/fonts.js';
 import { app } from './appState.js';
 import { myStats } from '../net/leaderboard.js';
 import { tierForXp } from './progression.js';
-import { kicker } from './board.js';
+import { FF_LOOK, kicker, line, type BoardLook } from './board.js';
 
+/* THE PAGE GRID — shared by every page in this format (the club's board and
+ * the rooms page too): a list on the left, a plate on the right, one CTA
+ * under the plate. Page px. */
 export const PLAY_W = 1300;
 export const PLAY_H = 850;
-const LIST_W = 620;
+export const LIST_W = 620;
 const ROW_Y0 = 66;
 const ROW_H = 48;
 const ROW_PITCH = 56;
-const PLATE = { x: 670, y: 66, w: 630, h: 560 };
-const CTA = { x: 670, y: 650, w: 630, h: 120 };
-const WELL = 'rgba(0,8,20,0.38)';
+export const PLATE = { x: 670, y: 66, w: 630, h: 560 };
+export const CTA = { x: 670, y: 650, w: 630, h: 120 };
+
+/** A list row: the plate, the selection bar, the name left, a one-word status right. */
+export function listRow(
+  g: CanvasRenderingContext2D,
+  r: { x: number; y: number; w: number; h: number },
+  label: string,
+  status: string,
+  on: boolean,
+  open: boolean,
+  hov: number,
+  opts: { statusTone?: string; indent?: number } = {},
+): void {
+  const indent = opts.indent ?? 0;
+  g.beginPath();
+  g.roundRect(r.x, r.y, r.w, r.h, 10);
+  g.fillStyle = on ? KIT.accentFaint : `rgba(90,230,255,${(0.035 + 0.05 * hov).toFixed(3)})`;
+  g.fill();
+  if (on || hov > 0.02) {
+    g.lineWidth = on ? 2 : 1.5;
+    g.strokeStyle = on ? KIT.accent : `rgba(140,245,255,${(0.75 * 0.6 * hov).toFixed(3)})`;
+    g.stroke();
+  }
+  if (on) {
+    g.beginPath();
+    g.roundRect(r.x + 8, r.y + (r.h >= 48 ? 11 : 10), 4, r.h - (r.h >= 48 ? 22 : 20), 2);
+    g.fillStyle = KIT.accent;
+    g.fill();
+  }
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.font = font(600, r.h >= 48 ? 25 : 23);
+  g.letterSpacing = '1px';
+  g.fillStyle = on ? KIT.textHi : open ? KIT.text : KIT.faint;
+  g.fillText(label, r.x + 26 + indent, r.y + r.h / 2 + 1, r.w - 180 - indent);
+  if (status) {
+    g.textAlign = 'right';
+    g.font = font(600, 17);
+    g.letterSpacing = '1.5px';
+    g.fillStyle = opts.statusTone ?? (open ? KIT.positive : KIT.disabled);
+    g.fillText(status, r.x + r.w - 20, r.y + r.h / 2 + 1);
+  }
+  g.letterSpacing = '0px';
+}
+
+/** The plate: a recessed well, a title, a rule, label · value rows. */
+export function dataPlate(
+  g: CanvasRenderingContext2D,
+  title: string,
+  data: Array<{ label: string; value: string; tone?: string }>,
+  opts: { titleTone?: string; look?: BoardLook } = {},
+): void {
+  const look = opts.look ?? FF_LOOK;
+  g.beginPath();
+  g.roundRect(PLATE.x, PLATE.y, PLATE.w, PLATE.h, 18);
+  g.fillStyle = look === FF_LOOK ? 'rgba(0,8,20,0.38)' : look.well;
+  g.fill();
+  g.lineWidth = 2;
+  g.strokeStyle = line(look, 0.3);
+  g.stroke();
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.font = font(700, 34);
+  g.letterSpacing = '2px';
+  g.fillStyle = opts.titleTone ?? KIT.textHi;
+  g.fillText(title, PLATE.x + 30, PLATE.y + 52, PLATE.w - 60);
+  g.fillStyle = line(look, 0.3);
+  g.fillRect(PLATE.x + 30, PLATE.y + 92, PLATE.w - 60, 2);
+  data.forEach((d, i) => {
+    const y = PLATE.y + 140 + i * 56;
+    g.textAlign = 'left';
+    g.font = font(600, 18);
+    g.letterSpacing = '1.5px';
+    g.fillStyle = KIT.faint;
+    g.fillText(d.label, PLATE.x + 30, y);
+    g.textAlign = 'right';
+    g.font = font(700, 28);
+    g.letterSpacing = '1px';
+    g.fillStyle = d.tone ?? KIT.textHi;
+    g.fillText(d.value, PLATE.x + PLATE.w - 30, y, PLATE.w - 240);
+  });
+  g.letterSpacing = '0px';
+}
 
 interface ModeRow {
   key: string;
@@ -154,69 +238,10 @@ export function playPageFace(hoverOf: (id: string) => number): {
     body: (g) => {
       kicker(g, 'SELECT MODE', 2, 22);
       rows.forEach((r, i) => {
-        const y = ROW_Y0 + i * ROW_PITCH;
-        const on = r.key === sel.key;
-        const hov = hoverOf(`mode:${r.key}`);
-        g.beginPath();
-        g.roundRect(0, y, LIST_W, ROW_H, 10);
-        g.fillStyle = on ? KIT.accentFaint : `rgba(90,230,255,${(0.035 + 0.05 * hov).toFixed(3)})`;
-        g.fill();
-        if (on || hov > 0.02) {
-          g.lineWidth = on ? 2 : 1.5;
-          g.strokeStyle = on ? KIT.accent : `rgba(140,245,255,${(0.75 * 0.6 * hov).toFixed(3)})`;
-          g.stroke();
-        }
-        if (on) {
-          g.beginPath();
-          g.roundRect(8, y + 11, 4, ROW_H - 22, 2);
-          g.fillStyle = KIT.accent;
-          g.fill();
-        }
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.font = font(600, 25);
-        g.letterSpacing = '1px';
-        g.fillStyle = on ? KIT.textHi : r.open ? KIT.text : KIT.faint;
-        g.fillText(r.label, 26, y + ROW_H / 2 + 1, LIST_W - 200);
-        if (r.status) {
-          g.textAlign = 'right';
-          g.font = font(600, 17);
-          g.letterSpacing = '1.5px';
-          g.fillStyle = r.open ? KIT.positive : KIT.disabled;
-          g.fillText(r.status, LIST_W - 20, y + ROW_H / 2 + 1);
-        }
-        g.letterSpacing = '0px';
+        listRow(g, { x: 0, y: ROW_Y0 + i * ROW_PITCH, w: LIST_W, h: ROW_H }, r.label, r.status, r.key === sel.key, r.open, hoverOf(`mode:${r.key}`));
       });
-
       // The plate: a recessed well with the mode's name and only real data.
-      g.beginPath();
-      g.roundRect(PLATE.x, PLATE.y, PLATE.w, PLATE.h, 18);
-      g.fillStyle = WELL;
-      g.fill();
-      g.lineWidth = 2;
-      g.strokeStyle = KIT.line;
-      g.stroke();
-      g.textAlign = 'left';
-      g.textBaseline = 'middle';
-      g.font = font(700, 34);
-      g.letterSpacing = '2px';
-      g.fillStyle = KIT.textHi;
-      g.fillText(sel.label, PLATE.x + 30, PLATE.y + 52, PLATE.w - 60);
-      g.fillStyle = KIT.line;
-      g.fillRect(PLATE.x + 30, PLATE.y + 92, PLATE.w - 60, 2);
-      dataFor(sel.key).forEach((d, i) => {
-        const y = PLATE.y + 140 + i * 56;
-        g.textAlign = 'left';
-        g.font = font(600, 18);
-        g.letterSpacing = '1.5px';
-        g.fillStyle = KIT.faint;
-        g.fillText(d.label, PLATE.x + 30, y);
-        g.textAlign = 'right';
-        g.font = font(700, 28);
-        g.letterSpacing = '1px';
-        g.fillStyle = KIT.textHi;
-        g.fillText(d.value, PLATE.x + PLATE.w - 30, y, PLATE.w - 240);
-      });
+      dataPlate(g, sel.label, dataFor(sel.key));
       // The TUTORIAL's plate calls out like Navi, in fairy blue.
       if (sel.key === 'tutorial') {
         g.textAlign = 'left';

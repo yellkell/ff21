@@ -117,6 +117,10 @@ Activity left the board. Its three counts ride the places they describe: the que
 | Co-op raid | Rave Raid family, Co-op Raid: 2 | Co-op Raid, Form a Squad: 2 |
 | Browse cosmetics | Store, Browse Cosmetics: 2 | Store: 1 |
 
+The ROOMS page (`menu/roomPage.ts`) is a board page too: the arcade lobby (the room browser and the squad room for 2v2, FFA and the co-op raid) and the CUSTOM GAMES / RANKED screens are laid out in the PLAY page's format where VERSUS sits, with ‹ BACK / LEAVE bottom-left and the rail still up — no floating modal. The web keeps the invite QR, the join link and SHARE ON DISCORD in the squad room's invite band.
+
+THE CLUB MENU (right Ⓐ on the club floor, `rave/club/clubMenu.ts`) is the same board in the club's own colours: 01 THE ROOM (everyone on the floor, MUTE / BLOCK), 02 DISCO BALL (the old THE BELL: FIGHT or RAVE, the tier list and the record list inline, one CTA), 03 SOUND (mic, voice chat, music), 04 LEAVE.
+
 Still to come back from the Quest build: CAREER and CUSTOMIZE as redesigned full pages, the RANKINGS redesign and the BELTS row on the card. The board hosts the web's own faces for those meanwhile.
 
 ## Validation and next iteration
