@@ -20,6 +20,9 @@ export const ACCENT_RGB = '63,242,255';
  *  the scan line), never selection or primacy. */
 export const HOLO_HOT_RGB = '255,61,166';
 export const HOLO_HOT = `rgba(${HOLO_HOT_RGB},0.85)`;
+/** RAVE RAID's count-in magenta (rave/ui/hud.ts paintCount) — also the
+ *  bout's 3-2-1 and its winning verdicts. */
+export const COUNT_INK = '#ff2ad5';
 
 /** "#rgb" / "#rrggbb" → "r,g,b" (anything else falls back to the accent). */
 export function rgbOf(css: string): string {

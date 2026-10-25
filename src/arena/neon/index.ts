@@ -54,7 +54,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { Traffic, BACKSTREET_LANES, PLAZA_LANES } from './traffic.js';
-import { setStageRaised, STAGE_RAISE } from '../arena.js';
+import { setStageRaised, setStreetLevel, STAGE_RAISE } from '../arena.js';
 import { setStreetDecks } from '../../avatar/skins.js';
 import { setPadStreet } from '../padKit.js';
 
@@ -219,6 +219,8 @@ export function buildNeon(renderer: WebGLRenderer): Neon {
     setStageRaised(false);
     setPadStreet(shown);
     setStreetDecks(shown);
+    // A fallen fireball off the pads drops to the plaza's paving.
+    setStreetLevel(shown && site === 'plaza' ? -STAGE_RAISE : 0);
   };
   apply();
 

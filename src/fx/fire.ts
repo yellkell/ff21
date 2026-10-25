@@ -120,7 +120,11 @@ const CORE_VERT = /* glsl */ `
   void main(){ vPos = position;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vFacing = abs(dot(normalize(normalMatrix * normalize(position)), normalize(-mv.xyz)));
-    gl_Position = projectionMatrix * mv; }
+    gl_Position = projectionMatrix * mv;
+    // Depth from a point half a radius further along the view ray; the
+    // screen position stays the surface's (see coreMat's depthWrite).
+    vec4 back = projectionMatrix * vec4(mv.xyz + normalize(mv.xyz) * ${(FIREBALL.radius * 0.5).toFixed(4)}, 1.0);
+    gl_Position.z = back.z / back.w * gl_Position.w; }
 `;
 
 /** Additive corona: rippled rim + white-hot kiss at the centre, flickering. */
@@ -205,10 +209,12 @@ export function createFireVisual(team: 0 | 1): FireVisual {
     vertexShader: CORE_VERT,
     fragmentShader: CORE_FRAG,
     transparent: true,
-    // No depth write: the fire it sheds is born ON its surface, and a
-    // point sprite tests at its centre — written depth hid every flame
-    // across the ball's face. The world still occludes it.
-    depthWrite: false,
+    // It writes depth, so a transparent drawn after it (flame puffs, pad
+    // neon, the rim walls, glass) no longer shows straight through the ball —
+    // a fallen ball read as a hollow ring. The depth is pushed back half a
+    // radius along the view ray (CORE_VERT), so the flames born on its
+    // surface still sit in front of it. (Backported from the Quest build.)
+    depthWrite: true,
   });
   const core = new Mesh(CORE_GEO, coreMat);
   core.renderOrder = 1;

@@ -36,6 +36,7 @@ import { recordThrow } from '../debug/throwProbe.js';
 import { telemetry } from '../net/telemetry.js';
 import { classicDuel } from '../combat/layout.js';
 import { stageHeld } from '../experience/stageGate.js';
+import { floorAt } from '../arena/arena.js';
 
 const HANDS = ['left', 'right'] as const;
 type Hand = 0 | 1;
@@ -655,12 +656,15 @@ export class FireballSystem extends createSystem({
         }
         const elapsed = (ball.getValue(Fireball, 'elapsed') ?? 0) + delta;
         ball.setValue(Fireball, 'elapsed', elapsed);
-        if (elapsed >= FIREBALL.lifetime || obj.position.y <= FIREBALL.radius) {
+        // The floor under the ball: the deck, or the NEON plaza's street off
+        // the pads (arena.ts floorAt).
+        const floorY = floorAt(obj.position) + FIREBALL.radius;
+        if (elapsed >= FIREBALL.lifetime || obj.position.y <= floorY) {
           if (transient) {
             this.destroyBall(ball);
           } else {
             this.spendBall(ball);
-            obj.position.y = Math.max(obj.position.y, FIREBALL.radius);
+            obj.position.y = Math.max(obj.position.y, floorY);
           }
         }
         break;
@@ -725,9 +729,11 @@ export class FireballSystem extends createSystem({
         break;
       }
       case BallState.Dead: {
-        // Smoulder where it fell; gentle settle onto the floor.
-        if (obj.position.y > FIREBALL.radius) {
-          obj.position.y = Math.max(FIREBALL.radius, obj.position.y - 2.5 * delta);
+        // Smoulder where it fell; gentle settle onto the floor (off the pads
+        // in the NEON plaza, that is the street).
+        const floorY = floorAt(obj.position) + FIREBALL.radius;
+        if (obj.position.y > floorY) {
+          obj.position.y = Math.max(floorY, obj.position.y - 2.5 * delta);
         }
         break;
       }

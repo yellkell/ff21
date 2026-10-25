@@ -1,11 +1,10 @@
 /**
- * MATCH UI — the fight cards, painted with the MENU's own holo glass
- * (ui/kit/holo.ts) so the bout reads like the neon district it is fought
- * in: a see-through blue-black pane with scanlines and a diagonal sheen,
- * a lit edge tube, the "on" light bar, magenta corner brackets, Rajdhani
- * at the menu's weights. On a card the TUBE is the fighter's colour —
- * the edge, the rail down its left side, the light bar, the bar and the
- * round cells all burn in it, so whose card you are reading is one glance.
+ * MATCH UI — the fight cards, in the MENU's own holo hand (ui/kit/holo.ts)
+ * so the bout reads like the neon district it is fought in: Rajdhani at the
+ * menu's weights, lit tubes and skewed cells. There is no card behind them
+ * (as on the Quest build): the tag, name, HP, bar and round cells float on
+ * their own. The bar and the round cells burn in the fighter's colour, so
+ * whose readout you are looking at is one glance.
  *
  * Every fighter in the bout gets a CARD: a YOU / ALLY / RIVAL tag, their
  * callsign, a big numeric health readout, a skewed SOLID health bar
@@ -13,9 +12,9 @@
  * white on the hit and easing away behind the live level), the rounds
  * they hold as lit cells, and the two states a glance has to catch — LOW
  * (the bar, its bloom and the number go red and pulse; a LOW label
- * breathes) and OUT (the card dims; the dim is the word). A hit tears the
- * glass: its edge flares white on a cyan / magenta chromatic split, a few
- * scan rows glitch bright and the fighter's colour spills off the rim.
+ * breathes) and OUT (the card dims; the dim is the word). A hit flares the
+ * HEALTH BAR: the fighter's colour spills off its tube, which doubles white
+ * on a cyan / magenta chromatic split.
  *
  * WHERE THE CARDS HANG depends on the format:
  *
@@ -32,21 +31,23 @@
  *         one whose health you read — and a STANDINGS strip over the
  *         plaque ranks all four by rounds taken, then by health.
  *
- * The neon verdict plates (KO, TIME, DRAW…) float above everything; a
- * verdict with no plate is set in GLITCH type (white on a chromatic split).
+ * The verdicts (KO, WIN, TIME, DRAW…) float above everything in RAVE
+ * RAID's count-in hand, like the 3-2-1 (systems/CountdownSystem.ts): GLITCH
+ * type on a cyan / magenta split — wins in the count-in's magenta, the rest
+ * white — with a light slam and a faint glow of their ink.
  *
  * Every board is a canvas texture and a canvas redraw + upload is the most
  * expensive UI op we have, so each board fingerprints what it drew and
  * skips when nothing it shows has changed. The parts of a card that MOVE
  * on a hit — the health bar with its damage trail, and the flash round the
- * glass — are not on the canvas at all: they are two small shader quads
+ * bar — are not on the canvas at all: they are two small shader quads
  * over it (CardFx), driven by uniforms, so a landed hit costs one canvas
  * redraw (the new number) instead of one every frame while the trail eases
  * away. That per-frame redraw + 1.5 MB texture upload, on both cards at
  * once, was a big part of the stutter on every hit.
  *
  * In Aim Training the left card becomes your score/streak readout and the
- * right card shows the dodge bar + time.
+ * right card shows your health bar + time.
  */
 
 import {
@@ -69,23 +70,10 @@ import { app, training } from '../menu/appState.js';
 import { UI } from './industrial.js';
 import { font, fontsReady } from './kit/fonts.js';
 import { KIT } from './kit/panel.js';
-import { glitchText, holoGlass, neonBar, neonCell, readoutTicks, rgbOf } from './kit/holo.js';
-import { countdownArt } from './countdownArt.js';
-import { drawContentPlate as drawPlateArt } from './plateArt.js';
-import { signColour, signFlicker } from './signArt.js';
-import { signKeyFor, verdictArt } from './verdictArt.js';
+import { COUNT_INK, glitchText, holoGlass, neonBar, neonCell, readoutTicks, rgbOf } from './kit/holo.js';
 
 const W = 880;
 const H = 420;
-
-// Visible height (canvas px) for the neon signs (ui/signArt.ts), measured
-// from the box each sign's word actually occupies so they read at a
-// consistent size regardless of the bloom padding round it. Words (FIGHT / KNOCKOUT / WIN) share one height; the
-// countdown digits share a slightly smaller one so FIGHT still lands biggest.
-// Clamped by PLATE_MARGIN so the whole glyph always stays on the board.
-const WORD_PLATE_H = 357;
-const NUMBER_PLATE_H = 300;
-const PLATE_MARGIN = 26;
 
 /** Below this fraction a fighter is LOW: the bar goes red and pulses, and
  *  a LOW label breathes under it. */
@@ -93,7 +81,7 @@ const LOW_HP = 0.25;
 /** The damage trail holds for this long after a hit, then eases away. */
 const TRAIL_HOLD = 0.28;
 const TRAIL_RATE = 0.9; // fraction per second
-/** The rim flash on a hit. */
+/** The bar's flash on a hit. */
 const FLASH_SECONDS = 0.36;
 /** The clock turns hazard amber, then red and pulsing, this close to zero. */
 const CLOCK_WARN = 20;
@@ -161,10 +149,6 @@ interface CardMotion {
 const BAR = { x: 64, y: 184, w: W - 128, h: 42 };
 /** Room round the bar for its bloom and anti-aliasing (px). */
 const BAR_PAD = 16;
-/** The card's glass on the canvas (px): where the flash overlay traces. */
-const GLASS = { x: 10, y: 10, w: W - 20, h: H - 20, r: 30 };
-/** The verdict's hot second tube, as hex (three's Color won't take rgba). */
-const HOT = '#ff3da6';
 /** LOW health: a true alarm red, deeper than the kit's pink-leaning danger. */
 const LOW_RED = '#ff1414';
 
@@ -246,34 +230,33 @@ const BAR_FRAG = /* glsl */ `
 `;
 
 /**
- * THE HIT FLASH, live: the glass TEARS — the fighter's colour washes the
- * pane, a few scan rows glitch bright, the edge flares white on a cyan /
- * magenta chromatic split and a glow in the fighter's colour spills off
- * the rim — then all of it settles. Only drawn while a flash is up.
+ * THE HIT FLASH, live, on the HEALTH BAR: the fighter's colour flares off
+ * the bar's tube and the tube doubles white on a cyan / magenta chromatic
+ * split — then it settles. Only drawn while a flash is up. (It used to tear
+ * the card's glass; with no card behind the readout, as on the Quest build,
+ * it rides the bar alone.)
  */
 const RIM_FRAG = /* glsl */ `
-  uniform vec2 uSize, uGlass;
-  uniform float uRadius, uFlash, uAlpha, uTime;
+  uniform vec2 uSize, uBarC, uBarSize;
+  uniform float uFlash, uAlpha;
   uniform vec3 uColor;
   varying vec2 vUv;
   ${SDF_GLSL}
-  float hash(float n) { return fract(sin(n) * 43758.5453); }
+  const float SKEW = 0.45; // the bar's lean (BAR_FRAG)
+  float sdBar(vec2 p) {
+    vec2 hs = uBarSize * 0.5;
+    return sdRound(vec2(p.x - p.y * SKEW, p.y), vec2(hs.x - hs.y * SKEW, hs.y), 2.0);
+  }
   void main() {
-    vec2 px = (vUv - 0.5) * uSize;
-    vec2 hg = uGlass * 0.5;
-    float d = sdRound(px, hg, uRadius);
-    float inside = clamp(0.5 - d, 0.0, 1.0);
-    vec4 col = over(vec4(0.0), uColor, 0.10 * uFlash * inside);
-    // Glitch rows: a few scan bands tear bright, reshuffled 24 times a second.
-    float tear = step(0.84, hash(floor(px.y / 9.0) * 7.13 + floor(uTime * 24.0)));
-    col = over(col, vec3(1.0), 0.16 * uFlash * tear * inside);
-    float halo = d > 0.0 ? exp(-d / 4.0) : exp(d / 16.0) * 0.5;
-    col = over(col, uColor, 0.8 * uFlash * halo);
-    // The chromatic split: the edge doubled in cyan and magenta, then white.
-    float w = 1.0 + 2.0 * uFlash;
-    float off = 6.0 * uFlash;
-    float dc = sdRound(px + vec2(off, 0.0), hg, uRadius);
-    float dm = sdRound(px - vec2(off, 0.0), hg, uRadius);
+    vec2 px = (vUv - 0.5) * uSize - uBarC;
+    float d = sdBar(px);
+    float halo = d > 0.0 ? exp(-d / 6.0) : 0.0;
+    vec4 col = over(vec4(0.0), uColor, 0.8 * uFlash * halo);
+    // The chromatic split: the tube doubled in cyan and magenta, then white.
+    float w = 1.0 + 1.5 * uFlash;
+    float off = 5.0 * uFlash;
+    float dc = sdBar(px + vec2(off, 0.0));
+    float dm = sdBar(px - vec2(off, 0.0));
     col = over(col, vec3(0.25, 0.95, 1.0), 0.7 * uFlash * clamp(w - abs(dc), 0.0, 1.0));
     col = over(col, vec3(1.0, 0.24, 0.65), 0.7 * uFlash * clamp(w - abs(dm), 0.0, 1.0));
     col = over(col, vec3(1.0), 0.75 * uFlash * clamp(w - abs(d), 0.0, 1.0));
@@ -318,11 +301,11 @@ function addCardFx(board: Board, wMeters: number, hMeters: number): void {
   const rimMat = new ShaderMaterial({
     uniforms: {
       uSize: { value: [W, H] },
-      uGlass: { value: [GLASS.w, GLASS.h] },
-      uRadius: { value: GLASS.r },
+      // The bar's centre on the card (px, y up from the card's centre) and size.
+      uBarC: { value: [BAR.x + BAR.w / 2 - W / 2, H / 2 - (BAR.y + BAR.h / 2)] },
+      uBarSize: { value: [BAR.w, BAR.h] },
       uFlash: { value: 0 },
       uAlpha: { value: 1 },
-      uTime: { value: 0 },
       uColor: { value: new Color() },
     },
     vertexShader: UV_VERT,
@@ -357,7 +340,6 @@ function setCardFx(fx: CardFx, neon: string, frac: number, trail: number, flash:
     const r = fx.rimMat.uniforms;
     r.uFlash.value = flash;
     r.uAlpha.value = alpha;
-    r.uTime.value = time;
     (r.uColor.value as Color).set(neon);
   }
 }
@@ -387,13 +369,6 @@ function makeBoard(wMeters: number, hMeters: number, cw = W, ch = H, srgb = true
   return { mesh, ctx, tex, w: cw, h: ch };
 }
 
-/** Draw an art plate centred on the centre board, sized so its VISIBLE glyph
- *  (not the padded frame) is `targetH` tall — but never larger than the board's
- *  safe area, so the whole glyph always stays on screen (nothing chopped). */
-function drawContentPlate(ctx: CanvasRenderingContext2D, sign: HTMLCanvasElement, targetH: number): void {
-  drawPlateArt(ctx, sign, W, H, targetH, PLATE_MARGIN);
-}
-
 /** The clock's digits on the plaque canvas (px). */
 const CLOCK_PX = 88;
 
@@ -402,13 +377,9 @@ function fmtTime(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function verdictAccent(message: string): string {
-  if (message.includes('LOSE') || message === 'LOSS' || message === "KO'D") return KIT.danger;
-  // A neon sign's aura is the sign's own colour (ui/signArt.ts), so the
-  // light it throws and the tube are one.
-  const sign = signKeyFor(message);
-  if (sign) return signColour(sign);
-  return HOT;
+/** A verdict's ink: the wins in the count-in's magenta, the rest white. */
+function verdictInk(message: string): string {
+  return message === 'KO' || message === 'WIN' || message === 'YOU WIN' || message === 'FIGHT' ? COUNT_INK : '#ffffff';
 }
 
 /** Soft additive aura that sits behind the verdict and pulses with it. A
@@ -441,8 +412,6 @@ function makeVerdictGlow(): Mesh {
   return mesh;
 }
 
-const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
-
 /* ── the card ─────────────────────────────────────────────────────────── */
 
 /** Largest px (≤ max, ≥ min) at which `text` fits `maxW` in this weight. */
@@ -465,22 +434,11 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   ctx.letterSpacing = '0px';
 }
 
-/** THE CARD'S GLASS — the kit's holo pane with its edge tube, light bar
- *  and rail burning in the fighter's colour. (A hit's flash rides the
- *  card's live overlay, not the canvas.) */
-function cardGlass(ctx: CanvasRenderingContext2D, neon: string, dim: boolean): void {
+/** THE CARD'S GLASS — gone, as on the Quest build: no holo pane or rail
+ *  behind the health bars; the tag, name, HP, bar and pips float on their
+ *  own. Clears the canvas for the readout. */
+function cardGlass(ctx: CanvasRenderingContext2D): void {
   ctx.clearRect(0, 0, W, H);
-  ctx.save();
-  if (dim) ctx.globalAlpha = 0.5;
-  holoGlass(ctx, GLASS.x, GLASS.y, GLASS.w, GLASS.h, { r: GLASS.r, edge: rgbOf(neon), fill: KIT.panel, arm: 26, ticks: false });
-  // The RAIL: a lit tube down the left edge, clear of the corner brackets.
-  ctx.fillStyle = neon;
-  ctx.shadowColor = neon;
-  ctx.shadowBlur = 14;
-  ctx.beginPath();
-  ctx.roundRect(26, 76, 6, H - 152, 3);
-  ctx.fill();
-  ctx.restore();
 }
 
 /** Rounds held: a row of skewed cells, lit in the team colour per round taken. */
@@ -676,23 +634,22 @@ export function createScoreboard(scene: Scene): Scoreboard {
       return;
     }
     const t = (now - verdictStart) / 1000;
-    // Slam in: a quick overshoot that springs to rest, then a slow breathe.
-    const spring = 1 + 0.6 * Math.exp(-t * 8) * Math.cos(t * 17);
-    const breathe = 1 + 0.02 * Math.sin(now * 0.0042);
+    // Slam in: a light overshoot that springs to rest, then a slow breathe.
+    const spring = 1 + 0.22 * Math.exp(-t * 9) * Math.cos(t * 17);
+    const breathe = 1 + 0.015 * Math.sin(now * 0.0042);
     centre.mesh.scale.setScalar(Math.max(0.25, spring * breathe * hang.centreScale));
     centre.mesh.position.y = hang.centreY + 0.012 * Math.sin(now * 0.0032);
-    // The tube strikes: a couple of shallow dips as the sign lights.
-    centreMat.opacity = signFlicker(t);
-
-    // Aura: a bright impact flash on arrival decaying into a steady pulse.
+    // RAVE RAID's hand: the word cuts in (no tube flicker) over a faint glow
+    // of its ink.
+    const on = Math.min(1, t / 0.06);
+    centreMat.opacity = on;
     glow.visible = true;
-    glowColor.set(verdictAccent(message));
+    const ink = verdictInk(message);
+    glowColor.set(ink);
     glowMat.color.copy(glowColor);
-    const intro = easeOutCubic(Math.min(1, t / 0.25));
-    const flash = 0.55 * Math.exp(-t * 5);
-    const pulse = 0.26 + 0.12 * Math.sin(now * 0.005);
-    glowMat.opacity = Math.min(0.95, intro * pulse + flash);
-    glow.scale.setScalar(spring * (1 + 0.18 * Math.exp(-t * 6) + 0.05 * Math.sin(now * 0.005)));
+    const k = ink === COUNT_INK ? 1 : 0.6; // white throws a softer light
+    glowMat.opacity = k * on * (0.12 + 0.03 * Math.sin(now * 0.004) + 0.16 * Math.exp(-t * 6));
+    glow.scale.set(0.6 * spring, 0.45 * spring, 1);
   };
 
   /** THE ROUND PLAQUE. */
@@ -741,7 +698,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
     if (board.key === key) return;
     board.key = key;
     const { ctx, tex } = board;
-    cardGlass(ctx, f.neon, dim);
+    cardGlass(ctx);
     ctx.save();
     if (dim) ctx.globalAlpha = 0.5;
     ctx.textBaseline = 'middle';
@@ -826,33 +783,22 @@ export function createScoreboard(scene: Scene): Scoreboard {
   };
 
   const drawCentre = (message: string, sub: string): void => {
-    // Two flavours of neon sign: the countdown (3/2/1/FIGHT) and the verdict
-    // (KO/WIN/TIME/DRAW). Everything else is GLITCH type. "Is the sign ready
-    // yet" folds into the key so the first frame after the fonts land swaps
-    // the text fallback out for the sign.
-    const cd = countdownArt(message);
-    const vd = cd ? null : verdictArt(message);
-    const key = `c|${message}|${sub}|${cd ? 'cd' : vd ? 'vd' : 'txt'}|${fontsReady() ? 1 : 0}`;
+    // Every verdict is GLITCH type in RAVE RAID's count-in hand (like the
+    // 3-2-1): wins in the count-in's magenta, the rest white, on a cyan /
+    // magenta split. "Are the fonts in yet" folds into the key so the first
+    // frame after Rajdhani lands redraws in it.
+    const key = `c|${message}|${sub}|${fontsReady() ? 1 : 0}`;
     if (centre.key === key) return;
     centre.key = key;
     const { ctx, tex } = centre;
     ctx.clearRect(0, 0, W, H);
-    if (cd && message !== 'FIGHT') {
-      // Countdown digit (3/2/1): sized by its VISIBLE glyph to a consistent
-      // height so the count reads evenly.
-      drawContentPlate(ctx, cd, NUMBER_PLATE_H);
-    } else if (cd || vd) {
-      // Word signs — FIGHT (countdown) and KO / WIN / TIME / DRAW (verdict) —
-      // sized by the VISIBLE word to a shared height so they read consistently.
-      drawContentPlate(ctx, (cd ?? vd) as HTMLCanvasElement, WORD_PLATE_H);
-    } else if (message) {
-      // No art plate: GLITCH type — the word in the menu's headline face,
-      // white, tracked wide, lit by its accent on a cyan / magenta split.
-      const accent = verdictAccent(message);
-      const px = fitText(ctx, message, W - 120, message.includes('YOU') ? 120 : 150, 44, 700, 8);
+    if (message) {
+      const ink = verdictInk(message);
+      const max = message.length <= 4 ? 120 : message.includes('YOU') ? 96 : 110;
+      const px = fitText(ctx, message, W - 200, max, 40, 700);
       const midY = sub ? 188 : 216;
       ctx.textBaseline = 'middle';
-      glitchText(ctx, message, W / 2, midY, px, accent, { track: 8 });
+      glitchText(ctx, message, W / 2, midY, px, ink === COUNT_INK ? 'rgba(255,42,213,0.45)' : 'rgba(255,255,255,0.3)', { ink });
       if (sub) label(ctx, sub, W / 2, 304, 600, 40, KIT.dim, 5, 'center');
     }
     tex.needsUpdate = true;
@@ -983,7 +929,7 @@ export function createScoreboard(scene: Scene): Scoreboard {
       if (left.key !== key) {
         left.key = key;
         const { ctx, tex } = left;
-        cardGlass(ctx, UI.emberBright, false);
+        cardGlass(ctx);
         ctx.textBaseline = 'middle';
         ctx.shadowColor = UI.emberBright;
         ctx.shadowBlur = 10;
@@ -999,9 +945,11 @@ export function createScoreboard(scene: Scene): Scoreboard {
         label(ctx, `BEST ${best}`, W - 64, 330, 600, 30, KIT.dim, 4, 'right');
         tex.needsUpdate = true;
       }
-      // Right card: dodge readout (health only matters with shoot-back on).
+      // Right card: your health (it only matters with shoot-back on).
       const frac = app.shootBack ? hp / hpMax : 1;
-      drawCard(right, { slot: 1, name: 'DODGE', neon: UI.cool, hpFrac: frac, hp: app.shootBack ? hp : hpMax, pips: 0, team: 1, alive: true }, 0, now, undefined, 'DRILL');
+      // It is your health, so it reads YOU, as in a bout (it was DODGE / DRILL;
+      // the Quest build changed it).
+      drawCard(right, { slot: 1, name: 'YOU', neon: UI.cool, hpFrac: frac, hp: app.shootBack ? hp : hpMax, pips: 0, team: 1, alive: true }, 0, now, undefined, '');
       drawCentre('', '');
       animateVerdict('');
     },

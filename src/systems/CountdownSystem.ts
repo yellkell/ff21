@@ -2,12 +2,18 @@
  * The big in-world round countdown: "3… 2… 1… FIGHT" hanging huge in the air
  * over the middle of the arena — between the platforms, not just on the HUD.
  *
+ * Drawn in RAVE RAID's count-in hand (rave/ui/hud.ts paintCount) — GLITCH
+ * TYPE, the figure in the count-in's magenta over the cyan / magenta
+ * chromatic split — at about two-thirds of the old neon signs' size, over a
+ * faint magenta glow. Each new figure lands with a light slam; no tube
+ * flicker. (Backported from the Quest build, which asked for it: "we much
+ * prefer the style of the rave raid 3 2 1 countdown".)
+ *
  * It mirrors `match.message` (every mode's match brain — local, 1v1 net,
  * mesh — funnels its countdown through that string), so this system never
- * needs to know whose clock is authoritative. Each new figure POPS in
- * slightly oversized and settles as it fades up; anything that isn't a
+ * needs to know whose clock is authoritative. Anything that isn't a
  * countdown beat ("KO", "YOU WIN", scores…) hides the board, which keeps the
- * dramatic endgame text on the HUD where it can be read while moving.
+ * endgame text on the HUD (ui/scoreboard.ts, the same hand).
  */
 
 import { createSystem } from '@iwsdk/core';
@@ -15,45 +21,32 @@ import { AdditiveBlending, CanvasTexture, LinearFilter, Mesh, MeshBasicMaterial,
 import { localLayout } from '../combat/layout.js';
 import { match } from '../combat/matchState.js';
 import { app } from '../menu/appState.js';
-import { countdownArt } from '../ui/countdownArt.js';
-import { drawContentPlate } from '../ui/plateArt.js';
-import { signColour, signFlicker } from '../ui/signArt.js';
+import { font, fontsReady } from '../ui/kit/fonts.js';
+import { COUNT_INK, glitchText } from '../ui/kit/holo.js';
 
-/** The messages that belong to the countdown ritual — drawn with the same
- *  neon signs the HUD scoreboard uses (countdownArt), with these colours as
- *  the stencil fallback for the frames before the house face has loaded. */
-const BEAT_STYLE: Record<string, { fill: string; glow: string }> = {
-  '3': { fill: '#f4f6fb', glow: 'rgba(170,225,255,0.95)' },
-  '2': { fill: '#f4f6fb', glow: 'rgba(170,225,255,0.95)' },
-  '1': { fill: '#ff5266', glow: 'rgba(255,82,102,0.95)' },
-  FIGHT: { fill: '#ff3b1e', glow: 'rgba(255,60,20,0.95)' },
-};
+/** The count-in ink's faint halo round the glyphs. */
+const COUNT_HALO = 'rgba(255,42,213,0.45)';
 
-/** The aura tint behind each beat — the sign's own tube colour: 3 and 2
- *  cyan, then 1 and FIGHT red. */
-const BEAT_ACCENT: Record<string, string> = {
-  '3': signColour('3'),
-  '2': signColour('2'),
-  '1': signColour('1'),
-  FIGHT: signColour('fight'),
-};
+/** The beats of the ritual. */
+const BEATS = new Set(['3', '2', '1', 'FIGHT']);
 
-function easeOutCubic(x: number): number {
-  return 1 - Math.pow(1 - x, 3);
-}
+/** Canvas size (px) of the board. */
+const CW = 1024;
+const CH = 512;
 
 export class CountdownSystem extends createSystem({}) {
   private board!: Mesh;
   private glow!: Mesh;
   private canvas!: HTMLCanvasElement;
   private texture!: CanvasTexture;
-  private shown = ''; // the message currently drawn on the canvas
+  private shown = ''; // the redraw key currently on the canvas
+  private beat = ''; // the figure currently up
   private beatStart = 0; // performance.now() when the current figure landed
 
   init(): void {
     this.canvas = document.createElement('canvas');
-    this.canvas.width = 1024;
-    this.canvas.height = 512;
+    this.canvas.width = CW;
+    this.canvas.height = CH;
     this.texture = new CanvasTexture(this.canvas);
     this.texture.minFilter = LinearFilter;
     // ~1.8 m wide in the air — reads across the arena without filling the
@@ -70,9 +63,8 @@ export class CountdownSystem extends createSystem({}) {
     this.board.visible = false;
     this.scene.add(this.board);
 
-    // The accent aura behind the plate — the HUD verdict's soft radial glow,
-    // rebuilt at arena size. A child of the board, so the slam-in spring
-    // carries it; its own scale adds the impact swell on top.
+    // A slight magenta glow behind the figure — a child of the board, so the
+    // slam carries it; its own scale fits it to a digit or the FIGHT word.
     const glowCanvas = document.createElement('canvas');
     glowCanvas.width = glowCanvas.height = 128;
     const g = glowCanvas.getContext('2d')!;
@@ -85,9 +77,10 @@ export class CountdownSystem extends createSystem({}) {
     const glowTex = new CanvasTexture(glowCanvas);
     glowTex.minFilter = LinearFilter;
     this.glow = new Mesh(
-      new PlaneGeometry(2.52, 1.47),
+      new PlaneGeometry(1.7, 0.95),
       new MeshBasicMaterial({
         map: glowTex,
+        color: COUNT_INK,
         transparent: true,
         blending: AdditiveBlending,
         depthWrite: false,
@@ -96,32 +89,32 @@ export class CountdownSystem extends createSystem({}) {
     );
     this.glow.position.z = -0.03;
     // Just under the board (renderOrder is scene-global, not hierarchical):
-    // the aura draws right before the plate, after the fireballs — at its old
-    // -1 the balls painted over it too.
+    // the glow draws right before the plate, after the fireballs.
     this.glow.renderOrder = 4;
     this.board.add(this.glow);
   }
 
   update(): void {
     const msg = match.message;
-    const style = BEAT_STYLE[msg];
-    const active = app.state === 'playing' && !!style;
+    const active = app.state === 'playing' && BEATS.has(msg);
     this.board.visible = active;
     if (!active) {
       this.shown = '';
+      this.beat = '';
       return;
     }
 
-    // "Is the sign ready yet" folds into the redraw key, so the stencil
-    // fallback swaps out for the sign the moment it's there (same trick as
-    // the HUD scoreboard).
-    const art = countdownArt(msg);
-    const key = `${msg}|${art ? 'art' : 'txt'}`;
+    const now = performance.now();
+    if (msg !== this.beat) {
+      this.beat = msg;
+      this.beatStart = now; // slam on a new figure
+    }
+    // "Are the fonts in yet" folds into the redraw key, so the fallback face
+    // swaps for Rajdhani the moment it lands (same trick as the HUD).
+    const key = `${msg}|${fontsReady() ? 1 : 0}`;
     if (key !== this.shown) {
-      const newBeat = !this.shown.startsWith(`${msg}|`);
       this.shown = key;
-      if (newBeat) this.beatStart = performance.now(); // slam on a new figure, not the art swap-in
-      this.draw(msg, art, style.fill, style.glow);
+      this.draw(msg);
     }
 
     // Hang over the centre of the bout: the mean of every platform in MY
@@ -137,47 +130,37 @@ export class CountdownSystem extends createSystem({}) {
     cx /= roster.length;
     cz /= roster.length;
 
-    // The HUD verdict's animation, at arena scale: each figure SLAMS in with
-    // a quick overshoot that springs to rest, then breathes; the aura flashes
-    // bright on arrival and decays into a steady pulse in the beat's colour.
-    const now = performance.now();
+    // A light slam on each figure (the count-in itself just cuts), then a
+    // slow breathe; the glow flashes on arrival and settles faint.
     const t = (now - this.beatStart) / 1000;
-    const spring = 1 + 0.6 * Math.exp(-t * 8) * Math.cos(t * 17);
-    const breathe = 1 + 0.02 * Math.sin(now * 0.0042);
+    const spring = 1 + 0.22 * Math.exp(-t * 9) * Math.cos(t * 17);
+    const breathe = 1 + 0.015 * Math.sin(now * 0.0042);
     this.board.position.set(cx, 1.75 + 0.012 * Math.sin(now * 0.0032), cz);
     this.board.rotation.set(0, Math.atan2(-cx, -cz), 0); // +z normal turned to face the origin (me)
     this.board.scale.setScalar(Math.max(0.25, spring * breathe));
-    // The tube strikes: a couple of shallow dips as each figure lights.
-    (this.board.material as MeshBasicMaterial).opacity = signFlicker(t);
+    const on = Math.min(1, t / 0.06);
+    (this.board.material as MeshBasicMaterial).opacity = on;
 
     const glowMat = this.glow.material as MeshBasicMaterial;
-    glowMat.color.setStyle(BEAT_ACCENT[msg] ?? '#ffffff');
-    const intro = easeOutCubic(Math.min(1, t / 0.25));
-    const flash = 0.55 * Math.exp(-t * 5);
-    const pulse = 0.26 + 0.12 * Math.sin(now * 0.005);
-    glowMat.opacity = Math.min(0.95, intro * pulse + flash);
-    this.glow.scale.setScalar(1 + 0.18 * Math.exp(-t * 6) + 0.05 * Math.sin(now * 0.005));
+    glowMat.opacity = on * (0.13 + 0.03 * Math.sin(now * 0.004) + 0.18 * Math.exp(-t * 6));
+    const word = msg.length > 2;
+    this.glow.scale.set(word ? 0.8 : 0.4, word ? 0.5 : 0.6, 1);
   }
 
-  private draw(text: string, art: HTMLCanvasElement | null, fill: string, glow: string): void {
+  private draw(text: string): void {
     const ctx = this.canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, 1024, 512);
-    if (art) {
-      // The HUD's neon sign, sized by its visible content: digits tall,
-      // the FIGHT word wide.
-      drawContentPlate(ctx, art, 1024, 512, text.length > 2 ? 310 : 440, 24);
-    } else {
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = `900 ${text.length > 2 ? 240 : 400}px 'Arial Black', system-ui, sans-serif`;
-      ctx.lineWidth = 26;
-      ctx.strokeStyle = 'rgba(10,11,14,0.95)';
-      ctx.strokeText(text, 512, 268);
-      ctx.fillStyle = fill;
-      ctx.shadowColor = glow;
-      ctx.shadowBlur = 46;
-      ctx.fillText(text, 512, 268);
+    ctx.clearRect(0, 0, CW, CH);
+    // Digits tall (the count-in's proportions), the FIGHT word fitted wide.
+    let px = 250;
+    if (text.length > 2) {
+      px = 200;
+      while (px > 60) {
+        ctx.font = font(700, px);
+        if (ctx.measureText(text).width <= CW - 300) break;
+        px -= 2;
+      }
     }
+    glitchText(ctx, text, CW / 2, CH / 2, px, COUNT_HALO, { ink: COUNT_INK });
     this.texture.needsUpdate = true;
   }
 }
