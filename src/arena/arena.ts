@@ -39,6 +39,7 @@ import {
 import type { World } from '@iwsdk/core';
 import {
   ARENA_GAP,
+  FIREBALL,
   OCTAGON_VERTICES,
   PALETTE,
   PLATFORM,
@@ -326,8 +327,69 @@ function makePlinth(): Group {
   return plinth;
 }
 
+/** Every pedestal ever built — the floors a fallen ball can rest on. */
+const allPads: Group[] = [];
+/** The street under the pads (world y): 0, or -STAGE_RAISE while the NEON
+ *  plaza is the site (neon/index.ts setStreetLevel). */
+let streetY = 0;
+export function setStreetLevel(y: number): void {
+  streetY = y;
+}
+
+const _local = new Vector3();
+const _scale = new Vector3();
+
+/** Shown, and every ancestor shown too. */
+function shownInWorld(o: Object3D): boolean {
+  for (let n: Object3D | null = o; n; n = n.parent) if (!n.visible) return false;
+  return true;
+}
+
+/** Inside OCTAGON_VERTICES (x, z), grown by `margin`. The winding is read off
+ *  the outline itself, so the test holds whichever way it runs. */
+function inOctagon(x: number, z: number, margin: number): boolean {
+  const v = OCTAGON_VERTICES;
+  let area = 0;
+  for (let i = 0; i < v.length; i++) {
+    const a = v[i];
+    const b = v[(i + 1) % v.length];
+    area += a[0] * b[1] - b[0] * a[1];
+  }
+  const wind = area >= 0 ? 1 : -1;
+  for (let i = 0; i < v.length; i++) {
+    const a = v[i];
+    const b = v[(i + 1) % v.length];
+    const ex = b[0] - a[0];
+    const ez = b[1] - a[1];
+    const cross = wind * (ex * (z - a[1]) - ez * (x - a[0]));
+    if (cross < -margin * Math.hypot(ex, ez)) return false;
+  }
+  return true;
+}
+
+/**
+ * The floor under a fallen ball (world y). Every dead ball used to settle at
+ * the deck's height everywhere — but in the NEON plaza the street lies
+ * STAGE_RAISE below the decks, so a ball off the pads hung in the air. Over
+ * a shown pad's octagon (grown by a ball radius, so it never clips the deck's
+ * edge) the floor is the deck; off them, the street. (Backported from the
+ * Quest build.)
+ */
+export function floorAt(p: Vector3): number {
+  if (streetY === 0) return 0;
+  for (const pad of allPads) {
+    if (!shownInWorld(pad)) continue;
+    _local.copy(p);
+    pad.worldToLocal(_local);
+    const margin = FIREBALL.radius / Math.max(0.01, pad.getWorldScale(_scale).x);
+    if (inOctagon(_local.x, _local.z, margin)) return 0;
+  }
+  return streetY;
+}
+
 export function makePlatform(color: number, groupScale = 1): Group {
   const group = new Group();
+  allPads.push(group);
   group.add(makePlinth());
 
   // THE DECK is a MATERIAL (arena/decks.ts): the pedestal is born as the
