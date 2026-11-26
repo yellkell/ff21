@@ -66,6 +66,9 @@ import eraseUrl from '../assets/music/erase.m4a';
 import indecisiveUrl from '../assets/music/indecisive.m4a';
 import climbUrl from '../assets/music/climb.m4a';
 import eliteUrl from '../assets/music/elite.m4a';
+import mysteryUrl from '../assets/music/mystery.m4a';
+// FIRE FIGHT's battle record, the very same file: Vite ships one copy.
+import grindUrl from '../../assets/music/battle/grind.mp3';
 import type { MoveKind } from '../config.js';
 
 /** Where a record is allowed to play. 'credits' is a role of one: the
@@ -641,6 +644,43 @@ export const TRACKS: Track[] = [
     // The beat drops out at 158.88 s. Only a tick on each beat carries
     // through the gap, then the record slams back in at 162.51 s (bar 89).
     breaks: [[158.878, 162.511]],
+    roles: ['raid'],
+  },
+  {
+    id: 'mystery',
+    title: 'MYSTERY',
+    url: mysteryUrl,
+    bpm: 135.0,
+    downbeat: 0.058,
+    seconds: 325.33,
+    lufs: -8.2,
+    // Came over from the Quest build's shelf, where it was measured first:
+    // the comb phase-locked on the 90–250 Hz band (the full band locks onto
+    // its offbeat hats and stabs). 135 on a sixteenth lattice — it reads as
+    // 90 or 180 too, but the low end says 135. A seven-bar intro, then the
+    // groove lands: the set starts there, on a phrase line.
+    startAt: 12.5024,
+    roles: ['raid'],
+  },
+  {
+    id: 'grind',
+    title: 'GRIND',
+    url: grindUrl,
+    bpm: 150.0,
+    downbeat: 1.646,
+    seconds: 188.8,
+    lufs: -6.6,
+    // FIRE FIGHT's battle record, on the raid shelf too. 150 flat: the full
+    // band, the kick alone and the hats each lock to 150.000, and the two
+    // halves of the file sit within a millisecond of one grid. It opens on
+    // the export click musicTrack.ts already knows about, 1.6 s of true
+    // zeros, then two bars of pickup from 1.646 s; the wall drops at 4.846,
+    // which is exactly where a 150 BPM count-in (eight beats) puts beat 0.
+    // Playback starts on the pickup, so the click never plays.
+    //
+    // The loudest master in the box by 0.9 dB (−6.6 LUFS, a 0.3 LU range:
+    // it never lets up). The gain-match takes 7.4 dB off it.
+    startAt: 1.646,
     roles: ['raid'],
   },
   {
