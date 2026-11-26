@@ -132,6 +132,8 @@ const SLEEVES: Record<string, keyof typeof PALETTES> = {
   erase: 'noir',
   indecisive: 'aurora',
   climb: 'ice',
+  mystery: 'ultraviolet',
+  grind: 'noir',
   // the club's and the foyer's rotation (club/ledFloor.ts)
   chill: 'aurora',
   swag: 'synthwave',
